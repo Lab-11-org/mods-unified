@@ -15,6 +15,8 @@ import java.lang.reflect.Method;
 public final class CookingPotContainerTooltipBridge {
     private static final String COOKING_FOR_BLOCKHEADS_MOD_ID = "cookingforblockheads";
     private static final String KITCHEN_SCREEN_CLASS = "net.blay09.mods.cookingforblockheads.client.gui.screen.KitchenScreen";
+    private static final String TOOLTIP_CONTAINER_COST_KEY = "lab_11_mods_unified.tooltip.cooking_table.container_cost";
+    private static final String TOOLTIP_CONTAINER_ENTRY_KEY = "lab_11_mods_unified.tooltip.cooking_table.container_entry";
 
     private CookingPotContainerTooltipBridge() {
     }
@@ -60,10 +62,16 @@ public final class CookingPotContainerTooltipBridge {
             return;
         }
 
-        final Component tooltipLine = Component.literal("Consumes: ")
-                .withStyle(ChatFormatting.GRAY)
-                .append(Component.literal(containerCost.getCount() + "x ").withStyle(ChatFormatting.GOLD))
-                .append(containerCost.getHoverName().copy().withStyle(ChatFormatting.GRAY));
+        final Component containerEntry = Component.translatable(
+                TOOLTIP_CONTAINER_ENTRY_KEY,
+                containerCost.getCount(),
+                containerCost.getHoverName()
+        ).withStyle(ChatFormatting.GOLD);
+
+        final Component tooltipLine = Component.translatable(
+                TOOLTIP_CONTAINER_COST_KEY,
+                containerEntry
+        ).withStyle(ChatFormatting.GRAY);
         event.getToolTip().add(tooltipLine);
     }
 

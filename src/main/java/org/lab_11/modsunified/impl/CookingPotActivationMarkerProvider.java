@@ -84,9 +84,13 @@ public final class CookingPotActivationMarkerProvider implements KitchenItemProv
         final ItemStack markerStack = new ItemStack(markerItem(markerKey));
         markerStack.set(
                 DataComponents.CUSTOM_NAME,
-                Component.literal("lab_11_mods_unified:cooking_pot_activation_marker/" + markerKey)
+                Component.translatable(markerTranslationKey(markerKey))
         );
         return markerStack;
+    }
+
+    private static String markerTranslationKey(final String markerKey) {
+        return "lab_11_mods_unified.marker." + markerKey;
     }
 
     private static Item markerItem(final String markerKey) {
