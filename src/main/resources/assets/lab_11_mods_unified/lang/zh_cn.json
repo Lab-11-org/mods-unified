@@ -1,4 +1,5 @@
 {
+  "fml.menu.mods.info.description.lab_11_mods_unified": "Code的模组兼容。\n为傻瓜烹饪、农夫乐事、地牢乐事以及矿工乐事添加互相兼容以及互动机制。",
   "block.lab_11_mods_unified.dungeon_oven": "地牢烤炉",
   "lab_11_mods_unified.marker.farmersdelight_cooking_pot": "农夫乐事烹饪锅标记",
   "lab_11_mods_unified.marker.dungeonsdelight_monster_pot": "地牢乐事怪物锅标记",
