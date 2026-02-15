@@ -21,6 +21,17 @@ public final class CookingPotKitchenHandler implements KitchenRecipeHandler<Reci
 
     @Override
     public int mapToMatrixSlot(final Recipe<?> recipe, final int ingredientIndex) {
+        if (recipe instanceof CookingPotIndexedRecipe indexedRecipe) {
+            final int syntheticIngredientCount = indexedRecipe.syntheticIngredientCount();
+            if (ingredientIndex < syntheticIngredientCount) {
+                // Keep synthetic activation/container ingredients off the displayed matrix.
+                return 0;
+            }
+
+            final int visibleIngredientIndex = ingredientIndex - syntheticIngredientCount;
+            return visibleIngredientIndex < 9 ? visibleIngredientIndex : 8;
+        }
+
         return ingredientIndex < 9 ? ingredientIndex : 8;
     }
 

@@ -12,9 +12,11 @@ import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import net.neoforged.neoforge.client.event.RecipesUpdatedEvent;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.entity.player.ItemTooltipEvent;
 import net.neoforged.neoforge.event.OnDatapackSyncEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import org.lab_11.modsunified.impl.CookingPotBridgeTarget;
+import org.lab_11.modsunified.impl.CookingPotContainerTooltipBridge;
 import org.lab_11.modsunified.impl.CookingPotIndexedRecipe;
 import org.lab_11.modsunified.impl.CookingPotKitchenHandler;
 import org.lab_11.modsunified.impl.CookingPotProcessorCapability;
@@ -49,6 +51,7 @@ public final class Unifiled {
         NeoForge.EVENT_BUS.addListener(this::onDatapackSync);
         if (FMLEnvironment.dist.isClient()) {
             NeoForge.EVENT_BUS.addListener(this::onClientRecipesUpdated);
+            NeoForge.EVENT_BUS.addListener(this::onItemTooltip);
         }
     }
 
@@ -164,6 +167,10 @@ public final class Unifiled {
                 minecraft.getConnection().registryAccess(),
                 "neoforge_client_recipes_updated"
         );
+    }
+
+    private void onItemTooltip(final ItemTooltipEvent event) {
+        CookingPotContainerTooltipBridge.appendTooltip(event);
     }
 
     private void injectCookingPotRecipesIntoCookingForBlockheads(final RecipeManager recipeManager,

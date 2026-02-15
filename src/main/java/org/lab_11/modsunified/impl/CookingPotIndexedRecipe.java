@@ -16,13 +16,17 @@ public final class CookingPotIndexedRecipe implements Recipe<RecipeInput> {
     private final Recipe<?> delegate;
     private final NonNullList<Ingredient> indexedIngredients;
     private final ItemStack indexedResult;
+    private final ItemStack indexedContainerCost;
+    private final int syntheticIngredientCount;
 
     public CookingPotIndexedRecipe(final Recipe<?> delegate,
                                    final RegistryAccess registryAccess,
                                    final String markerKey) {
         this.delegate = delegate;
         this.indexedResult = resolveIndexedResult(delegate, registryAccess, markerKey);
-        this.indexedIngredients = buildIndexedIngredients(delegate, registryAccess, markerKey);
+        this.indexedContainerCost = CookingPotContainerCost.resolveForIndexedRecipe(delegate, registryAccess, markerKey);
+        this.syntheticIngredientCount = 1 + (indexedContainerCost.isEmpty() ? 0 : indexedContainerCost.getCount());
+        this.indexedIngredients = buildIndexedIngredients(delegate, markerKey, indexedContainerCost);
     }
 
     public static RecipeHolder<Recipe<?>> toIndexedRecipeHolder(final RecipeHolder<?> recipeHolder,
@@ -81,14 +85,20 @@ public final class CookingPotIndexedRecipe implements Recipe<RecipeInput> {
         return delegate.getToastSymbol();
     }
 
+    public int syntheticIngredientCount() {
+        return syntheticIngredientCount;
+    }
+
+    public ItemStack indexedContainerCost() {
+        return indexedContainerCost.copy();
+    }
+
     private static NonNullList<Ingredient> buildIndexedIngredients(final Recipe<?> recipe,
-                                                                   final RegistryAccess registryAccess,
-                                                                   final String markerKey) {
+                                                                   final String markerKey,
+                                                                   final ItemStack containerCost) {
         final NonNullList<Ingredient> indexedIngredients = NonNullList.create();
-        indexedIngredients.addAll(recipe.getIngredients());
         indexedIngredients.add(CookingPotActivationMarkerProvider.markerIngredient(markerKey));
 
-        final ItemStack containerCost = CookingPotContainerCost.resolveForIndexedRecipe(recipe, registryAccess, markerKey);
         if (!containerCost.isEmpty()) {
             final ItemStack containerUnit = containerCost.copy();
             containerUnit.setCount(1);
@@ -98,6 +108,7 @@ public final class CookingPotIndexedRecipe implements Recipe<RecipeInput> {
             }
         }
 
+        indexedIngredients.addAll(recipe.getIngredients());
         return indexedIngredients;
     }
 
