@@ -1,7 +1,7 @@
 {
-  "lab_11_mods_unified.marker.farmersdelight_cooking_pot": "FarmersDelight 烹饪锅标记",
-  "lab_11_mods_unified.marker.dungeonsdelight_monster_pot": "DungeonsDelight 怪物锅标记",
-  "lab_11_mods_unified.marker.minersdelight_copper_pot": "MinersDelight 铜锅标记",
+  "lab_11_mods_unified.marker.farmersdelight_cooking_pot": "农夫乐事烹饪锅标记",
+  "lab_11_mods_unified.marker.dungeonsdelight_monster_pot": "地牢乐事怪物锅标记",
+  "lab_11_mods_unified.marker.minersdelight_copper_pot": "矿工乐事铜锅标记",
   "lab_11_mods_unified.tooltip.cooking_table.container_cost": "消耗：%s",
   "lab_11_mods_unified.tooltip.cooking_table.container_entry": "%1$sx%2$s"
 }

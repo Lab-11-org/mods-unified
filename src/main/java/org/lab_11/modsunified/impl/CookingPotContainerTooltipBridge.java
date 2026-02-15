@@ -80,7 +80,12 @@ public final class CookingPotContainerTooltipBridge {
             return indexedRecipe.indexedContainerCost();
         }
 
-        return ItemStack.EMPTY;
+        final Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.level == null) {
+            return ItemStack.EMPTY;
+        }
+
+        return CookingPotContainerCost.resolveForTooltip(recipe, minecraft.level.registryAccess());
     }
 
     private static Object invokeNoArg(final Object target, final String methodName) {

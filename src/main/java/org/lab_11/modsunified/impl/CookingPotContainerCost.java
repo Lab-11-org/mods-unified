@@ -23,6 +23,11 @@ final class CookingPotContainerCost {
         return resolveInternal(recipe, registryAccess, copperPotActive);
     }
 
+    static ItemStack resolveForTooltip(final Recipe<?> recipe,
+                                       final RegistryAccess registryAccess) {
+        return resolveInternal(recipe, registryAccess, false);
+    }
+
     private static ItemStack resolveInternal(final Recipe<?> recipe,
                                              final RegistryAccess registryAccess,
                                              final boolean copperPotOutputConversion) {
