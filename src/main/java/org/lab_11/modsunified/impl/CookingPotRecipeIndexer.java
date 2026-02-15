@@ -14,12 +14,14 @@ import net.minecraft.world.item.crafting.RecipeType;
 import org.slf4j.Logger;
 
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.lang.reflect.Field;
 
 public final class CookingPotRecipeIndexer {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -113,20 +115,75 @@ public final class CookingPotRecipeIndexer {
     private static void installIndexedRecipesByName(final RecipeManager recipeManager,
                                                     final Map<ResourceLocation, RecipeHolder<?>> indexedRecipesById) {
         try {
-            final var byNameField = RecipeManager.class.getDeclaredField(RECIPE_MANAGER_BY_NAME_FIELD);
+            final Field byNameField = resolveRecipeByIdMapField(recipeManager);
+            if (byNameField == null) {
+                LOGGER.warn("Failed to install indexed cooking-pot recipes into RecipeManager byName map: no compatible map field found.");
+                return;
+            }
+
             byNameField.setAccessible(true);
+            final Object fieldValue = byNameField.get(recipeManager);
+            if (!(fieldValue instanceof Map<?, ?> rawMap)) {
+                LOGGER.warn("Failed to install indexed cooking-pot recipes into RecipeManager byName map: resolved field is not a map.");
+                return;
+            }
 
-            final Map<ResourceLocation, RecipeHolder<?>> currentByName =
-                    (Map<ResourceLocation, RecipeHolder<?>>) byNameField.get(recipeManager);
-            final Map<ResourceLocation, RecipeHolder<?>> mutableByName = new HashMap<>(currentByName);
-
-            mutableByName.entrySet().removeIf(entry -> isIndexedRecipeId(entry.getKey()));
-            mutableByName.putAll(indexedRecipesById);
-
-            byNameField.set(recipeManager, mutableByName);
+            final Map<ResourceLocation, RecipeHolder<?>> byIdMap = (Map<ResourceLocation, RecipeHolder<?>>) rawMap;
+            try {
+                byIdMap.entrySet().removeIf(entry -> isIndexedRecipeId(entry.getKey()));
+                byIdMap.putAll(indexedRecipesById);
+            } catch (UnsupportedOperationException ignored) {
+                final Map<ResourceLocation, RecipeHolder<?>> mutableByIdMap = new HashMap<>(byIdMap);
+                mutableByIdMap.entrySet().removeIf(entry -> isIndexedRecipeId(entry.getKey()));
+                mutableByIdMap.putAll(indexedRecipesById);
+                byNameField.set(recipeManager, mutableByIdMap);
+            }
         } catch (ReflectiveOperationException e) {
             LOGGER.warn("Failed to install indexed cooking-pot recipes into RecipeManager byName map.", e);
         }
+    }
+
+    private static Field resolveRecipeByIdMapField(final RecipeManager recipeManager) {
+        try {
+            return RecipeManager.class.getDeclaredField(RECIPE_MANAGER_BY_NAME_FIELD);
+        } catch (NoSuchFieldException ignored) {
+            // Fall back to structural discovery for production-obfuscated runtimes.
+        }
+
+        for (final Field field : RecipeManager.class.getDeclaredFields()) {
+            if (!Map.class.isAssignableFrom(field.getType())) {
+                continue;
+            }
+
+            try {
+                field.setAccessible(true);
+                final Object value = field.get(recipeManager);
+                if (!(value instanceof Map<?, ?> map)) {
+                    continue;
+                }
+                if (isRecipeByIdMap(map)) {
+                    return field;
+                }
+            } catch (ReflectiveOperationException ignored) {
+                // Try the next field.
+            }
+        }
+
+        return null;
+    }
+
+    private static boolean isRecipeByIdMap(final Map<?, ?> map) {
+        if (map.isEmpty()) {
+            return false;
+        }
+
+        final Iterator<? extends Map.Entry<?, ?>> iterator = map.entrySet().iterator();
+        if (!iterator.hasNext()) {
+            return false;
+        }
+
+        final Map.Entry<?, ?> sample = iterator.next();
+        return sample.getKey() instanceof ResourceLocation && sample.getValue() instanceof RecipeHolder<?>;
     }
 
     private static ResourceLocation indexedRecipeId(final ResourceLocation originalRecipeId, final String targetKey) {

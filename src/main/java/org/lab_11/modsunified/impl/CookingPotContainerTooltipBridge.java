@@ -22,6 +22,7 @@ public final class CookingPotContainerTooltipBridge {
     private static final String COOKING_FOR_BLOCKHEADS_MOD_ID = "cookingforblockheads";
     private static final String KITCHEN_SCREEN_CLASS = "net.blay09.mods.cookingforblockheads.client.gui.screen.KitchenScreen";
     private static final String CFBH_CACHE_HINT_CLASS = "net.blay09.mods.cookingforblockheads.api.CacheHint";
+    private static final String CFBH_INGREDIENT_TOKEN_CLASS = "net.blay09.mods.cookingforblockheads.api.IngredientToken";
     private static final String TOOLTIP_CONTAINER_COST_KEY = "lab_11_mods_unified.tooltip.cooking_table.container_cost";
     private static final String TOOLTIP_CONTAINER_ENTRY_KEY = "lab_11_mods_unified.tooltip.cooking_table.container_entry";
     private static final String TOOLTIP_MISSING_DUNGEON_OVEN_KEY = "lab_11_mods_unified.tooltip.cooking_table.missing_dungeon_oven";
@@ -184,7 +185,7 @@ public final class CookingPotContainerTooltipBridge {
                 return true;
             }
             allocatedTokens.add(token);
-            remaining--;
+            remaining -= peekTokenStackCount(token);
         }
 
         return false;
@@ -221,7 +222,7 @@ public final class CookingPotContainerTooltipBridge {
                         cacheHintClass
                 );
                 final Object token = findIngredient.invoke(itemProvider, ingredient, allocatedTokens, cacheHintNone);
-                if (token != null) {
+                if (token != null && !isEmptyIngredientToken(token)) {
                     return token;
                 }
             } catch (ReflectiveOperationException ignored) {
@@ -229,6 +230,38 @@ public final class CookingPotContainerTooltipBridge {
             }
         }
         return null;
+    }
+
+    private static boolean isEmptyIngredientToken(final Object token) {
+        if (token == null) {
+            return true;
+        }
+
+        try {
+            final Class<?> ingredientTokenClass = Class.forName(CFBH_INGREDIENT_TOKEN_CLASS);
+            final Object emptyToken = ingredientTokenClass.getField("EMPTY").get(null);
+            return token == emptyToken;
+        } catch (ReflectiveOperationException ignored) {
+            return false;
+        }
+    }
+
+    private static int peekTokenStackCount(final Object token) {
+        if (token == null) {
+            return 1;
+        }
+
+        try {
+            final Method peek = token.getClass().getMethod("peek");
+            final Object value = peek.invoke(token);
+            if (value instanceof ItemStack stack) {
+                return Math.max(1, stack.getCount());
+            }
+        } catch (ReflectiveOperationException ignored) {
+            // no-op
+        }
+
+        return 1;
     }
 
     private static Class<?> resolveCacheHintClass() {

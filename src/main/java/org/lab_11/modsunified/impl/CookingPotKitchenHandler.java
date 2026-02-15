@@ -91,14 +91,9 @@ public final class CookingPotKitchenHandler implements KitchenRecipeHandler<Reci
         containerUnit.setCount(1);
         final Ingredient containerIngredient = Ingredient.of(containerUnit);
 
-        final List<IngredientToken> allocatedTokens = new ArrayList<>(consumed.size());
-        for (final TokenConsumption tokenConsumption : consumed) {
-            allocatedTokens.add(tokenConsumption.token());
-        }
-
         int remaining = containerCost.getCount();
         while (remaining > 0) {
-            final IngredientToken token = findIngredientToken(context.getItemProviders(), containerIngredient, allocatedTokens);
+            final IngredientToken token = findIngredientToken(context.getItemProviders(), containerIngredient, List.of());
             if (token == null || token == IngredientToken.EMPTY) {
                 return false;
             }
@@ -109,7 +104,6 @@ public final class CookingPotKitchenHandler implements KitchenRecipeHandler<Reci
             }
 
             consumed.add(new TokenConsumption(token, consumedStack));
-            allocatedTokens.add(token);
             remaining -= Math.max(1, consumedStack.getCount());
         }
 

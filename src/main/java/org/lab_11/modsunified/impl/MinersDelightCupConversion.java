@@ -32,9 +32,7 @@ final class MinersDelightCupConversion {
         try {
             final Object value = cupVariantMethod.invoke(null, output.copy());
             if (value instanceof Optional<?> optional && optional.isPresent() && optional.get() instanceof ItemStack cupVariant) {
-                final ItemStack converted = cupVariant.copy();
-                converted.grow(1);
-                return converted;
+                return cupVariant.copy();
             }
         } catch (ReflectiveOperationException ignored) {
             // fall through to original output
