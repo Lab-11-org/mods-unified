@@ -31,6 +31,10 @@ final class CookingPotContainerCost {
     private static ItemStack resolveInternal(final Recipe<?> recipe,
                                              final RegistryAccess registryAccess,
                                              final boolean copperPotOutputConversion) {
+        if (recipe instanceof CookingPotIndexedRecipe indexedRecipe) {
+            return indexedRecipe.indexedContainerCost();
+        }
+
         final ItemStack rawResult = recipe.getResultItem(registryAccess);
         if (rawResult.isEmpty()) {
             return ItemStack.EMPTY;
