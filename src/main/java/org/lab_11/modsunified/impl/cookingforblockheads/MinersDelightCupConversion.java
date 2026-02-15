@@ -1,4 +1,4 @@
-package org.lab_11.modsunified.impl;
+package org.lab_11.modsunified.impl.cookingforblockheads;
 
 import net.blay09.mods.cookingforblockheads.crafting.CraftingContext;
 import net.blay09.mods.cookingforblockheads.kitchen.CombinedKitchenItemProvider;
@@ -8,7 +8,7 @@ import java.lang.reflect.Method;
 import java.util.Optional;
 
 final class MinersDelightCupConversion {
-    static final String COPPER_POT_TARGET_KEY = "minersdelight_copper_pot";
+    static final String COPPER_POT_TARGET_KEY = BridgeKeys.TARGET_MINERS_DELIGHT_COPPER_POT;
     private static final String CUP_CONVERSION_CLASS =
             "com.sammy.minersdelight.content.data.CupConversionDataMap";
     private static final String CUP_CONVERSION_METHOD = "getCupVariant";

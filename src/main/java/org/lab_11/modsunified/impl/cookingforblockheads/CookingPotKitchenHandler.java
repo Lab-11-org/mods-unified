@@ -1,4 +1,4 @@
-package org.lab_11.modsunified.impl;
+package org.lab_11.modsunified.impl.cookingforblockheads;
 
 import net.blay09.mods.cookingforblockheads.api.CacheHint;
 import net.blay09.mods.cookingforblockheads.api.IngredientToken;

@@ -1,25 +1,40 @@
+# Mods Unified By LAB-11
 
-Installation information
-=======
+NeoForge compat bridge for `cookingforblockheads:cooking_table`.
 
-This template repository can be directly cloned to get you started with a new
-mod. Simply create a new repository cloned from this one, by following the
-instructions provided by [GitHub](https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-repository-from-a-template).
+Current targets:
+- FarmersDelight `farmersdelight:cooking_pot`
+- DungeonsDelight `dungeonsdelight:monster_pot`
+- MinersDelight `minersdelight:copper_pot`
 
-Once you have your clone, simply open the repository in the IDE of your choice. The usual recommendation for an IDE is either IntelliJ IDEA or Eclipse.
+## What This Mod Does
+- Registers pot recipes into Cooking for Blockheads at runtime.
+- Keeps all integrations optional and dynamic (no hard runtime dependency lock).
+- Requires the matching pot above the cooking table before that pot's recipes become craftable.
+- Supports extra requirements (example: dungeon oven) as marker-based constraints.
+- Handles container consumption and tooltip warnings in the cooking table flow.
 
-If at any point you are missing libraries in your IDE, or you've run into problems you can
-run `gradlew --refresh-dependencies` to refresh the local cache. `gradlew clean` to reset everything 
-{this does not affect your code} and then start the process again.
+## Runtime Notes
+- Singleplayer and dedicated server both use the same indexed recipe path.
+- Bridge recipe wrappers are injected into RecipeManager by id for CFBH compatibility.
+- If a target mod is missing, the bridge for that target is skipped cleanly.
 
-Mapping Names:
-============
-By default, the MDK is configured to use the official mapping names from Mojang for methods and fields 
-in the Minecraft codebase. These names are covered by a specific license. All modders should be aware of this
-license. For the latest license text, refer to the mapping file itself, or the reference copy here:
-https://github.com/NeoForged/NeoForm/blob/main/Mojang.md
+## Build
+```bash
+./gradlew build -x test
+```
 
-Additional Resources: 
-==========
-Community Documentation: https://docs.neoforged.net/  
-NeoForged Discord: https://discord.neoforged.net/
+## Extend A New Pot Bridge
+1. Add ids/keys in `src/main/java/org/lab_11/modsunified/impl/cookingforblockheads/BridgeKeys.java`.
+2. Add target definition in `src/main/java/org/lab_11/modsunified/impl/cookingforblockheads/CookingPotBridgeCatalog.java`.
+3. If new markers/requirements are needed:
+   - marker item + missing-tooltip mapping in `src/main/java/org/lab_11/modsunified/impl/cookingforblockheads/BridgeMarkerRegistry.java`
+   - requirement predicate in `src/main/java/org/lab_11/modsunified/impl/cookingforblockheads/CookingPotProcessorCapability.java`
+   - lang keys in `src/main/resources/assets/lab_11_mods_unified/lang/`
+4. Build and validate both integrated server and dedicated server.
+
+## Version Baseline
+- Minecraft `1.21.1`
+- NeoForge `21.1.219`
+- Cooking for Blockheads `21.1.17`
+- FarmersDelight `1.2.9`

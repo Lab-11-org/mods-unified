@@ -1,4 +1,4 @@
-package org.lab_11.modsunified.impl;
+package org.lab_11.modsunified.impl.cookingforblockheads;
 
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.NonNullList;
@@ -19,6 +19,7 @@ public final class CookingPotIndexedRecipe implements Recipe<RecipeInput> {
     private final NonNullList<Ingredient> indexedIngredients;
     private final ItemStack indexedResult;
     private final ItemStack indexedContainerCost;
+    private final List<String> requiredMarkerKeys;
     private final int syntheticIngredientCount;
 
     public CookingPotIndexedRecipe(final Recipe<?> delegate,
@@ -28,6 +29,7 @@ public final class CookingPotIndexedRecipe implements Recipe<RecipeInput> {
         this.delegate = delegate;
         this.indexedResult = resolveIndexedResult(delegate, registryAccess, markerKey);
         this.indexedContainerCost = CookingPotContainerCost.resolveForIndexedRecipe(delegate, registryAccess, markerKey);
+        this.requiredMarkerKeys = List.copyOf(requiredMarkerKeys);
         this.syntheticIngredientCount = 1;
         this.indexedIngredients = buildIndexedIngredients(delegate, markerKey);
     }
@@ -95,6 +97,10 @@ public final class CookingPotIndexedRecipe implements Recipe<RecipeInput> {
 
     public ItemStack indexedContainerCost() {
         return indexedContainerCost.copy();
+    }
+
+    public List<String> requiredMarkerKeys() {
+        return requiredMarkerKeys;
     }
 
     private static NonNullList<Ingredient> buildIndexedIngredients(final Recipe<?> recipe,

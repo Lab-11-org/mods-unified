@@ -1,4 +1,4 @@
-package org.lab_11.modsunified.impl;
+package org.lab_11.modsunified.impl.cookingforblockheads;
 
 import net.blay09.mods.cookingforblockheads.api.IngredientToken;
 import net.blay09.mods.cookingforblockheads.api.KitchenItemProcessor;
@@ -17,16 +17,20 @@ import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Predicate;
 import java.util.Set;
 
 public final class CookingPotProcessorCapability {
     private static final BlockCapability<KitchenItemProcessor, Void> CFBH_KITCHEN_ITEM_PROCESSOR_CAPABILITY =
             BlockCapability.createVoid(
-                    ResourceLocation.fromNamespaceAndPath("cookingforblockheads", "kitchen_item_processor"),
+                    ResourceLocation.fromNamespaceAndPath(BridgeKeys.MOD_COOKING_FOR_BLOCKHEADS, "kitchen_item_processor"),
                     KitchenItemProcessor.class
             );
     private static final String CFBH_KITCHEN_IMPL_CLASS = "net.blay09.mods.cookingforblockheads.crafting.KitchenImpl";
-    private static final String DUNGEON_OVEN_MARKER_KEY = "dungeon_oven";
+    private static final Map<String, Predicate<BlockEntity>> REQUIRED_MARKER_CHECKS = Map.of(
+            BridgeKeys.MARKER_DUNGEON_OVEN, CookingPotProcessorCapability::hasConnectedDungeonOven
+    );
 
     private CookingPotProcessorCapability() {
     }
@@ -64,7 +68,8 @@ public final class CookingPotProcessorCapability {
 
     private static boolean requiredMarkersSatisfied(final BlockEntity blockEntity, final List<String> requiredMarkerKeys) {
         for (final String requiredMarkerKey : requiredMarkerKeys) {
-            if (DUNGEON_OVEN_MARKER_KEY.equals(requiredMarkerKey) && !hasConnectedDungeonOven(blockEntity)) {
+            final Predicate<BlockEntity> requirementCheck = REQUIRED_MARKER_CHECKS.get(requiredMarkerKey);
+            if (requirementCheck != null && !requirementCheck.test(blockEntity)) {
                 return false;
             }
         }

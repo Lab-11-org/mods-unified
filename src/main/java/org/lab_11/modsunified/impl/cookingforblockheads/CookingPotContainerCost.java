@@ -1,4 +1,4 @@
-package org.lab_11.modsunified.impl;
+package org.lab_11.modsunified.impl.cookingforblockheads;
 
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.world.item.ItemStack;

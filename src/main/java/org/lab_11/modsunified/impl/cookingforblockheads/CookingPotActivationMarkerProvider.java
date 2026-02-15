@@ -1,13 +1,11 @@
-package org.lab_11.modsunified.impl;
+package org.lab_11.modsunified.impl.cookingforblockheads;
 
 import net.blay09.mods.cookingforblockheads.api.CacheHint;
 import net.blay09.mods.cookingforblockheads.api.IngredientToken;
 import net.blay09.mods.cookingforblockheads.api.KitchenItemProvider;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
-import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.level.block.entity.BlockEntity;
 
@@ -92,7 +90,7 @@ public final class CookingPotActivationMarkerProvider implements KitchenItemProv
     }
 
     private static ItemStack createMarkerStack(final String markerKey) {
-        final ItemStack markerStack = new ItemStack(markerItem(markerKey));
+        final ItemStack markerStack = new ItemStack(BridgeMarkerRegistry.markerItemFor(markerKey));
         markerStack.set(
                 DataComponents.CUSTOM_NAME,
                 Component.translatable(markerTranslationKey(markerKey))
@@ -102,19 +100,6 @@ public final class CookingPotActivationMarkerProvider implements KitchenItemProv
 
     private static String markerTranslationKey(final String markerKey) {
         return "lab_11_mods_unified.marker." + markerKey;
-    }
-
-    private static Item markerItem(final String markerKey) {
-        if ("dungeonsdelight_monster_pot".equals(markerKey)) {
-            return Items.STRUCTURE_BLOCK;
-        }
-        if ("minersdelight_copper_pot".equals(markerKey)) {
-            return Items.JIGSAW;
-        }
-        if ("dungeon_oven".equals(markerKey)) {
-            return Items.SMOKER;
-        }
-        return Items.BARRIER;
     }
 
     private record MarkerEntry(ItemStack stack, Ingredient ingredient, IngredientToken token) {

@@ -15,15 +15,16 @@ import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.entity.player.ItemTooltipEvent;
 import net.neoforged.neoforge.event.OnDatapackSyncEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
-import org.lab_11.modsunified.impl.CookingPotBridgeTarget;
-import org.lab_11.modsunified.impl.CookingPotContainerTooltipBridge;
-import org.lab_11.modsunified.impl.CookingPotIndexedRecipe;
-import org.lab_11.modsunified.impl.CookingPotKitchenHandler;
-import org.lab_11.modsunified.impl.CookingPotProcessorCapability;
-import org.lab_11.modsunified.impl.CookingPotRecipeIndexer;
+import org.lab_11.modsunified.impl.cookingforblockheads.BridgeKeys;
+import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotBridgeTarget;
+import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotBridgeCatalog;
+import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotContainerTooltipBridge;
+import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotIndexedRecipe;
+import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotKitchenHandler;
+import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotProcessorCapability;
+import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotRecipeIndexer;
 import org.slf4j.Logger;
 
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -33,16 +34,11 @@ public final class Unifiled {
     public static final String MOD_ID = "lab_11_mods_unified";
     private static final Logger LOGGER = LogUtils.getLogger();
 
-    private static final String COOKING_FOR_BLOCKHEADS_MOD_ID = "cookingforblockheads";
-    private static final String FARMERS_DELIGHT_MOD_ID = "farmersdelight";
-    private static final String DUNGEONS_DELIGHT_MOD_ID = "dungeonsdelight";
-    private static final String MINERS_DELIGHT_MOD_ID = "minersdelight";
     private static final String COOKING_FOR_BLOCKHEADS_API_CLASS = "net.blay09.mods.cookingforblockheads.api.CookingForBlockheadsAPI";
     private static final String COOKING_FOR_BLOCKHEADS_HANDLER_CLASS = "net.blay09.mods.cookingforblockheads.api.KitchenRecipeHandler";
-    private static final String LOCAL_BALM_FALLBACK_PROVIDER_BRIDGE_CLASS = "org.lab_11.modsunified.impl.BalmFallbackProviderBridge";
-    private static final String LOCAL_BALM_RECIPE_SYNC_BRIDGE_CLASS = "org.lab_11.modsunified.impl.BalmRecipeSyncBridge";
-    private static final String LOCAL_DUNGEON_OVEN_COMPAT_CLASS = "org.lab_11.modsunified.impl.DungeonOvenCompat";
-    private static final String DUNGEON_OVEN_MARKER_KEY = "dungeon_oven";
+    private static final String LOCAL_BALM_FALLBACK_PROVIDER_BRIDGE_CLASS = "org.lab_11.modsunified.impl.cookingforblockheads.BalmFallbackProviderBridge";
+    private static final String LOCAL_BALM_RECIPE_SYNC_BRIDGE_CLASS = "org.lab_11.modsunified.impl.cookingforblockheads.BalmRecipeSyncBridge";
+    private static final String LOCAL_DUNGEON_OVEN_COMPAT_CLASS = "org.lab_11.modsunified.impl.cookingforblockheads.DungeonOvenCompat";
 
     private List<CookingPotBridgeTarget> activeCookingPotTargets = List.of();
 
@@ -59,7 +55,8 @@ public final class Unifiled {
     }
 
     private void registerDungeonOvenCompat(final IEventBus modEventBus) {
-        if (!ModList.get().isLoaded(COOKING_FOR_BLOCKHEADS_MOD_ID) || !ModList.get().isLoaded(DUNGEONS_DELIGHT_MOD_ID)) {
+        if (!ModList.get().isLoaded(BridgeKeys.MOD_COOKING_FOR_BLOCKHEADS)
+                || !ModList.get().isLoaded(BridgeKeys.MOD_DUNGEONS_DELIGHT)) {
             return;
         }
 
@@ -84,7 +81,7 @@ public final class Unifiled {
 
         CookingPotProcessorCapability.register(event, activeCookingPotTargets);
         LOGGER.info("Registered LAB-11 mods-unified KitchenItemProcessor capabilities for {}.",
-                describeTargets(activeCookingPotTargets));
+                CookingPotBridgeCatalog.describeTargets(activeCookingPotTargets));
     }
 
     private void onCommonSetup(final FMLCommonSetupEvent event) {
@@ -122,7 +119,7 @@ public final class Unifiled {
                 registerKitchenRecipeHandler.invoke(null, recipeClass, handler);
             }
             LOGGER.info("Registered LAB-11 mods-unified Cooking for Blockheads bridge for {}.",
-                    describeTargets(activeCookingPotTargets));
+                    CookingPotBridgeCatalog.describeTargets(activeCookingPotTargets));
 
             registerKitchenProcessorFallbackProvider();
             registerBalmRecipeSyncListeners();
@@ -139,7 +136,7 @@ public final class Unifiled {
                     .invoke(null, activeCookingPotTargets);
             if (result instanceof Boolean ok && ok) {
                 LOGGER.info("Registered LAB-11 mods-unified fallback KitchenItemProcessor providers for {}.",
-                        describeTargets(activeCookingPotTargets));
+                        CookingPotBridgeCatalog.describeTargets(activeCookingPotTargets));
             } else {
                 LOGGER.warn("Skipping KitchenItemProcessor fallback registration because Balm NeoForge providers are unavailable.");
             }
@@ -153,7 +150,7 @@ public final class Unifiled {
             final Class<?> bridgeClass = Class.forName(LOCAL_BALM_RECIPE_SYNC_BRIDGE_CLASS);
             bridgeClass.getMethod("registerListeners", List.class).invoke(null, activeCookingPotTargets);
             LOGGER.info("Registered LAB-11 mods-unified Balm recipe sync listeners for {}.",
-                    describeTargets(activeCookingPotTargets));
+                    CookingPotBridgeCatalog.describeTargets(activeCookingPotTargets));
         } catch (ReflectiveOperationException e) {
             LOGGER.error("Failed to register LAB-11 mods-unified Balm recipe sync listeners for cooking-pot bridges.", e);
         }
@@ -206,76 +203,10 @@ public final class Unifiled {
     }
 
     private void refreshActiveCookingPotTargets() {
-        activeCookingPotTargets = resolveActiveCookingPotTargets();
-    }
-
-    private List<CookingPotBridgeTarget> resolveActiveCookingPotTargets() {
-        final List<CookingPotBridgeTarget> candidates = List.of(
-                new CookingPotBridgeTarget(
-                        "farmersdelight_cooking_pot",
-                        "FarmersDelight Cooking Pot",
-                        List.of(FARMERS_DELIGHT_MOD_ID),
-                        "vectorwing.farmersdelight.common.crafting.CookingPotRecipe",
-                        "vectorwing.farmersdelight.common.registry.ModRecipeTypes",
-                        "COOKING",
-                        "vectorwing.farmersdelight.common.block.entity.CookingPotBlockEntity",
-                        "vectorwing.farmersdelight.common.registry.ModBlockEntityTypes",
-                        "COOKING_POT"
-                ),
-                new CookingPotBridgeTarget(
-                        "dungeonsdelight_monster_pot",
-                        "DungeonsDelight Monster Pot",
-                        List.of(DUNGEONS_DELIGHT_MOD_ID, FARMERS_DELIGHT_MOD_ID),
-                        "net.yirmiri.dungeonsdelight.common.block.monster_pot.MonsterPotRecipe",
-                        "net.yirmiri.dungeonsdelight.core.registry.DDRecipeRegistries",
-                        "MONSTER_COOKING_RECIPE_TYPE",
-                        "net.yirmiri.dungeonsdelight.common.block.monster_pot.MonsterPotBlockEntity",
-                        "net.yirmiri.dungeonsdelight.core.registry.DDBlockEntities",
-                        "MONSTER_COOKING_POT"
-                ).withRequiredMarkerKeys(List.of(DUNGEON_OVEN_MARKER_KEY)),
-                new CookingPotBridgeTarget(
-                        "minersdelight_copper_pot",
-                        "MinersDelight Copper Pot",
-                        List.of(MINERS_DELIGHT_MOD_ID, FARMERS_DELIGHT_MOD_ID),
-                        "vectorwing.farmersdelight.common.crafting.CookingPotRecipe",
-                        "vectorwing.farmersdelight.common.registry.ModRecipeTypes",
-                        "COOKING",
-                        "com.sammy.minersdelight.content.block.copper_pot.CopperPotBlockEntity",
-                        "com.sammy.minersdelight.setup.MDBlockEntities",
-                        "COPPER_POT"
-                )
-        );
-
-        final List<CookingPotBridgeTarget> activeTargets = new ArrayList<>();
-        for (final CookingPotBridgeTarget target : candidates) {
-            if (!target.isModSetLoaded()) {
-                continue;
-            }
-
-            if (target.resolveRecipeClass().isEmpty()
-                    || target.resolveRecipeType().isEmpty()
-                    || target.resolveBlockEntityClass().isEmpty()
-                    || target.resolveBlockEntityType().isEmpty()) {
-                LOGGER.warn("Skipping cooking-pot bridge target '{}' because one or more reflective bindings are unavailable.",
-                        target.displayName());
-                continue;
-            }
-
-            activeTargets.add(target);
-        }
-
-        return List.copyOf(activeTargets);
+        activeCookingPotTargets = CookingPotBridgeCatalog.resolveActiveTargets(LOGGER);
     }
 
     private static boolean isCookingForBlockheadsLoaded() {
-        return ModList.get().isLoaded(COOKING_FOR_BLOCKHEADS_MOD_ID);
-    }
-
-    private static String describeTargets(final List<CookingPotBridgeTarget> targets) {
-        final List<String> names = new ArrayList<>(targets.size());
-        for (final CookingPotBridgeTarget target : targets) {
-            names.add(target.displayName());
-        }
-        return String.join(", ", names);
+        return ModList.get().isLoaded(BridgeKeys.MOD_COOKING_FOR_BLOCKHEADS);
     }
 }

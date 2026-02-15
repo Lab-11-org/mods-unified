@@ -1,4 +1,4 @@
-package org.lab_11.modsunified.impl;
+package org.lab_11.modsunified.impl.cookingforblockheads;
 
 import com.mojang.logging.LogUtils;
 import net.blay09.mods.balm.api.Balm;
@@ -29,12 +29,12 @@ import java.util.HashSet;
 import java.util.Set;
 
 public final class DungeonOvenCompat {
-    public static final String DUNGEON_OVEN_MARKER_KEY = "dungeon_oven";
+    public static final String DUNGEON_OVEN_MARKER_KEY = BridgeKeys.MARKER_DUNGEON_OVEN;
     public static final ResourceLocation DUNGEON_OVEN_ID =
             ResourceLocation.fromNamespaceAndPath(Unifiled.MOD_ID, "dungeon_oven");
 
     private static final Logger LOGGER = LogUtils.getLogger();
-    private static final String COOKING_FOR_BLOCKHEADS_MOD_ID = "cookingforblockheads";
+    private static final String COOKING_FOR_BLOCKHEADS_MOD_ID = BridgeKeys.MOD_COOKING_FOR_BLOCKHEADS;
     private static final String CFBH_BLOCK_ENTITY_REGISTRY_CLASS = "net.blay09.mods.cookingforblockheads.block.entity.ModBlockEntities";
     private static final String CFBH_BLOCK_REGISTRY_CLASS = "net.blay09.mods.cookingforblockheads.block.ModBlocks";
     private static final String CFBH_OVEN_DEFERRED_FIELD = "oven";

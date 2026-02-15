@@ -1,7 +1,6 @@
-package org.lab_11.modsunified.impl;
+package org.lab_11.modsunified.impl.cookingforblockheads;
 
 import net.blay09.mods.balm.api.Balm;
-import net.blay09.mods.balm.api.event.client.RecipesUpdatedEvent;
 import net.blay09.mods.balm.api.event.server.ServerReloadFinishedEvent;
 import net.blay09.mods.balm.api.event.server.ServerStartedEvent;
 
@@ -24,13 +23,6 @@ public final class BalmRecipeSyncBridge {
                         event.getServer().getRecipeManager(),
                         event.getServer().registryAccess(),
                         "balm_server_reload_finished",
-                        targets
-                ));
-        Balm.getEvents().onEvent(RecipesUpdatedEvent.class, event ->
-                CookingPotRecipeIndexer.injectRecipes(
-                        event.getRecipeManager(),
-                        event.getRegistryAccess(),
-                        "balm_client_recipes_updated",
                         targets
                 ));
     }

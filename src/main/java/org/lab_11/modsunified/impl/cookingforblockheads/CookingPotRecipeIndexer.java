@@ -1,4 +1,4 @@
-package org.lab_11.modsunified.impl;
+package org.lab_11.modsunified.impl.cookingforblockheads;
 
 import com.google.common.collect.Multimap;
 import com.mojang.logging.LogUtils;

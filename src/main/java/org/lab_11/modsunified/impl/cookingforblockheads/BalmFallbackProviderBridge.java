@@ -1,4 +1,4 @@
-package org.lab_11.modsunified.impl;
+package org.lab_11.modsunified.impl.cookingforblockheads;
 
 import net.blay09.mods.balm.api.Balm;
 import net.blay09.mods.balm.neoforge.provider.NeoForgeBalmProviders;
@@ -30,7 +30,7 @@ public final class BalmFallbackProviderBridge {
                     if (DungeonOvenCompat.isDungeonOvenBlockEntity(blockEntity)) {
                         return new CookingPotActivationMarkerProvider(
                                 blockEntity,
-                                DungeonOvenCompat.DUNGEON_OVEN_MARKER_KEY,
+                                BridgeKeys.MARKER_DUNGEON_OVEN,
                                 false
                         );
                     }
