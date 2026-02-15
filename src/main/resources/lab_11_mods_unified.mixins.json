@@ -1,0 +1,14 @@
+{
+  "required": false,
+  "package": "org.lab_11.modsunified.mixin.cookingforblockheads",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "CookingPotBlockEntityMixin",
+    "CopperPotBlockEntityMixin",
+    "MonsterPotBlockEntityMixin",
+    "OvenBlockEntityMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

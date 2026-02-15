@@ -54,3 +54,6 @@ type="optional"
 versionRange="[1.4.5,)"
 ordering="AFTER"
 side="BOTH"
+
+[[mixins]]
+config="${mod_id}.mixins.json"
