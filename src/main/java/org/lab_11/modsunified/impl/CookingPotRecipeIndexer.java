@@ -79,15 +79,19 @@ public final class CookingPotRecipeIndexer {
                 }
 
                 final Recipe<?> recipe = rawRecipeHolder.value();
-                final ItemStack result = recipe.getResultItem(registryAccess);
-                if (result.isEmpty()) {
+                final ItemStack rawResult = recipe.getResultItem(registryAccess);
+                if (rawResult.isEmpty()) {
                     continue;
                 }
 
-                final ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(result.getItem());
                 final ResourceLocation indexedRecipeId = indexedRecipeId(rawRecipeHolder.id(), target.targetKey());
                 final RecipeHolder<Recipe<?>> indexedRecipeHolder =
                         CookingPotIndexedRecipe.toIndexedRecipeHolder(rawRecipeHolder, indexedRecipeId, registryAccess, target.targetKey());
+                final ItemStack indexedResult = indexedRecipeHolder.value().getResultItem(registryAccess);
+                if (indexedResult.isEmpty()) {
+                    continue;
+                }
+                final ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(indexedResult.getItem());
                 recipesByItemId.put(itemId, indexedRecipeHolder);
                 indexedRecipesById.put(indexedRecipeId, indexedRecipeHolder);
                 added++;
