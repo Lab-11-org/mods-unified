@@ -26,11 +26,12 @@ public final class CookingPotIndexedRecipe implements Recipe<RecipeInput> {
     }
 
     public static RecipeHolder<Recipe<?>> toIndexedRecipeHolder(final RecipeHolder<?> recipeHolder,
+                                                                final net.minecraft.resources.ResourceLocation indexedId,
                                                                 final RegistryAccess registryAccess,
                                                                 final String markerKey) {
         final CookingPotIndexedRecipe indexedRecipe =
                 new CookingPotIndexedRecipe(recipeHolder.value(), registryAccess, markerKey);
-        return new RecipeHolder<>(recipeHolder.id(), indexedRecipe);
+        return new RecipeHolder<>(indexedId, indexedRecipe);
     }
 
     @Override

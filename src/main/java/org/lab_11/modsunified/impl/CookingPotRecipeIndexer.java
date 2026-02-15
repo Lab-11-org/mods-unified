@@ -14,6 +14,7 @@ import net.minecraft.world.item.crafting.RecipeType;
 import org.slf4j.Logger;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -22,6 +23,9 @@ import java.util.Set;
 
 public final class CookingPotRecipeIndexer {
     private static final Logger LOGGER = LogUtils.getLogger();
+    private static final String INDEXED_RECIPE_NAMESPACE = "lab_11_mods_unified";
+    private static final String INDEXED_RECIPE_PATH_PREFIX = "cfbh_indexed/";
+    private static final String RECIPE_MANAGER_BY_NAME_FIELD = "byName";
 
     private CookingPotRecipeIndexer() {
     }
@@ -41,6 +45,7 @@ public final class CookingPotRecipeIndexer {
         }
 
         final Multimap<ResourceLocation, RecipeHolder<Recipe<?>>> recipesByItemId = CookingForBlockheadsRegistry.getRecipesByItemId();
+        final Map<ResourceLocation, RecipeHolder<?>> indexedRecipesById = new HashMap<>();
 
         int removed = 0;
         final var iterator = recipesByItemId.entries().iterator();
@@ -80,14 +85,50 @@ public final class CookingPotRecipeIndexer {
                 }
 
                 final ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(result.getItem());
+                final ResourceLocation indexedRecipeId = indexedRecipeId(rawRecipeHolder.id(), target.targetKey());
                 final RecipeHolder<Recipe<?>> indexedRecipeHolder =
-                        CookingPotIndexedRecipe.toIndexedRecipeHolder(rawRecipeHolder, registryAccess, target.targetKey());
+                        CookingPotIndexedRecipe.toIndexedRecipeHolder(rawRecipeHolder, indexedRecipeId, registryAccess, target.targetKey());
                 recipesByItemId.put(itemId, indexedRecipeHolder);
+                indexedRecipesById.put(indexedRecipeId, indexedRecipeHolder);
                 added++;
             }
         }
 
+        installIndexedRecipesByName(recipeManager, indexedRecipesById);
         LOGGER.info("Injected {} cooking-pot recipes into Cooking for Blockheads recipe index (removed {}) via {}.",
                 added, removed, source);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void installIndexedRecipesByName(final RecipeManager recipeManager,
+                                                    final Map<ResourceLocation, RecipeHolder<?>> indexedRecipesById) {
+        try {
+            final var byNameField = RecipeManager.class.getDeclaredField(RECIPE_MANAGER_BY_NAME_FIELD);
+            byNameField.setAccessible(true);
+
+            final Map<ResourceLocation, RecipeHolder<?>> currentByName =
+                    (Map<ResourceLocation, RecipeHolder<?>>) byNameField.get(recipeManager);
+            final Map<ResourceLocation, RecipeHolder<?>> mutableByName = new HashMap<>(currentByName);
+
+            mutableByName.entrySet().removeIf(entry -> isIndexedRecipeId(entry.getKey()));
+            mutableByName.putAll(indexedRecipesById);
+
+            byNameField.set(recipeManager, mutableByName);
+        } catch (ReflectiveOperationException e) {
+            LOGGER.warn("Failed to install indexed cooking-pot recipes into RecipeManager byName map.", e);
+        }
+    }
+
+    private static ResourceLocation indexedRecipeId(final ResourceLocation originalRecipeId, final String targetKey) {
+        final String path = INDEXED_RECIPE_PATH_PREFIX
+                + targetKey + "/"
+                + originalRecipeId.getNamespace() + "/"
+                + originalRecipeId.getPath();
+        return ResourceLocation.fromNamespaceAndPath(INDEXED_RECIPE_NAMESPACE, path);
+    }
+
+    private static boolean isIndexedRecipeId(final ResourceLocation recipeId) {
+        return INDEXED_RECIPE_NAMESPACE.equals(recipeId.getNamespace())
+                && recipeId.getPath().startsWith(INDEXED_RECIPE_PATH_PREFIX);
     }
 }
