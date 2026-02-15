@@ -122,6 +122,11 @@ public final class CookingPotContainerTooltipBridge {
             return;
         }
 
+        // If the kitchen can process this recipe, all hard requirements are already satisfied.
+        if (canKitchenProcess(kitchen, recipe)) {
+            return;
+        }
+
         final List<?> itemProviders = resolveItemProviders(kitchen, player);
         if (itemProviders == null || itemProviders.isEmpty()) {
             return;
@@ -141,6 +146,20 @@ public final class CookingPotContainerTooltipBridge {
             BridgeMarkerRegistry.missingRequirementTooltipKey(requiredMarkerKey).ifPresent(tooltipKey ->
                     event.getToolTip().add(Component.translatable(tooltipKey).withStyle(ChatFormatting.RED))
             );
+        }
+    }
+
+    private static boolean canKitchenProcess(final Object kitchen, final Recipe<?> recipe) {
+        if (kitchen == null || recipe == null || recipe.getType() == null) {
+            return false;
+        }
+
+        try {
+            final Method canProcess = kitchen.getClass().getMethod("canProcess", net.minecraft.world.item.crafting.RecipeType.class);
+            final Object value = canProcess.invoke(kitchen, recipe.getType());
+            return value instanceof Boolean canProcessValue && canProcessValue;
+        } catch (ReflectiveOperationException ignored) {
+            return false;
         }
     }
 
