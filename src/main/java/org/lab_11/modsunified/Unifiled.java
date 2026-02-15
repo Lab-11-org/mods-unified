@@ -22,7 +22,9 @@ import net.neoforged.neoforge.client.event.RecipesUpdatedEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.OnDatapackSyncEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
+import org.lab_11.modsunified.compat.FDCookingPotRecipeIndexing;
 import org.slf4j.Logger;
+import vectorwing.farmersdelight.common.crafting.CookingPotRecipe;
 
 import java.util.Map;
 import java.util.function.Supplier;
@@ -198,14 +200,15 @@ public final class Unifiled {
             int added = 0;
             final Iterable<RecipeHolder<?>> cookingRecipes = (Iterable<RecipeHolder<?>>) (Iterable<?>) recipeManager.getAllRecipesFor((RecipeType) cookingType);
             for (final RecipeHolder<?> rawRecipeHolder : cookingRecipes) {
-                final RecipeHolder<Recipe<?>> recipeHolder = (RecipeHolder<Recipe<?>>) (RecipeHolder<?>) rawRecipeHolder;
-                final ItemStack result = recipeHolder.value().getResultItem(registryAccess);
+                final RecipeHolder<CookingPotRecipe> fdRecipeHolder = (RecipeHolder<CookingPotRecipe>) (RecipeHolder<?>) rawRecipeHolder;
+                final ItemStack result = fdRecipeHolder.value().getResultItem(registryAccess);
                 if (result.isEmpty()) {
                     continue;
                 }
 
                 final ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(result.getItem());
-                recipesByItemId.put(itemId, recipeHolder);
+                final RecipeHolder<Recipe<?>> indexedRecipeHolder = FDCookingPotRecipeIndexing.toIndexedRecipeHolder(fdRecipeHolder, registryAccess);
+                recipesByItemId.put(itemId, indexedRecipeHolder);
                 added++;
             }
 

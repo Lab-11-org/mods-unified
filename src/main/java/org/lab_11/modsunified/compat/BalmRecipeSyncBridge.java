@@ -59,7 +59,8 @@ public final class BalmRecipeSyncBridge {
             }
 
             final ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(result.getItem());
-            recipesByItemId.put(itemId, (RecipeHolder<Recipe<?>>) (RecipeHolder<?>) recipeHolder);
+            final RecipeHolder<Recipe<?>> indexedRecipeHolder = FDCookingPotRecipeIndexing.toIndexedRecipeHolder(recipeHolder, registryAccess);
+            recipesByItemId.put(itemId, indexedRecipeHolder);
             added++;
         }
 

@@ -54,7 +54,7 @@ public final class FDCookingPotKitchenHandler implements KitchenRecipeHandler<Co
             consumed.add(new TokenConsumption(ingredientToken, consumedStack));
         }
 
-        final ItemStack containerCost = recipe.getContainerOverride();
+        final ItemStack containerCost = FDCookingPotRecipeIndexing.resolveContainerCost(recipe, registryAccess);
         if (!containerCost.isEmpty()) {
             final List<IngredientToken> containerTokens = reserveContainerTokens(context, containerCost);
             if (containerTokens.isEmpty() && containerCost.getCount() > 0) {
