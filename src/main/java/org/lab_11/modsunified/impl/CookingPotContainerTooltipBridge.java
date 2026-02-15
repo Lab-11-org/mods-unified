@@ -5,6 +5,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.item.crafting.RecipeHolder;
@@ -12,6 +13,7 @@ import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.event.entity.player.ItemTooltipEvent;
 
 import java.lang.reflect.Method;
+import java.util.List;
 
 public final class CookingPotContainerTooltipBridge {
     private static final String COOKING_FOR_BLOCKHEADS_MOD_ID = "cookingforblockheads";
@@ -19,6 +21,7 @@ public final class CookingPotContainerTooltipBridge {
     private static final String TOOLTIP_CONTAINER_COST_KEY = "lab_11_mods_unified.tooltip.cooking_table.container_cost";
     private static final String TOOLTIP_CONTAINER_ENTRY_KEY = "lab_11_mods_unified.tooltip.cooking_table.container_entry";
     private static final String TOOLTIP_MISSING_DUNGEON_OVEN_KEY = "lab_11_mods_unified.tooltip.cooking_table.missing_dungeon_oven";
+    private static final String TOOLTIP_CONTAINER_NOT_ENOUGH_KEY = "lab_11_mods_unified.tooltip.cooking_table.container_not_enough";
     private static final String INDEXED_RECIPE_NAMESPACE = "lab_11_mods_unified";
     private static final String INDEXED_RECIPE_DUNGEON_POT_PREFIX = "cfbh_indexed/dungeonsdelight_monster_pot/";
 
@@ -79,6 +82,13 @@ public final class CookingPotContainerTooltipBridge {
                 containerEntry
         ).withStyle(ChatFormatting.GRAY);
         event.getToolTip().add(tooltipLine);
+
+        if (isContainerMissing(selectedRecipeWithStatus, containerCost)) {
+            event.getToolTip().add(
+                    Component.translatable(TOOLTIP_CONTAINER_NOT_ENOUGH_KEY)
+                            .withStyle(ChatFormatting.RED, ChatFormatting.BOLD)
+            );
+        }
     }
 
     private static ItemStack resolveContainerCost(final Recipe<?> recipe) {
@@ -133,6 +143,46 @@ public final class CookingPotContainerTooltipBridge {
         } catch (ReflectiveOperationException ignored) {
             return true;
         }
+    }
+
+    private static boolean isContainerMissing(final Object selectedRecipeWithStatus,
+                                              final ItemStack containerCost) {
+        if (selectedRecipeWithStatus == null || containerCost.isEmpty()) {
+            return false;
+        }
+
+        final Object missingIngredientsObject = invokeNoArg(selectedRecipeWithStatus, "missingIngredients");
+        if (!(missingIngredientsObject instanceof List<?> missingIngredients) || missingIngredients.isEmpty()) {
+            return false;
+        }
+
+        final ItemStack containerUnit = containerCost.copy();
+        containerUnit.setCount(1);
+        final Ingredient expectedContainer = Ingredient.of(containerUnit);
+
+        for (final Object missingIngredientObject : missingIngredients) {
+            if (!(missingIngredientObject instanceof Ingredient missingIngredient)) {
+                continue;
+            }
+
+            if (ingredientsOverlap(missingIngredient, expectedContainer)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static boolean ingredientsOverlap(final Ingredient first, final Ingredient second) {
+        for (final ItemStack firstStack : first.getItems()) {
+            for (final ItemStack secondStack : second.getItems()) {
+                if (ItemStack.isSameItemSameComponents(firstStack, secondStack)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private static Object invokeNoArg(final Object target, final String methodName) {

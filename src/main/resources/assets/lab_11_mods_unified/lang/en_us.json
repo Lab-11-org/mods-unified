@@ -5,6 +5,7 @@
   "lab_11_mods_unified.marker.minersdelight_copper_pot": "MinersDelight Copper Pot Marker",
   "lab_11_mods_unified.marker.dungeon_oven": "Dungeon Oven Marker",
   "lab_11_mods_unified.tooltip.cooking_table.missing_dungeon_oven": "Missing dungeon oven to cook",
+  "lab_11_mods_unified.tooltip.cooking_table.container_not_enough": "Not Enough!",
   "lab_11_mods_unified.tooltip.cooking_table.container_cost": "Consumes: %s",
   "lab_11_mods_unified.tooltip.cooking_table.container_entry": "%1$sx %2$s"
 }
