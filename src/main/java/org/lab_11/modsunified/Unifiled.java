@@ -41,10 +41,13 @@ public final class Unifiled {
     private static final String COOKING_FOR_BLOCKHEADS_HANDLER_CLASS = "net.blay09.mods.cookingforblockheads.api.KitchenRecipeHandler";
     private static final String LOCAL_BALM_FALLBACK_PROVIDER_BRIDGE_CLASS = "org.lab_11.modsunified.impl.BalmFallbackProviderBridge";
     private static final String LOCAL_BALM_RECIPE_SYNC_BRIDGE_CLASS = "org.lab_11.modsunified.impl.BalmRecipeSyncBridge";
+    private static final String LOCAL_DUNGEON_OVEN_COMPAT_CLASS = "org.lab_11.modsunified.impl.DungeonOvenCompat";
+    private static final String DUNGEON_OVEN_MARKER_KEY = "dungeon_oven";
 
     private List<CookingPotBridgeTarget> activeCookingPotTargets = List.of();
 
     public Unifiled(IEventBus modEventBus) {
+        registerDungeonOvenCompat(modEventBus);
         modEventBus.addListener(this::onCommonSetup);
         modEventBus.addListener(this::onRegisterCapabilities);
         NeoForge.EVENT_BUS.addListener(this::onServerStarted);
@@ -52,6 +55,20 @@ public final class Unifiled {
         if (FMLEnvironment.dist.isClient()) {
             NeoForge.EVENT_BUS.addListener(this::onClientRecipesUpdated);
             NeoForge.EVENT_BUS.addListener(this::onItemTooltip);
+        }
+    }
+
+    private void registerDungeonOvenCompat(final IEventBus modEventBus) {
+        if (!ModList.get().isLoaded(COOKING_FOR_BLOCKHEADS_MOD_ID) || !ModList.get().isLoaded(DUNGEONS_DELIGHT_MOD_ID)) {
+            return;
+        }
+
+        try {
+            final Class<?> compatClass = Class.forName(LOCAL_DUNGEON_OVEN_COMPAT_CLASS);
+            compatClass.getMethod("register", IEventBus.class).invoke(null, modEventBus);
+            LOGGER.info("Registered LAB-11 mods-unified dungeon oven compatibility.");
+        } catch (ReflectiveOperationException e) {
+            LOGGER.error("Failed to register LAB-11 mods-unified dungeon oven compatibility.", e);
         }
     }
 
@@ -215,7 +232,7 @@ public final class Unifiled {
                         "net.yirmiri.dungeonsdelight.common.block.monster_pot.MonsterPotBlockEntity",
                         "net.yirmiri.dungeonsdelight.core.registry.DDBlockEntities",
                         "MONSTER_COOKING_POT"
-                ),
+                ).withRequiredMarkerKeys(List.of(DUNGEON_OVEN_MARKER_KEY)),
                 new CookingPotBridgeTarget(
                         "minersdelight_copper_pot",
                         "MinersDelight Copper Pot",

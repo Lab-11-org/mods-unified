@@ -26,10 +26,19 @@ public final class BalmFallbackProviderBridge {
 
         neoForgeProviders.registerFallbackBlockProvider(
                 KitchenItemProvider.class,
-                (blockEntity, direction) ->
-                        resolveTargetForBlockEntity(blockEntity, targets)
-                                .map(target -> new CookingPotActivationMarkerProvider(blockEntity, target.targetKey()))
-                                .orElse(null)
+                (blockEntity, direction) -> {
+                    if (DungeonOvenCompat.isDungeonOvenBlockEntity(blockEntity)) {
+                        return new CookingPotActivationMarkerProvider(
+                                blockEntity,
+                                DungeonOvenCompat.DUNGEON_OVEN_MARKER_KEY,
+                                false
+                        );
+                    }
+
+                    return resolveTargetForBlockEntity(blockEntity, targets)
+                            .map(target -> new CookingPotActivationMarkerProvider(blockEntity, target.targetKey()))
+                            .orElse(null);
+                }
         );
         return true;
     }
@@ -46,7 +55,11 @@ public final class BalmFallbackProviderBridge {
                 continue;
             }
 
-            return CookingPotProcessorCapability.createProcessor(blockEntity, Set.of(recipeTypeOptional.get()));
+            return CookingPotProcessorCapability.createProcessor(
+                    blockEntity,
+                    Set.of(recipeTypeOptional.get()),
+                    target.requiredMarkerKeys()
+            );
         }
 
         return null;

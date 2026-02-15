@@ -20,10 +20,18 @@ public final class CookingPotActivationMarkerProvider implements KitchenItemProv
 
     private final BlockEntity blockEntity;
     private final String markerKey;
+    private final boolean requiresDirectlyAboveCookingTable;
 
     public CookingPotActivationMarkerProvider(final BlockEntity blockEntity, final String markerKey) {
+        this(blockEntity, markerKey, true);
+    }
+
+    public CookingPotActivationMarkerProvider(final BlockEntity blockEntity,
+                                              final String markerKey,
+                                              final boolean requiresDirectlyAboveCookingTable) {
         this.blockEntity = blockEntity;
         this.markerKey = markerKey;
+        this.requiresDirectlyAboveCookingTable = requiresDirectlyAboveCookingTable;
     }
 
     public static Ingredient markerIngredient(final String markerKey) {
@@ -68,6 +76,9 @@ public final class CookingPotActivationMarkerProvider implements KitchenItemProv
     }
 
     private boolean isActiveForCurrentTable() {
+        if (!requiresDirectlyAboveCookingTable) {
+            return true;
+        }
         return CookingPotProcessorCapability.isDirectlyAboveCookingTable(blockEntity);
     }
 
@@ -99,6 +110,9 @@ public final class CookingPotActivationMarkerProvider implements KitchenItemProv
         }
         if ("minersdelight_copper_pot".equals(markerKey)) {
             return Items.JIGSAW;
+        }
+        if ("dungeon_oven".equals(markerKey)) {
+            return Items.SMOKER;
         }
         return Items.BARRIER;
     }

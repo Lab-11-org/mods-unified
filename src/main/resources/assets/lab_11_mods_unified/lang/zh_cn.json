@@ -1,7 +1,10 @@
 {
+  "block.lab_11_mods_unified.dungeon_oven": "地牢烤炉",
   "lab_11_mods_unified.marker.farmersdelight_cooking_pot": "农夫乐事烹饪锅标记",
   "lab_11_mods_unified.marker.dungeonsdelight_monster_pot": "地牢乐事怪物锅标记",
   "lab_11_mods_unified.marker.minersdelight_copper_pot": "矿工乐事铜锅标记",
+  "lab_11_mods_unified.marker.dungeon_oven": "地牢烤炉标记",
+  "lab_11_mods_unified.tooltip.cooking_table.missing_dungeon_oven": "缺少地牢烤炉，无法烹饪",
   "lab_11_mods_unified.tooltip.cooking_table.container_cost": "消耗：%s",
   "lab_11_mods_unified.tooltip.cooking_table.container_entry": "%1$sx%2$s"
 }

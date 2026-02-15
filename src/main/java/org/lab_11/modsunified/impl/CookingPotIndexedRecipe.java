@@ -12,6 +12,8 @@ import net.minecraft.world.item.crafting.RecipeSerializer;
 import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.level.Level;
 
+import java.util.List;
+
 public final class CookingPotIndexedRecipe implements Recipe<RecipeInput> {
     private final Recipe<?> delegate;
     private final NonNullList<Ingredient> indexedIngredients;
@@ -21,7 +23,8 @@ public final class CookingPotIndexedRecipe implements Recipe<RecipeInput> {
 
     public CookingPotIndexedRecipe(final Recipe<?> delegate,
                                    final RegistryAccess registryAccess,
-                                   final String markerKey) {
+                                   final String markerKey,
+                                   final List<String> requiredMarkerKeys) {
         this.delegate = delegate;
         this.indexedResult = resolveIndexedResult(delegate, registryAccess, markerKey);
         this.indexedContainerCost = CookingPotContainerCost.resolveForIndexedRecipe(delegate, registryAccess, markerKey);
@@ -32,9 +35,10 @@ public final class CookingPotIndexedRecipe implements Recipe<RecipeInput> {
     public static RecipeHolder<Recipe<?>> toIndexedRecipeHolder(final RecipeHolder<?> recipeHolder,
                                                                 final net.minecraft.resources.ResourceLocation indexedId,
                                                                 final RegistryAccess registryAccess,
-                                                                final String markerKey) {
+                                                                final String markerKey,
+                                                                final List<String> requiredMarkerKeys) {
         final CookingPotIndexedRecipe indexedRecipe =
-                new CookingPotIndexedRecipe(recipeHolder.value(), registryAccess, markerKey);
+                new CookingPotIndexedRecipe(recipeHolder.value(), registryAccess, markerKey, requiredMarkerKeys);
         return new RecipeHolder<>(indexedId, indexedRecipe);
     }
 
