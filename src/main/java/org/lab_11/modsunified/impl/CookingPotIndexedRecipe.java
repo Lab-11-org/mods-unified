@@ -28,8 +28,8 @@ public final class CookingPotIndexedRecipe implements Recipe<RecipeInput> {
         this.delegate = delegate;
         this.indexedResult = resolveIndexedResult(delegate, registryAccess, markerKey);
         this.indexedContainerCost = CookingPotContainerCost.resolveForIndexedRecipe(delegate, registryAccess, markerKey);
-        this.syntheticIngredientCount = 1 + (indexedContainerCost.isEmpty() ? 0 : indexedContainerCost.getCount());
-        this.indexedIngredients = buildIndexedIngredients(delegate, markerKey, indexedContainerCost);
+        this.syntheticIngredientCount = 1;
+        this.indexedIngredients = buildIndexedIngredients(delegate, markerKey);
     }
 
     public static RecipeHolder<Recipe<?>> toIndexedRecipeHolder(final RecipeHolder<?> recipeHolder,
@@ -98,19 +98,9 @@ public final class CookingPotIndexedRecipe implements Recipe<RecipeInput> {
     }
 
     private static NonNullList<Ingredient> buildIndexedIngredients(final Recipe<?> recipe,
-                                                                   final String markerKey,
-                                                                   final ItemStack containerCost) {
+                                                                   final String markerKey) {
         final NonNullList<Ingredient> indexedIngredients = NonNullList.create();
         indexedIngredients.add(CookingPotActivationMarkerProvider.markerIngredient(markerKey));
-
-        if (!containerCost.isEmpty()) {
-            final ItemStack containerUnit = containerCost.copy();
-            containerUnit.setCount(1);
-            final Ingredient containerIngredient = Ingredient.of(containerUnit);
-            for (int i = 0; i < containerCost.getCount(); i++) {
-                indexedIngredients.add(containerIngredient);
-            }
-        }
 
         indexedIngredients.addAll(recipe.getIngredients());
         return indexedIngredients;

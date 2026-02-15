@@ -4,20 +4,24 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.Recipe;
-import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.item.crafting.RecipeHolder;
+import net.minecraft.world.item.crafting.RecipeType;
 import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.event.entity.player.ItemTooltipEvent;
 
 import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 public final class CookingPotContainerTooltipBridge {
     private static final String COOKING_FOR_BLOCKHEADS_MOD_ID = "cookingforblockheads";
     private static final String KITCHEN_SCREEN_CLASS = "net.blay09.mods.cookingforblockheads.client.gui.screen.KitchenScreen";
+    private static final String CFBH_CACHE_HINT_CLASS = "net.blay09.mods.cookingforblockheads.api.CacheHint";
     private static final String TOOLTIP_CONTAINER_COST_KEY = "lab_11_mods_unified.tooltip.cooking_table.container_cost";
     private static final String TOOLTIP_CONTAINER_ENTRY_KEY = "lab_11_mods_unified.tooltip.cooking_table.container_entry";
     private static final String TOOLTIP_MISSING_DUNGEON_OVEN_KEY = "lab_11_mods_unified.tooltip.cooking_table.missing_dungeon_oven";
@@ -83,7 +87,7 @@ public final class CookingPotContainerTooltipBridge {
         ).withStyle(ChatFormatting.GRAY);
         event.getToolTip().add(tooltipLine);
 
-        if (isContainerMissing(selectedRecipeWithStatus, containerCost)) {
+        if (isContainerMissing(menu, containerCost, minecraft.player)) {
             event.getToolTip().add(
                     Component.translatable(TOOLTIP_CONTAINER_NOT_ENOUGH_KEY)
                             .withStyle(ChatFormatting.RED, ChatFormatting.BOLD)
@@ -145,44 +149,106 @@ public final class CookingPotContainerTooltipBridge {
         }
     }
 
-    private static boolean isContainerMissing(final Object selectedRecipeWithStatus,
-                                              final ItemStack containerCost) {
-        if (selectedRecipeWithStatus == null || containerCost.isEmpty()) {
+    private static boolean isContainerMissing(final Object menu,
+                                              final ItemStack containerCost,
+                                              final Player player) {
+        if (menu == null || containerCost.isEmpty() || player == null) {
             return false;
         }
 
-        final Object missingIngredientsObject = invokeNoArg(selectedRecipeWithStatus, "missingIngredients");
-        if (!(missingIngredientsObject instanceof List<?> missingIngredients) || missingIngredients.isEmpty()) {
+        final Object kitchen = invokeNoArg(menu, "getKitchen");
+        if (kitchen == null) {
+            return false;
+        }
+
+        final List<?> itemProviders = resolveItemProviders(kitchen, player);
+        if (itemProviders == null || itemProviders.isEmpty()) {
+            return false;
+        }
+
+        final Class<?> cacheHintClass = resolveCacheHintClass();
+        final Object cacheHintNone = resolveCacheHintNone(cacheHintClass);
+        if (cacheHintClass == null || cacheHintNone == null) {
             return false;
         }
 
         final ItemStack containerUnit = containerCost.copy();
         containerUnit.setCount(1);
         final Ingredient expectedContainer = Ingredient.of(containerUnit);
+        final Collection<Object> allocatedTokens = new ArrayList<>();
 
-        for (final Object missingIngredientObject : missingIngredients) {
-            if (!(missingIngredientObject instanceof Ingredient missingIngredient)) {
-                continue;
-            }
-
-            if (ingredientsOverlap(missingIngredient, expectedContainer)) {
+        int remaining = containerCost.getCount();
+        while (remaining > 0) {
+            final Object token = findIngredientToken(itemProviders, expectedContainer, allocatedTokens, cacheHintClass, cacheHintNone);
+            if (token == null) {
                 return true;
             }
+            allocatedTokens.add(token);
+            remaining--;
         }
 
         return false;
     }
 
-    private static boolean ingredientsOverlap(final Ingredient first, final Ingredient second) {
-        for (final ItemStack firstStack : first.getItems()) {
-            for (final ItemStack secondStack : second.getItems()) {
-                if (ItemStack.isSameItemSameComponents(firstStack, secondStack)) {
-                    return true;
+    private static List<?> resolveItemProviders(final Object kitchen, final Player player) {
+        try {
+            final Method getItemProviders = kitchen.getClass().getMethod("getItemProviders", Player.class);
+            final Object result = getItemProviders.invoke(kitchen, player);
+            if (result instanceof List<?> providers) {
+                return providers;
+            }
+        } catch (ReflectiveOperationException ignored) {
+            // no-op
+        }
+        return null;
+    }
+
+    private static Object findIngredientToken(final List<?> itemProviders,
+                                              final Ingredient ingredient,
+                                              final Collection<Object> allocatedTokens,
+                                              final Class<?> cacheHintClass,
+                                              final Object cacheHintNone) {
+        for (final Object itemProvider : itemProviders) {
+            if (itemProvider == null) {
+                continue;
+            }
+
+            try {
+                final Method findIngredient = itemProvider.getClass().getMethod(
+                        "findIngredient",
+                        Ingredient.class,
+                        Collection.class,
+                        cacheHintClass
+                );
+                final Object token = findIngredient.invoke(itemProvider, ingredient, allocatedTokens, cacheHintNone);
+                if (token != null) {
+                    return token;
                 }
+            } catch (ReflectiveOperationException ignored) {
+                // no-op
             }
         }
+        return null;
+    }
 
-        return false;
+    private static Class<?> resolveCacheHintClass() {
+        try {
+            return Class.forName(CFBH_CACHE_HINT_CLASS);
+        } catch (ClassNotFoundException ignored) {
+            return null;
+        }
+    }
+
+    private static Object resolveCacheHintNone(final Class<?> cacheHintClass) {
+        if (cacheHintClass == null) {
+            return null;
+        }
+
+        try {
+            return cacheHintClass.getField("NONE").get(null);
+        } catch (ReflectiveOperationException ignored) {
+            return null;
+        }
     }
 
     private static Object invokeNoArg(final Object target, final String methodName) {
