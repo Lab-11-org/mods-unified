@@ -58,7 +58,8 @@ public final class BalmFallbackProviderBridge {
             return CookingPotProcessorCapability.createProcessor(
                     blockEntity,
                     Set.of(recipeTypeOptional.get()),
-                    target.requiredMarkerKeys()
+                    target.requiredMarkerKeys(),
+                    target.targetKey()
             );
         }
 

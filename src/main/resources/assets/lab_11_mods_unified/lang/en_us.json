@@ -8,5 +8,7 @@
   "lab_11_mods_unified.tooltip.cooking_table.missing_dungeon_oven": "Missing dungeon oven to cook",
   "lab_11_mods_unified.tooltip.cooking_table.container_not_enough": "Not Enough!",
   "lab_11_mods_unified.tooltip.cooking_table.container_cost": "Consumes: %s",
-  "lab_11_mods_unified.tooltip.cooking_table.container_entry": "%1$sx %2$s"
+  "lab_11_mods_unified.tooltip.cooking_table.container_entry": "%1$sx %2$s",
+  "lab_11_mods_unified.tooltip.cooking_table.cooks_in_from": "%1$s from: %2$s",
+  "lab_11_mods_unified.feedback.cooking_table.moved_to_pot": "Moved materials to pot"
 }

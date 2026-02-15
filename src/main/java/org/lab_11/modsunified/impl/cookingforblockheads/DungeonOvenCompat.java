@@ -16,6 +16,7 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
+import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
@@ -40,6 +41,8 @@ public final class DungeonOvenCompat {
     private static final String CFBH_OVEN_DEFERRED_FIELD = "oven";
     private static final String CFBH_OVENS_FIELD = "ovens";
     private static final String BLOCK_ENTITY_VALID_BLOCKS_FIELD = "validBlocks";
+    private static final String LOCAL_CLIENT_HOOKS_CLASS =
+            "org.lab_11.modsunified.impl.cookingforblockheads.client.DungeonOvenClientHooks";
 
     private static final DeferredRegister.Blocks BLOCKS = DeferredRegister.createBlocks(Unifiled.MOD_ID);
     private static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(Unifiled.MOD_ID);
@@ -66,6 +69,7 @@ public final class DungeonOvenCompat {
         ITEMS.register(modEventBus);
         modEventBus.addListener(DungeonOvenCompat::onCommonSetup);
         modEventBus.addListener(DungeonOvenCompat::onBuildCreativeModeTabContents);
+        registerClientHooks(modEventBus);
         registered = true;
         LOGGER.info("Registered dungeon oven block and item.");
     }
@@ -192,6 +196,20 @@ public final class DungeonOvenCompat {
             LOGGER.info("Attached dungeon oven block to CFBH oven category.");
         } catch (ReflectiveOperationException e) {
             LOGGER.error("Failed to attach dungeon oven block to CFBH oven category.", e);
+        }
+    }
+
+    private static void registerClientHooks(final IEventBus modEventBus) {
+        if (!FMLEnvironment.dist.isClient()) {
+            return;
+        }
+
+        try {
+            final Class<?> hooksClass = Class.forName(LOCAL_CLIENT_HOOKS_CLASS);
+            hooksClass.getMethod("register", IEventBus.class).invoke(null, modEventBus);
+            LOGGER.info("Registered dungeon oven client hooks.");
+        } catch (ReflectiveOperationException e) {
+            LOGGER.error("Failed to register dungeon oven client hooks.", e);
         }
     }
 }

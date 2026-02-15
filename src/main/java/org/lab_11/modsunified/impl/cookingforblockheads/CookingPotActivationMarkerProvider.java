@@ -74,10 +74,23 @@ public final class CookingPotActivationMarkerProvider implements KitchenItemProv
     }
 
     private boolean isActiveForCurrentTable() {
+        if (isPotTargetMarker(markerKey)) {
+            if (CookingPotProcessorCapability.isDirectlyAboveCookingTable(blockEntity)) {
+                return true;
+            }
+            return CookingPotHeatBridge.isTargetPotConnectedForCookingTable(blockEntity, markerKey);
+        }
+
         if (!requiresDirectlyAboveCookingTable) {
             return true;
         }
         return CookingPotProcessorCapability.isDirectlyAboveCookingTable(blockEntity);
+    }
+
+    private static boolean isPotTargetMarker(final String markerKey) {
+        return BridgeKeys.TARGET_FARMERS_DELIGHT_COOKING_POT.equals(markerKey)
+                || BridgeKeys.TARGET_DUNGEONS_DELIGHT_MONSTER_POT.equals(markerKey)
+                || BridgeKeys.TARGET_MINERS_DELIGHT_COPPER_POT.equals(markerKey);
     }
 
     private static MarkerEntry markerForKey(final String markerKey) {

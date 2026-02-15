@@ -2,6 +2,7 @@ package org.lab_11.modsunified.impl.cookingforblockheads;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Player;
@@ -10,6 +11,7 @@ import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeHolder;
 import net.neoforged.fml.ModList;
+import net.neoforged.neoforge.client.event.RenderTooltipEvent;
 import net.neoforged.neoforge.event.entity.player.ItemTooltipEvent;
 
 import java.lang.reflect.Method;
@@ -25,11 +27,16 @@ public final class CookingPotContainerTooltipBridge {
     private static final String TOOLTIP_CONTAINER_COST_KEY = "lab_11_mods_unified.tooltip.cooking_table.container_cost";
     private static final String TOOLTIP_CONTAINER_ENTRY_KEY = "lab_11_mods_unified.tooltip.cooking_table.container_entry";
     private static final String TOOLTIP_CONTAINER_NOT_ENOUGH_KEY = "lab_11_mods_unified.tooltip.cooking_table.container_not_enough";
+    private static final String TOOLTIP_COOKS_IN_FROM_KEY = "lab_11_mods_unified.tooltip.cooking_table.cooks_in_from";
+    private static final int CUSTOM_TOOLTIP_Y_OFFSET = 14;
+
+    private static ItemStack lastDecoratedTooltipStack = ItemStack.EMPTY;
 
     private CookingPotContainerTooltipBridge() {
     }
 
     public static void appendTooltip(final ItemTooltipEvent event) {
+        clearDecoratedTooltip();
         if (!ModList.get().isLoaded(COOKING_FOR_BLOCKHEADS_MOD_ID)) {
             return;
         }
@@ -61,14 +68,33 @@ public final class CookingPotContainerTooltipBridge {
         final Recipe<?> recipe = recipeHolder.value();
         final ItemStack hoveredStack = event.getItemStack();
         final ItemStack selectedResult = recipe.getResultItem(minecraft.level.registryAccess());
-        if (selectedResult.isEmpty() || !ItemStack.isSameItemSameComponents(hoveredStack, selectedResult)) {
+        if (selectedResult.isEmpty()) {
             return;
         }
 
-        appendMissingRequirementTooltips(event, menu, recipe, minecraft.player);
+        final boolean resultHovered = ItemStack.isSameItemSameComponents(hoveredStack, selectedResult);
+        final boolean ingredientHovered = isHoveredStackInRecipeIngredients(hoveredStack, recipe);
+
+        boolean appendedTooltip = false;
+        if (recipe instanceof CookingPotIndexedRecipe indexedRecipe && (resultHovered || ingredientHovered)) {
+            appendPotTooltip(event, indexedRecipe);
+            appendedTooltip = true;
+        }
+
+        if (!resultHovered) {
+            if (appendedTooltip) {
+                markDecoratedTooltip(hoveredStack);
+            }
+            return;
+        }
+
+        appendedTooltip |= appendMissingRequirementTooltips(event, menu, recipe, minecraft.player);
 
         final ItemStack containerCost = resolveContainerCost(recipe);
         if (containerCost.isEmpty()) {
+            if (appendedTooltip) {
+                markDecoratedTooltip(hoveredStack);
+            }
             return;
         }
 
@@ -83,13 +109,39 @@ public final class CookingPotContainerTooltipBridge {
                 containerEntry
         ).withStyle(ChatFormatting.GRAY);
         event.getToolTip().add(tooltipLine);
+        appendedTooltip = true;
 
         if (isContainerMissing(menu, containerCost, minecraft.player)) {
             event.getToolTip().add(
                     Component.translatable(TOOLTIP_CONTAINER_NOT_ENOUGH_KEY)
                             .withStyle(ChatFormatting.RED, ChatFormatting.BOLD)
             );
+            appendedTooltip = true;
         }
+
+        if (appendedTooltip) {
+            markDecoratedTooltip(hoveredStack);
+        }
+    }
+
+    public static void adjustTooltipPosition(final RenderTooltipEvent.Pre event) {
+        if (!ModList.get().isLoaded(COOKING_FOR_BLOCKHEADS_MOD_ID)) {
+            return;
+        }
+
+        final Minecraft minecraft = Minecraft.getInstance();
+        final Object screen = minecraft.screen;
+        if (screen == null || !KITCHEN_SCREEN_CLASS.equals(screen.getClass().getName())) {
+            clearDecoratedTooltip();
+            return;
+        }
+
+        if (lastDecoratedTooltipStack.isEmpty()
+                || !ItemStack.isSameItemSameComponents(event.getItemStack(), lastDecoratedTooltipStack)) {
+            return;
+        }
+
+        event.setY(Math.max(6, event.getY() - CUSTOM_TOOLTIP_Y_OFFSET));
     }
 
     private static ItemStack resolveContainerCost(final Recipe<?> recipe) {
@@ -105,39 +157,40 @@ public final class CookingPotContainerTooltipBridge {
         return CookingPotContainerCost.resolveForTooltip(recipe, minecraft.level.registryAccess());
     }
 
-    private static void appendMissingRequirementTooltips(final ItemTooltipEvent event,
-                                                         final Object menu,
-                                                         final Recipe<?> recipe,
-                                                         final Player player) {
+    private static boolean appendMissingRequirementTooltips(final ItemTooltipEvent event,
+                                                            final Object menu,
+                                                            final Recipe<?> recipe,
+                                                            final Player player) {
         if (!(recipe instanceof CookingPotIndexedRecipe indexedRecipe)) {
-            return;
+            return false;
         }
 
         if (menu == null || player == null || indexedRecipe.requiredMarkerKeys().isEmpty()) {
-            return;
+            return false;
         }
 
         final Object kitchen = invokeNoArg(menu, "getKitchen");
         if (kitchen == null) {
-            return;
+            return false;
         }
 
         // If the kitchen can process this recipe, all hard requirements are already satisfied.
         if (canKitchenProcess(kitchen, recipe)) {
-            return;
+            return false;
         }
 
         final List<?> itemProviders = resolveItemProviders(kitchen, player);
         if (itemProviders == null || itemProviders.isEmpty()) {
-            return;
+            return false;
         }
 
         final Class<?> cacheHintClass = resolveCacheHintClass();
         final Object cacheHintNone = resolveCacheHintNone(cacheHintClass);
         if (cacheHintClass == null || cacheHintNone == null) {
-            return;
+            return false;
         }
 
+        boolean appended = false;
         for (final String requiredMarkerKey : indexedRecipe.requiredMarkerKeys()) {
             if (hasRequiredMarker(itemProviders, requiredMarkerKey, cacheHintClass, cacheHintNone)) {
                 continue;
@@ -146,7 +199,84 @@ public final class CookingPotContainerTooltipBridge {
             BridgeMarkerRegistry.missingRequirementTooltipKey(requiredMarkerKey).ifPresent(tooltipKey ->
                     event.getToolTip().add(Component.translatable(tooltipKey).withStyle(ChatFormatting.RED))
             );
+            appended = true;
         }
+        return appended;
+    }
+
+    private static boolean isHoveredStackInRecipeIngredients(final ItemStack hoveredStack, final Recipe<?> recipe) {
+        if (hoveredStack.isEmpty() || recipe == null) {
+            return false;
+        }
+
+        final List<Ingredient> ingredients = recipe.getIngredients();
+        final int startIndex = recipe instanceof CookingPotIndexedRecipe indexedRecipe
+                ? indexedRecipe.syntheticIngredientCount()
+                : 0;
+        for (int i = startIndex; i < ingredients.size(); i++) {
+            if (ingredients.get(i).test(hoveredStack)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static void appendPotTooltip(final ItemTooltipEvent event, final CookingPotIndexedRecipe indexedRecipe) {
+        final Component potName = resolvePotName(indexedRecipe.targetKey()).copy().withStyle(ChatFormatting.GOLD);
+        final Component modName = resolveModName(indexedRecipe.targetKey()).copy().withStyle(ChatFormatting.AQUA);
+        event.getToolTip().add(Component.translatable(TOOLTIP_COOKS_IN_FROM_KEY, potName, modName)
+                .withStyle(ChatFormatting.GRAY));
+    }
+
+    private static void markDecoratedTooltip(final ItemStack tooltipStack) {
+        if (tooltipStack.isEmpty()) {
+            clearDecoratedTooltip();
+            return;
+        }
+        lastDecoratedTooltipStack = tooltipStack.copy();
+    }
+
+    private static void clearDecoratedTooltip() {
+        lastDecoratedTooltipStack = ItemStack.EMPTY;
+    }
+
+    private static Component resolvePotName(final String targetKey) {
+        final ResourceLocation blockId = switch (targetKey) {
+            case BridgeKeys.TARGET_FARMERS_DELIGHT_COOKING_POT ->
+                    ResourceLocation.fromNamespaceAndPath(BridgeKeys.MOD_FARMERS_DELIGHT, "cooking_pot");
+            case BridgeKeys.TARGET_DUNGEONS_DELIGHT_MONSTER_POT ->
+                    ResourceLocation.fromNamespaceAndPath(BridgeKeys.MOD_DUNGEONS_DELIGHT, "monster_pot");
+            case BridgeKeys.TARGET_MINERS_DELIGHT_COPPER_POT ->
+                    ResourceLocation.fromNamespaceAndPath(BridgeKeys.MOD_MINERS_DELIGHT, "copper_pot");
+            default -> null;
+        };
+        if (blockId == null) {
+            return Component.literal(targetKey);
+        }
+
+        final var block = BuiltInRegistries.BLOCK.getOptional(blockId).orElse(null);
+        if (block == null) {
+            return Component.literal(blockId.toString());
+        }
+        return Component.translatable(block.getDescriptionId());
+    }
+
+    private static Component resolveModName(final String targetKey) {
+        final String modId = switch (targetKey) {
+            case BridgeKeys.TARGET_FARMERS_DELIGHT_COOKING_POT -> BridgeKeys.MOD_FARMERS_DELIGHT;
+            case BridgeKeys.TARGET_DUNGEONS_DELIGHT_MONSTER_POT -> BridgeKeys.MOD_DUNGEONS_DELIGHT;
+            case BridgeKeys.TARGET_MINERS_DELIGHT_COPPER_POT -> BridgeKeys.MOD_MINERS_DELIGHT;
+            default -> null;
+        };
+        if (modId == null) {
+            return Component.literal(targetKey);
+        }
+
+        return ModList.get()
+                .getModContainerById(modId)
+                .map(container -> Component.literal(container.getModInfo().getDisplayName()))
+                .orElse(Component.literal(modId));
     }
 
     private static boolean canKitchenProcess(final Object kitchen, final Recipe<?> recipe) {

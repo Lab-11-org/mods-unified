@@ -10,6 +10,7 @@ import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
+import net.neoforged.neoforge.client.event.RenderTooltipEvent;
 import net.neoforged.neoforge.client.event.RecipesUpdatedEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.entity.player.ItemTooltipEvent;
@@ -51,6 +52,7 @@ public final class Unifiled {
         if (FMLEnvironment.dist.isClient()) {
             NeoForge.EVENT_BUS.addListener(this::onClientRecipesUpdated);
             NeoForge.EVENT_BUS.addListener(this::onItemTooltip);
+            NeoForge.EVENT_BUS.addListener(this::onRenderTooltipPre);
         }
     }
 
@@ -185,6 +187,10 @@ public final class Unifiled {
 
     private void onItemTooltip(final ItemTooltipEvent event) {
         CookingPotContainerTooltipBridge.appendTooltip(event);
+    }
+
+    private void onRenderTooltipPre(final RenderTooltipEvent.Pre event) {
+        CookingPotContainerTooltipBridge.adjustTooltipPosition(event);
     }
 
     private void injectCookingPotRecipesIntoCookingForBlockheads(final RecipeManager recipeManager,

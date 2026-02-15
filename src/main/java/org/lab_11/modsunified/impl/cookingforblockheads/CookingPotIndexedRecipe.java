@@ -16,6 +16,7 @@ import java.util.List;
 
 public final class CookingPotIndexedRecipe implements Recipe<RecipeInput> {
     private final Recipe<?> delegate;
+    private final String targetKey;
     private final NonNullList<Ingredient> indexedIngredients;
     private final ItemStack indexedResult;
     private final ItemStack indexedContainerCost;
@@ -27,6 +28,7 @@ public final class CookingPotIndexedRecipe implements Recipe<RecipeInput> {
                                    final String markerKey,
                                    final List<String> requiredMarkerKeys) {
         this.delegate = delegate;
+        this.targetKey = markerKey;
         this.indexedResult = resolveIndexedResult(delegate, registryAccess, markerKey);
         this.indexedContainerCost = CookingPotContainerCost.resolveForIndexedRecipe(delegate, registryAccess, markerKey);
         this.requiredMarkerKeys = List.copyOf(requiredMarkerKeys);
@@ -93,6 +95,10 @@ public final class CookingPotIndexedRecipe implements Recipe<RecipeInput> {
 
     public int syntheticIngredientCount() {
         return syntheticIngredientCount;
+    }
+
+    public String targetKey() {
+        return targetKey;
     }
 
     public ItemStack indexedContainerCost() {

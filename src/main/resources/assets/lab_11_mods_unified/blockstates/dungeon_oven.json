@@ -1,33 +1,33 @@
 {
   "variants": {
     "active=false,facing=east": {
-      "model": "cookingforblockheads:block/black_oven_active",
+      "model": "lab_11_mods_unified:blocks/dungeon_oven_active",
       "y": 90
     },
     "active=false,facing=north": {
-      "model": "cookingforblockheads:block/black_oven_active"
+      "model": "lab_11_mods_unified:blocks/dungeon_oven_active"
     },
     "active=false,facing=south": {
-      "model": "cookingforblockheads:block/black_oven_active",
+      "model": "lab_11_mods_unified:blocks/dungeon_oven_active",
       "y": 180
     },
     "active=false,facing=west": {
-      "model": "cookingforblockheads:block/black_oven_active",
+      "model": "lab_11_mods_unified:blocks/dungeon_oven_active",
       "y": 270
     },
     "active=true,facing=east": {
-      "model": "cookingforblockheads:block/black_oven",
+      "model": "lab_11_mods_unified:blocks/dungeon_oven",
       "y": 90
     },
     "active=true,facing=north": {
-      "model": "cookingforblockheads:block/black_oven"
+      "model": "lab_11_mods_unified:blocks/dungeon_oven"
     },
     "active=true,facing=south": {
-      "model": "cookingforblockheads:block/black_oven",
+      "model": "lab_11_mods_unified:blocks/dungeon_oven",
       "y": 180
     },
     "active=true,facing=west": {
-      "model": "cookingforblockheads:block/black_oven",
+      "model": "lab_11_mods_unified:blocks/dungeon_oven",
       "y": 270
     }
   }

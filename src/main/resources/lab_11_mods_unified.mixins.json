@@ -5,8 +5,13 @@
   "mixins": [
     "CookingPotBlockEntityMixin",
     "CopperPotBlockEntityMixin",
+    "KitchenMenuMixin",
+    "KitchenMenuRecipeStatusMixin",
     "MonsterPotBlockEntityMixin",
     "OvenBlockEntityMixin"
+  ],
+  "client": [
+    "OvenRendererMixin"
   ],
   "injectors": {
     "defaultRequire": 1

@@ -3,6 +3,7 @@ package org.lab_11.modsunified.impl.cookingforblockheads;
 import net.blay09.mods.cookingforblockheads.api.CacheHint;
 import net.blay09.mods.cookingforblockheads.api.IngredientToken;
 import net.blay09.mods.cookingforblockheads.api.KitchenItemProvider;
+import net.blay09.mods.cookingforblockheads.api.KitchenOperation;
 import net.blay09.mods.cookingforblockheads.api.KitchenRecipeHandler;
 import net.blay09.mods.cookingforblockheads.crafting.CraftingContext;
 import net.minecraft.core.RegistryAccess;
@@ -40,6 +41,42 @@ public final class CookingPotKitchenHandler implements KitchenRecipeHandler<Reci
                               final Recipe<?> recipe,
                               final List<IngredientToken> ingredientTokens,
                               final RegistryAccess registryAccess) {
+        if (recipe instanceof CookingPotIndexedRecipe indexedRecipe) {
+            return routeIndexedRecipeToPot(context, indexedRecipe, ingredientTokens, registryAccess);
+        }
+
+        return assembleToOutput(context, recipe, ingredientTokens, registryAccess);
+    }
+
+    private static ItemStack routeIndexedRecipeToPot(final CraftingContext context,
+                                                     final CookingPotIndexedRecipe recipe,
+                                                     final List<IngredientToken> ingredientTokens,
+                                                     final RegistryAccess registryAccess) {
+        final boolean copperPotActive = MinersDelightCupConversion.isCopperPotActive(context);
+        final List<IngredientToken> processingTokens = new ArrayList<>(ingredientTokens);
+        if (!appendRequiredContainerTokens(context, recipe, processingTokens, registryAccess, copperPotActive)) {
+            return ItemStack.EMPTY;
+        }
+
+        for (final var itemProcessor : context.getItemProcessors()) {
+            if (!itemProcessor.canProcess(recipe.getType())) {
+                continue;
+            }
+
+            final KitchenOperation operation = itemProcessor.processRecipe(recipe, processingTokens);
+            if (operation != KitchenOperation.EMPTY) {
+                context.notify(operation);
+                return ItemStack.EMPTY;
+            }
+        }
+
+        return ItemStack.EMPTY;
+    }
+
+    private static ItemStack assembleToOutput(final CraftingContext context,
+                                              final Recipe<?> recipe,
+                                              final List<IngredientToken> ingredientTokens,
+                                              final RegistryAccess registryAccess) {
         final boolean copperPotActive = MinersDelightCupConversion.isCopperPotActive(context);
         ItemStack output = recipe.getResultItem(registryAccess).copy();
         if (copperPotActive) {
@@ -77,6 +114,36 @@ public final class CookingPotKitchenHandler implements KitchenRecipeHandler<Reci
         return output;
     }
 
+    private static boolean appendRequiredContainerTokens(final CraftingContext context,
+                                                         final Recipe<?> recipe,
+                                                         final List<IngredientToken> processingTokens,
+                                                         final RegistryAccess registryAccess,
+                                                         final boolean copperPotActive) {
+        final ItemStack containerCost = CookingPotContainerCost.resolveForCraft(recipe, registryAccess, copperPotActive);
+        if (containerCost.isEmpty()) {
+            return true;
+        }
+
+        final ItemStack containerUnit = containerCost.copy();
+        containerUnit.setCount(1);
+        final Ingredient containerIngredient = Ingredient.of(containerUnit);
+
+        final List<IngredientToken> allocated = new ArrayList<>(processingTokens);
+        int remaining = containerCost.getCount();
+        while (remaining > 0) {
+            final IngredientToken token = findIngredientToken(context.getItemProviders(), containerIngredient, allocated);
+            if (token == null || token == IngredientToken.EMPTY) {
+                return false;
+            }
+
+            allocated.add(token);
+            processingTokens.add(token);
+            remaining--;
+        }
+
+        return true;
+    }
+
     private static boolean consumeRequiredContainers(final CraftingContext context,
                                                      final Recipe<?> recipe,
                                                      final RegistryAccess registryAccess,
@@ -93,7 +160,12 @@ public final class CookingPotKitchenHandler implements KitchenRecipeHandler<Reci
 
         int remaining = containerCost.getCount();
         while (remaining > 0) {
-            final IngredientToken token = findIngredientToken(context.getItemProviders(), containerIngredient, List.of());
+            final List<IngredientToken> allocated = new ArrayList<>(consumed.size());
+            for (final TokenConsumption tokenConsumption : consumed) {
+                allocated.add(tokenConsumption.token());
+            }
+
+            final IngredientToken token = findIngredientToken(context.getItemProviders(), containerIngredient, allocated);
             if (token == null || token == IngredientToken.EMPTY) {
                 return false;
             }
