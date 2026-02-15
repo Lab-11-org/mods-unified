@@ -1,26 +1,26 @@
-# eclipse
-bin
-*.launch
-.settings
-.metadata
-.classpath
-.project
+/libs/
+/ext_src/
 
-# idea
-out
-*.ipr
-*.iws
+# Java / JVM build outputs
+*.class
+hs_err_pid*
+replay_pid*
+
+# Build tools
+.gradle/
+**/build/
+**/target/
+
+# IDEs
+.idea/
 *.iml
-.idea
+.project
+.classpath
+.settings/
+.vscode/
+out/
 
-# gradle
-build
-.gradle
-
-# other
-eclipse
-run
-runs
-run-data
-
-repo
+# OS / misc
+.DS_Store
+Thumbs.db
+*.log
