@@ -19,8 +19,16 @@ import java.util.List;
 @Pseudo
 @Mixin(targets = "net.blay09.mods.cookingforblockheads.menu.KitchenMenu")
 abstract class KitchenMenuMixin {
+    private static final String INDEXED_RECIPE_NAMESPACE = "lab_11_mods_unified";
+    private static final String INDEXED_RECIPE_PATH_PREFIX = "cfbh_indexed/";
+
     @Shadow
     private List<?> matrixSlots;
+    @Shadow
+    private NonNullList<ItemStack> lockedInputs;
+
+    @Shadow
+    public abstract RecipeWithStatus getSelectedRecipe();
 
     @Inject(
             method = "updateMatrixSlots(Lnet/minecraft/world/item/crafting/Recipe;Lnet/blay09/mods/cookingforblockheads/crafting/RecipeWithStatus;)V",
@@ -128,5 +136,31 @@ abstract class KitchenMenuMixin {
         } catch (ReflectiveOperationException ignored) {
             // no-op
         }
+    }
+
+    @Inject(
+            method = "nextRecipe",
+            at = @At("TAIL"),
+            remap = false
+    )
+    private void lab11$syncLockedInputsWithSelectedVariant(final int dir, final CallbackInfo ci) {
+        final RecipeWithStatus selected = getSelectedRecipe();
+        if (selected == null || !isIndexedRecipe(selected)) {
+            return;
+        }
+
+        final List<ItemStack> selectedLocks = selected.lockedInputs();
+        lockedInputs.clear();
+        final int max = Math.min(lockedInputs.size(), selectedLocks.size());
+        for (int i = 0; i < max; i++) {
+            final ItemStack stack = selectedLocks.get(i);
+            lockedInputs.set(i, stack.isEmpty() ? ItemStack.EMPTY : stack.copy());
+        }
+    }
+
+    private static boolean isIndexedRecipe(final RecipeWithStatus status) {
+        final var recipeId = status.recipeId();
+        return INDEXED_RECIPE_NAMESPACE.equals(recipeId.getNamespace())
+                && recipeId.getPath().startsWith(INDEXED_RECIPE_PATH_PREFIX);
     }
 }
