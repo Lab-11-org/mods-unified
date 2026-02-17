@@ -51,7 +51,7 @@ public final class CookingPotBridgeCatalog {
                         "vectorwing.farmersdelight.common.block.entity.CookingPotBlockEntity",
                         "vectorwing.farmersdelight.common.registry.ModBlockEntityTypes",
                         "COOKING_POT"
-                ),
+                ).withDeniedRecipeIdPrefixes(List.of(BridgeKeys.MIRRORED_DD_CUP_RECIPE_ID_PREFIX)),
                 new CookingPotBridgeTarget(
                         BridgeKeys.TARGET_DUNGEONS_DELIGHT_MONSTER_POT,
                         "DungeonsDelight Monster Pot",

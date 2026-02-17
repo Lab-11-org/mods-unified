@@ -110,6 +110,25 @@ public final class CookingPotBridgeTarget {
         );
     }
 
+    public CookingPotBridgeTarget withDeniedRecipeIdPrefixes(final List<String> deniedRecipeIdPrefixes) {
+        return new CookingPotBridgeTarget(
+                targetKey,
+                displayName,
+                requiredModIds,
+                recipeClassName,
+                recipeTypeOwnerClassName,
+                recipeTypeFieldName,
+                blockEntityClassName,
+                blockEntityTypeOwnerClassName,
+                blockEntityTypeFieldName,
+                allowedRecipeNamespaces,
+                allowedRecipeIdPrefixes,
+                deniedRecipeNamespaces,
+                deniedRecipeIdPrefixes,
+                requiredMarkerKeys
+        );
+    }
+
     public String targetKey() {
         return targetKey;
     }

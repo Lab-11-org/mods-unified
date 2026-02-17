@@ -9,6 +9,7 @@ import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotIndexedRecipe;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -149,18 +150,26 @@ abstract class KitchenMenuMixin {
             return;
         }
 
+        lab11$applySelectedIndexedVariant(selected);
+    }
+
+    @Unique
+    private void lab11$applySelectedIndexedVariant(final RecipeWithStatus selected) {
         final List<ItemStack> selectedLocks = selected.lockedInputs();
-        lockedInputs.clear();
-        final int max = Math.min(lockedInputs.size(), selectedLocks.size());
-        for (int i = 0; i < max; i++) {
-            final ItemStack stack = selectedLocks.get(i);
-            lockedInputs.set(i, stack.isEmpty() ? ItemStack.EMPTY : stack.copy());
+        for (int i = 0; i < lockedInputs.size(); i++) {
+            if (i < selectedLocks.size()) {
+                final ItemStack stack = selectedLocks.get(i);
+                lockedInputs.set(i, stack.isEmpty() ? ItemStack.EMPTY : stack.copy());
+            } else {
+                lockedInputs.set(i, ItemStack.EMPTY);
+            }
         }
     }
 
     private static boolean isIndexedRecipe(final RecipeWithStatus status) {
         final var recipeId = status.recipeId();
-        return INDEXED_RECIPE_NAMESPACE.equals(recipeId.getNamespace())
+        return recipeId != null
+                && INDEXED_RECIPE_NAMESPACE.equals(recipeId.getNamespace())
                 && recipeId.getPath().startsWith(INDEXED_RECIPE_PATH_PREFIX);
     }
 }

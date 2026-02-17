@@ -10,5 +10,9 @@
   "lab_11_mods_unified.tooltip.cooking_table.container_cost": "Consumes: %s",
   "lab_11_mods_unified.tooltip.cooking_table.container_entry": "%1$sx %2$s",
   "lab_11_mods_unified.tooltip.cooking_table.cooks_in_from": "%1$s from: %2$s",
-  "lab_11_mods_unified.feedback.cooking_table.moved_to_pot": "Moved materials to pot"
+  "lab_11_mods_unified.feedback.cooking_table.moved_to_pot": "Moved materials to pot",
+  "lab_11_mods_unified.feedback.cooking_table.pot_not_connected": "No supported pot connected to this table",
+  "lab_11_mods_unified.feedback.cooking_table.pot_input_blocked": "Pot input slots are occupied or incompatible",
+  "lab_11_mods_unified.feedback.cooking_table.pot_container_blocked": "Pot container slot is occupied",
+  "lab_11_mods_unified.feedback.cooking_table.pot_transfer_failed": "Failed to move ingredients into pot"
 }

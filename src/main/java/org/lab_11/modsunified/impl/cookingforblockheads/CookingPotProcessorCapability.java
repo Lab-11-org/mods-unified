@@ -43,6 +43,10 @@ public final class CookingPotProcessorCapability {
     private static final String POT_CONTAINER_SLOT_FIELD = "CONTAINER_SLOT";
     private static final String POT_OUTPUT_SLOT_FIELD = "OUTPUT_SLOT";
     private static final String FEEDBACK_MOVED_TO_POT_KEY = "lab_11_mods_unified.feedback.cooking_table.moved_to_pot";
+    private static final String FEEDBACK_POT_NOT_CONNECTED_KEY = "lab_11_mods_unified.feedback.cooking_table.pot_not_connected";
+    private static final String FEEDBACK_POT_INPUT_BLOCKED_KEY = "lab_11_mods_unified.feedback.cooking_table.pot_input_blocked";
+    private static final String FEEDBACK_POT_CONTAINER_BLOCKED_KEY = "lab_11_mods_unified.feedback.cooking_table.pot_container_blocked";
+    private static final String FEEDBACK_POT_TRANSFER_FAILED_KEY = "lab_11_mods_unified.feedback.cooking_table.pot_transfer_failed";
     private static final String POT_COOK_TIME_FIELD = "cookTime";
     private static final String POT_COOK_TIME_TOTAL_FIELD = "cookTimeTotal";
 
@@ -56,7 +60,32 @@ public final class CookingPotProcessorCapability {
             return Optional.of(Component.translatable(FEEDBACK_MOVED_TO_POT_KEY).withStyle(ChatFormatting.YELLOW));
         }
     };
+    private static final KitchenOperation POT_NOT_CONNECTED_OPERATION = feedbackOperation(
+            FEEDBACK_POT_NOT_CONNECTED_KEY,
+            ChatFormatting.RED
+    );
+    private static final KitchenOperation POT_INPUT_BLOCKED_OPERATION = feedbackOperation(
+            FEEDBACK_POT_INPUT_BLOCKED_KEY,
+            ChatFormatting.RED
+    );
+    private static final KitchenOperation POT_CONTAINER_BLOCKED_OPERATION = feedbackOperation(
+            FEEDBACK_POT_CONTAINER_BLOCKED_KEY,
+            ChatFormatting.RED
+    );
+    private static final KitchenOperation POT_TRANSFER_FAILED_OPERATION = feedbackOperation(
+            FEEDBACK_POT_TRANSFER_FAILED_KEY,
+            ChatFormatting.RED
+    );
     private static final Map<BlockEntity, Recipe<?>> LAST_RECIPE_BY_POT = new WeakHashMap<>();
+
+    private enum TransferFailure {
+        NONE,
+        NO_INVENTORY,
+        INPUT_SLOT_BLOCKED,
+        CONTAINER_SLOT_BLOCKED,
+        INPUT_TRANSFER_FAILED,
+        CONTAINER_TRANSFER_FAILED
+    }
 
     private CookingPotProcessorCapability() {
     }
@@ -82,11 +111,12 @@ public final class CookingPotProcessorCapability {
                 final boolean ovenConnectedPlacement =
                         CookingPotHeatBridge.isTargetPotConnectedForCookingTable(blockEntity, targetKey);
                 if (!directTablePlacement && !ovenConnectedPlacement) {
-                    return KitchenOperation.EMPTY;
+                    return POT_NOT_CONNECTED_OPERATION;
                 }
 
-                if (!transferRecipeToPot(blockEntity, recipe, ingredientTokens)) {
-                    return KitchenOperation.EMPTY;
+                final TransferFailure transferFailure = transferRecipeToPot(blockEntity, recipe, ingredientTokens);
+                if (transferFailure != TransferFailure.NONE) {
+                    return transferFailureOperation(transferFailure);
                 }
 
                 return POT_TRANSFER_OPERATION;
@@ -137,12 +167,12 @@ public final class CookingPotProcessorCapability {
                 && targetKey.equals(indexedRecipe.targetKey());
     }
 
-    private static boolean transferRecipeToPot(final BlockEntity blockEntity,
-                                               final Recipe<?> recipe,
-                                               final List<IngredientToken> ingredientTokens) {
+    private static TransferFailure transferRecipeToPot(final BlockEntity blockEntity,
+                                                       final Recipe<?> recipe,
+                                                       final List<IngredientToken> ingredientTokens) {
         final IItemHandler potInventory = resolvePotInventory(blockEntity);
         if (potInventory == null) {
-            return false;
+            return TransferFailure.NO_INVENTORY;
         }
 
         final Class<?> blockEntityClass = blockEntity.getClass();
@@ -169,17 +199,22 @@ public final class CookingPotProcessorCapability {
         final int ingredientEnd = Math.min(ingredientTokens.size(), recipe.getIngredients().size());
 
         if (!canInsertIntoInputSlots(potInventory, ingredientTokens, syntheticTokenCount, ingredientEnd, inputSlotCount)) {
-            return false;
+            return TransferFailure.INPUT_SLOT_BLOCKED;
         }
-        if (!canInsertIntoContainerSlot(potInventory, ingredientTokens, ingredientEnd, ingredientTokens.size(), safeContainerSlot)) {
-            return false;
-        }
+        final boolean canInsertContainers = canInsertIntoContainerSlot(
+                potInventory,
+                ingredientTokens,
+                ingredientEnd,
+                ingredientTokens.size(),
+                safeContainerSlot
+        );
 
         if (!consumeIntoInputSlots(potInventory, ingredientTokens, syntheticTokenCount, ingredientEnd, inputSlotCount)) {
-            return false;
+            return TransferFailure.INPUT_TRANSFER_FAILED;
         }
-        if (!consumeIntoContainerSlot(potInventory, ingredientTokens, ingredientEnd, ingredientTokens.size(), safeContainerSlot)) {
-            return false;
+        if (canInsertContainers
+                && !consumeIntoContainerSlot(potInventory, ingredientTokens, ingredientEnd, ingredientTokens.size(), safeContainerSlot)) {
+            return TransferFailure.CONTAINER_TRANSFER_FAILED;
         }
 
         synchronized (LAST_RECIPE_BY_POT) {
@@ -187,7 +222,25 @@ public final class CookingPotProcessorCapability {
         }
 
         blockEntity.setChanged();
-        return true;
+        return TransferFailure.NONE;
+    }
+
+    private static KitchenOperation feedbackOperation(final String translationKey, final ChatFormatting style) {
+        return new KitchenOperation() {
+            @Override
+            public Optional<Component> getFeedback() {
+                return Optional.of(Component.translatable(translationKey).withStyle(style));
+            }
+        };
+    }
+
+    private static KitchenOperation transferFailureOperation(final TransferFailure failure) {
+        return switch (failure) {
+            case INPUT_SLOT_BLOCKED -> POT_INPUT_BLOCKED_OPERATION;
+            case CONTAINER_SLOT_BLOCKED -> POT_CONTAINER_BLOCKED_OPERATION;
+            case NO_INVENTORY, INPUT_TRANSFER_FAILED, CONTAINER_TRANSFER_FAILED -> POT_TRANSFER_FAILED_OPERATION;
+            case NONE -> KitchenOperation.EMPTY;
+        };
     }
 
     private static void flushPendingPotInputs(final BlockEntity blockEntity,

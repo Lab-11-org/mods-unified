@@ -74,6 +74,10 @@ public final class CookingPotRecipeIndexer {
                 if (!target.acceptsRecipe(rawRecipeHolder)) {
                     continue;
                 }
+                if (BridgeKeys.TARGET_DUNGEONS_DELIGHT_MONSTER_POT.equals(target.targetKey())
+                        && DungeonsDelightCupRecipeMirror.shouldRouteToCopperPotOnly(rawRecipeHolder)) {
+                    continue;
+                }
 
                 final String recipeKey = target.targetKey() + "|" + rawRecipeHolder.id();
                 if (!addedRecipeKeys.add(recipeKey)) {

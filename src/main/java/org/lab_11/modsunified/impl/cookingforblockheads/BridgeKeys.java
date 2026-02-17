@@ -1,6 +1,7 @@
 package org.lab_11.modsunified.impl.cookingforblockheads;
 
 public final class BridgeKeys {
+    public static final String MOD_LAB11_UNIFIED = "lab_11_mods_unified";
     public static final String MOD_COOKING_FOR_BLOCKHEADS = "cookingforblockheads";
     public static final String MOD_FARMERS_DELIGHT = "farmersdelight";
     public static final String MOD_DUNGEONS_DELIGHT = "dungeonsdelight";
@@ -11,6 +12,10 @@ public final class BridgeKeys {
     public static final String TARGET_MINERS_DELIGHT_COPPER_POT = "minersdelight_copper_pot";
 
     public static final String MARKER_DUNGEON_OVEN = "dungeon_oven";
+    public static final String INDEXED_CFBH_RECIPE_PATH_PREFIX = "cfbh_indexed/";
+    public static final String MIRRORED_DD_CUP_RECIPE_PATH_PREFIX = "compat/dd_monster_to_fd/";
+    public static final String MIRRORED_DD_CUP_RECIPE_ID_PREFIX =
+            MOD_LAB11_UNIFIED + ":" + MIRRORED_DD_CUP_RECIPE_PATH_PREFIX;
 
     public static final String TOOLTIP_MISSING_DUNGEON_OVEN =
             "lab_11_mods_unified.tooltip.cooking_table.missing_dungeon_oven";

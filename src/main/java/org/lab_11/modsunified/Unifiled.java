@@ -24,6 +24,7 @@ import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotIndexedRecipe;
 import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotKitchenHandler;
 import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotProcessorCapability;
 import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotRecipeIndexer;
+import org.lab_11.modsunified.impl.cookingforblockheads.DungeonsDelightCupRecipeMirror;
 import org.slf4j.Logger;
 
 import java.util.HashSet;
@@ -205,6 +206,7 @@ public final class Unifiled {
             return;
         }
 
+        DungeonsDelightCupRecipeMirror.injectMirroredRecipes(recipeManager, registryAccess, source);
         CookingPotRecipeIndexer.injectRecipes(recipeManager, registryAccess, source, activeCookingPotTargets);
     }
 

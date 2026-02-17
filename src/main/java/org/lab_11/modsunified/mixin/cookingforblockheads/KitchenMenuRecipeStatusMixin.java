@@ -12,6 +12,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeHolder;
+import org.lab_11.modsunified.impl.cookingforblockheads.BridgeKeys;
 import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotIndexedRecipe;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
@@ -30,8 +31,6 @@ import java.util.Map;
 @Pseudo
 @Mixin(targets = "net.blay09.mods.cookingforblockheads.menu.KitchenMenu")
 abstract class KitchenMenuRecipeStatusMixin {
-    private static final int MAX_GENERATED_VARIANTS_PER_RECIPE = 64;
-    private static final int MAX_OPTIONS_PER_INGREDIENT = 8;
 
     @Shadow
     private Player player;
@@ -55,26 +54,65 @@ abstract class KitchenMenuRecipeStatusMixin {
             cancellable = true,
             remap = false
     )
-    private void lab11$freezeLockedInputsPerVariant(final ItemStack resultItem, final CallbackInfo ci) {
+    private void lab11$indexedVariantsForSelection(final ItemStack resultItem, final CallbackInfo ci) {
+        final Collection<RecipeHolder<Recipe<?>>> recipesForResult = getRecipesFor(resultItem);
+        if (!containsIndexedRecipe(recipesForResult)) {
+            return;
+        }
+
         final Map<String, RecipeWithStatus> deduped = new LinkedHashMap<>();
         final CraftingContext context = new CraftingContext(kitchen, player);
-        final Collection<RecipeHolder<Recipe<?>>> recipesForResult = getRecipesFor(resultItem);
 
-        for (final RecipeHolder<Recipe<?>> recipe : recipesForResult) {
-            final ItemStack recipeResultItem = recipe.value().getResultItem(player.level().registryAccess());
+        for (final RecipeHolder<Recipe<?>> recipeHolder : recipesForResult) {
+            final ItemStack recipeResult = recipeHolder.value().getResultItem(player.level().registryAccess());
             final NonNullList<ItemStack> baseLocks = copyLocks(lockedInputs);
-            sanitizeLocksForRecipe(baseLocks, recipe.value());
+            sanitizeLocksForRecipe(baseLocks, recipeHolder.value());
 
-            appendVariant(deduped, context, recipe, recipeResultItem, baseLocks, true);
-            appendGeneratedTagVariants(deduped, context, recipe, recipeResultItem, baseLocks);
+            appendVariant(deduped, context, recipeHolder, recipeResult, baseLocks);
+            appendGeneratedTagVariants(deduped, context, recipeHolder, recipeResult, baseLocks);
         }
 
         final List<RecipeWithStatus> result = new ArrayList<>(deduped.values());
+        result.sort((left, right) -> {
+            final boolean leftIndexed = isIndexedRecipe(left);
+            final boolean rightIndexed = isIndexedRecipe(right);
+            if (leftIndexed != rightIndexed) {
+                return leftIndexed ? -1 : 1;
+            }
 
-        result.sort(currentSorting);
+            if (left.canCraft() && !right.canCraft()) {
+                return -1;
+            }
+            if (!left.canCraft() && right.canCraft()) {
+                return 1;
+            }
+
+            final int missingCompare = Integer.compare(left.missingIngredients().size(), right.missingIngredients().size());
+            if (missingCompare != 0) {
+                return missingCompare;
+            }
+
+            return currentSorting.compare(left, right);
+        });
+
         recipesForSelection = result;
         Balm.getNetworking().sendTo(player, new SelectionRecipesListMessage(result));
         ci.cancel();
+    }
+
+    private static boolean isIndexedRecipe(final RecipeWithStatus status) {
+        final var recipeId = status.recipeId();
+        return BridgeKeys.MOD_LAB11_UNIFIED.equals(recipeId.getNamespace())
+                && recipeId.getPath().startsWith(BridgeKeys.INDEXED_CFBH_RECIPE_PATH_PREFIX);
+    }
+
+    private static boolean containsIndexedRecipe(final Collection<RecipeHolder<Recipe<?>>> recipesForResult) {
+        for (final RecipeHolder<Recipe<?>> recipeHolder : recipesForResult) {
+            if (recipeHolder.value() instanceof CookingPotIndexedRecipe) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static NonNullList<ItemStack> copyLocks(final List<ItemStack> source) {
@@ -115,29 +153,14 @@ abstract class KitchenMenuRecipeStatusMixin {
         }
     }
 
-    private static RecipeWithStatus preferCraftableVariant(final RecipeWithStatus first,
-                                                           final RecipeWithStatus second) {
-        if (first.canCraft() && !second.canCraft()) {
-            return first;
-        }
-        if (second.canCraft() && !first.canCraft()) {
-            return second;
-        }
-        return RecipeWithStatus.best(first, second);
-    }
-
     private static void appendVariant(final Map<String, RecipeWithStatus> deduped,
                                       final CraftingContext context,
                                       final RecipeHolder<Recipe<?>> recipeHolder,
                                       final ItemStack recipeResult,
-                                      final NonNullList<ItemStack> lockedInputs,
-                                      final boolean allowMissing) {
-        final NonNullList<ItemStack> attemptLocks = copyLocks(lockedInputs);
+                                      final NonNullList<ItemStack> locks) {
+        final NonNullList<ItemStack> attemptLocks = copyLocks(locks);
         sanitizeLocksForRecipe(attemptLocks, recipeHolder.value());
         final var operation = context.createOperation(recipeHolder).withLockedInputs(attemptLocks).prepare();
-        if (!allowMissing && !operation.canCraft()) {
-            return;
-        }
 
         final NonNullList<ItemStack> displayLocks = copyLocks(operation.getLockedInputs());
         final RecipeWithStatus candidate = new RecipeWithStatus(
@@ -147,8 +170,9 @@ abstract class KitchenMenuRecipeStatusMixin {
                 operation.getMissingIngredientsMask(),
                 displayLocks
         );
+
         final String displayKey = buildDisplayKey(recipeHolder.value(), recipeResult, displayLocks);
-        deduped.merge(displayKey, candidate, KitchenMenuRecipeStatusMixin::preferCraftableVariant);
+        deduped.putIfAbsent(displayKey, candidate);
     }
 
     private static void appendGeneratedTagVariants(final Map<String, RecipeWithStatus> deduped,
@@ -192,9 +216,7 @@ abstract class KitchenMenuRecipeStatusMixin {
         }
 
         final int[] cursor = new int[variantIndices.size()];
-        int generated = 0;
-
-        while (generated < MAX_GENERATED_VARIANTS_PER_RECIPE) {
+        while (true) {
             final NonNullList<ItemStack> candidateLocks = copyLocks(baseLocks);
             boolean changed = false;
 
@@ -206,8 +228,7 @@ abstract class KitchenMenuRecipeStatusMixin {
             }
 
             if (changed) {
-                appendVariant(deduped, context, recipeHolder, recipeResult, candidateLocks, false);
-                generated++;
+                appendVariant(deduped, context, recipeHolder, recipeResult, candidateLocks);
             }
 
             if (!advanceCursor(cursor, variantOptions)) {
@@ -222,26 +243,23 @@ abstract class KitchenMenuRecipeStatusMixin {
             return List.of();
         }
 
-        final List<ItemStack> options = new ArrayList<>(Math.min(rawOptions.length, MAX_OPTIONS_PER_INGREDIENT));
+        final List<ItemStack> options = new ArrayList<>(rawOptions.length);
         for (final ItemStack raw : rawOptions) {
             if (raw.isEmpty()) {
                 continue;
             }
 
             final ItemStack option = raw.copyWithCount(1);
-            boolean duplicated = false;
+            boolean duplicate = false;
             for (final ItemStack existing : options) {
                 if (ItemStack.isSameItemSameComponents(existing, option)) {
-                    duplicated = true;
+                    duplicate = true;
                     break;
                 }
             }
 
-            if (!duplicated) {
+            if (!duplicate) {
                 options.add(option);
-                if (options.size() >= MAX_OPTIONS_PER_INGREDIENT) {
-                    break;
-                }
             }
         }
 

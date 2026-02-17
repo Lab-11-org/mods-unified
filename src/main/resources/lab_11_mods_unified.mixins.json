@@ -11,6 +11,7 @@
     "OvenBlockEntityMixin"
   ],
   "client": [
+    "KitchenScreenMixin",
     "OvenRendererMixin"
   ],
   "injectors": {

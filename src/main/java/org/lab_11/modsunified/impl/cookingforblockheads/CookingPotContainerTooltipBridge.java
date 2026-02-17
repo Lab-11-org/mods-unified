@@ -1,9 +1,11 @@
 package org.lab_11.modsunified.impl.cookingforblockheads;
 
 import net.minecraft.ChatFormatting;
+import net.blay09.mods.balm.mixin.AbstractContainerScreenAccessor;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.contents.TranslatableContents;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -22,21 +24,22 @@ import java.util.List;
 public final class CookingPotContainerTooltipBridge {
     private static final String COOKING_FOR_BLOCKHEADS_MOD_ID = BridgeKeys.MOD_COOKING_FOR_BLOCKHEADS;
     private static final String KITCHEN_SCREEN_CLASS = "net.blay09.mods.cookingforblockheads.client.gui.screen.KitchenScreen";
+    private static final String CRAFT_MATRIX_FAKE_SLOT_CLASS = "net.blay09.mods.cookingforblockheads.menu.slot.CraftMatrixFakeSlot";
     private static final String CFBH_CACHE_HINT_CLASS = "net.blay09.mods.cookingforblockheads.api.CacheHint";
     private static final String CFBH_INGREDIENT_TOKEN_CLASS = "net.blay09.mods.cookingforblockheads.api.IngredientToken";
+    private static final String CFBH_TOOLTIP_CLICK_TO_UNLOCK_KEY = "tooltip.cookingforblockheads.click_to_unlock";
+    private static final String CFBH_TOOLTIP_CLICK_TO_LOCK_KEY = "tooltip.cookingforblockheads.click_to_lock";
+    private static final String CFBH_TOOLTIP_SCROLL_TO_SWITCH_KEY = "tooltip.cookingforblockheads.scroll_to_switch";
     private static final String TOOLTIP_CONTAINER_COST_KEY = "lab_11_mods_unified.tooltip.cooking_table.container_cost";
     private static final String TOOLTIP_CONTAINER_ENTRY_KEY = "lab_11_mods_unified.tooltip.cooking_table.container_entry";
     private static final String TOOLTIP_CONTAINER_NOT_ENOUGH_KEY = "lab_11_mods_unified.tooltip.cooking_table.container_not_enough";
     private static final String TOOLTIP_COOKS_IN_FROM_KEY = "lab_11_mods_unified.tooltip.cooking_table.cooks_in_from";
     private static final int CUSTOM_TOOLTIP_Y_OFFSET = 14;
 
-    private static ItemStack lastDecoratedTooltipStack = ItemStack.EMPTY;
-
     private CookingPotContainerTooltipBridge() {
     }
 
     public static void appendTooltip(final ItemTooltipEvent event) {
-        clearDecoratedTooltip();
         if (!ModList.get().isLoaded(COOKING_FOR_BLOCKHEADS_MOD_ID)) {
             return;
         }
@@ -52,6 +55,8 @@ public final class CookingPotContainerTooltipBridge {
         if (selectedRecipeWithStatus == null) {
             return;
         }
+
+        removeIndexedRecipeLockHints(event, screen, selectedRecipeWithStatus);
 
         final Object recipeIdObject = invokeNoArg(selectedRecipeWithStatus, "recipeId");
         if (!(recipeIdObject instanceof ResourceLocation recipeId)) {
@@ -75,26 +80,18 @@ public final class CookingPotContainerTooltipBridge {
         final boolean resultHovered = ItemStack.isSameItemSameComponents(hoveredStack, selectedResult);
         final boolean ingredientHovered = isHoveredStackInRecipeIngredients(hoveredStack, recipe);
 
-        boolean appendedTooltip = false;
         if (recipe instanceof CookingPotIndexedRecipe indexedRecipe && (resultHovered || ingredientHovered)) {
             appendPotTooltip(event, indexedRecipe);
-            appendedTooltip = true;
         }
 
         if (!resultHovered) {
-            if (appendedTooltip) {
-                markDecoratedTooltip(hoveredStack);
-            }
             return;
         }
 
-        appendedTooltip |= appendMissingRequirementTooltips(event, menu, recipe, minecraft.player);
+        appendMissingRequirementTooltips(event, menu, recipe, minecraft.player);
 
         final ItemStack containerCost = resolveContainerCost(recipe);
         if (containerCost.isEmpty()) {
-            if (appendedTooltip) {
-                markDecoratedTooltip(hoveredStack);
-            }
             return;
         }
 
@@ -109,18 +106,12 @@ public final class CookingPotContainerTooltipBridge {
                 containerEntry
         ).withStyle(ChatFormatting.GRAY);
         event.getToolTip().add(tooltipLine);
-        appendedTooltip = true;
 
         if (isContainerMissing(menu, containerCost, minecraft.player)) {
             event.getToolTip().add(
                     Component.translatable(TOOLTIP_CONTAINER_NOT_ENOUGH_KEY)
                             .withStyle(ChatFormatting.RED, ChatFormatting.BOLD)
             );
-            appendedTooltip = true;
-        }
-
-        if (appendedTooltip) {
-            markDecoratedTooltip(hoveredStack);
         }
     }
 
@@ -132,12 +123,10 @@ public final class CookingPotContainerTooltipBridge {
         final Minecraft minecraft = Minecraft.getInstance();
         final Object screen = minecraft.screen;
         if (screen == null || !KITCHEN_SCREEN_CLASS.equals(screen.getClass().getName())) {
-            clearDecoratedTooltip();
             return;
         }
 
-        if (lastDecoratedTooltipStack.isEmpty()
-                || !ItemStack.isSameItemSameComponents(event.getItemStack(), lastDecoratedTooltipStack)) {
+        if (!shouldApplyCustomTooltipOffset(minecraft, screen, event.getItemStack())) {
             return;
         }
 
@@ -229,16 +218,135 @@ public final class CookingPotContainerTooltipBridge {
                 .withStyle(ChatFormatting.GRAY));
     }
 
-    private static void markDecoratedTooltip(final ItemStack tooltipStack) {
-        if (tooltipStack.isEmpty()) {
-            clearDecoratedTooltip();
+    private static void removeIndexedRecipeLockHints(final ItemTooltipEvent event,
+                                                     final Object screen,
+                                                     final Object selectedRecipeWithStatus) {
+        if (!isIndexedRecipeSelection(selectedRecipeWithStatus)) {
             return;
         }
-        lastDecoratedTooltipStack = tooltipStack.copy();
+
+        final Object hoveredSlot = screen instanceof AbstractContainerScreenAccessor accessor
+                ? accessor.getHoveredSlot()
+                : invokeNoArg(screen, "getHoveredSlot");
+        if (hoveredSlot == null || !CRAFT_MATRIX_FAKE_SLOT_CLASS.equals(hoveredSlot.getClass().getName())) {
+            return;
+        }
+
+        event.getToolTip().removeIf(CookingPotContainerTooltipBridge::isIndexedLockHintLine);
     }
 
-    private static void clearDecoratedTooltip() {
-        lastDecoratedTooltipStack = ItemStack.EMPTY;
+    private static boolean isIndexedLockHintLine(final Component tooltipLine) {
+        if (tooltipLine == null) {
+            return false;
+        }
+
+        if (!(tooltipLine.getContents() instanceof TranslatableContents translatable)) {
+            return false;
+        }
+
+        final String key = translatable.getKey();
+        return CFBH_TOOLTIP_CLICK_TO_UNLOCK_KEY.equals(key)
+                || CFBH_TOOLTIP_CLICK_TO_LOCK_KEY.equals(key)
+                || CFBH_TOOLTIP_SCROLL_TO_SWITCH_KEY.equals(key);
+    }
+
+    private static boolean isIndexedRecipeSelection(final Object selectedRecipeWithStatus) {
+        final Object recipeIdObject = invokeNoArg(selectedRecipeWithStatus, "recipeId");
+        if (!(recipeIdObject instanceof ResourceLocation recipeId)) {
+            return false;
+        }
+
+        return BridgeKeys.MOD_LAB11_UNIFIED.equals(recipeId.getNamespace())
+                && recipeId.getPath().startsWith(BridgeKeys.INDEXED_CFBH_RECIPE_PATH_PREFIX);
+    }
+
+    private static boolean shouldApplyCustomTooltipOffset(final Minecraft minecraft,
+                                                          final Object screen,
+                                                          final ItemStack hoveredStack) {
+        if (minecraft.level == null || hoveredStack.isEmpty()) {
+            return false;
+        }
+
+        final Object menu = invokeNoArg(screen, "getMenu");
+        final Object selectedRecipeWithStatus = invokeNoArg(menu, "getSelectedRecipe");
+        if (selectedRecipeWithStatus == null) {
+            return false;
+        }
+
+        final Recipe<?> recipe = resolveSelectedRecipe(minecraft, selectedRecipeWithStatus);
+        if (recipe == null) {
+            return false;
+        }
+
+        final ItemStack resultStack = recipe.getResultItem(minecraft.level.registryAccess());
+        if (resultStack.isEmpty()) {
+            return false;
+        }
+
+        final boolean resultHovered = ItemStack.isSameItemSameComponents(hoveredStack, resultStack);
+        final boolean ingredientHovered = isHoveredStackInRecipeIngredients(hoveredStack, recipe);
+        final boolean showsPotOriginLine = recipe instanceof CookingPotIndexedRecipe && (resultHovered || ingredientHovered);
+        if (showsPotOriginLine) {
+            return true;
+        }
+
+        if (!resultHovered) {
+            return false;
+        }
+
+        return showsContainerLine(recipe)
+                || showsMissingRequirementsLine(menu, recipe, minecraft.player);
+    }
+
+    private static Recipe<?> resolveSelectedRecipe(final Minecraft minecraft,
+                                                   final Object selectedRecipeWithStatus) {
+        final Object recipeIdObject = invokeNoArg(selectedRecipeWithStatus, "recipeId");
+        if (!(recipeIdObject instanceof ResourceLocation recipeId)) {
+            return null;
+        }
+
+        final RecipeHolder<?> recipeHolder = minecraft.level == null
+                ? null
+                : minecraft.level.getRecipeManager().byKey(recipeId).orElse(null);
+        return recipeHolder != null ? recipeHolder.value() : null;
+    }
+
+    private static boolean showsContainerLine(final Recipe<?> recipe) {
+        return !resolveContainerCost(recipe).isEmpty();
+    }
+
+    private static boolean showsMissingRequirementsLine(final Object menu,
+                                                        final Recipe<?> recipe,
+                                                        final Player player) {
+        if (!(recipe instanceof CookingPotIndexedRecipe indexedRecipe)
+                || menu == null
+                || player == null
+                || indexedRecipe.requiredMarkerKeys().isEmpty()) {
+            return false;
+        }
+
+        final Object kitchen = invokeNoArg(menu, "getKitchen");
+        if (kitchen == null || canKitchenProcess(kitchen, recipe)) {
+            return false;
+        }
+
+        final List<?> itemProviders = resolveItemProviders(kitchen, player);
+        if (itemProviders == null || itemProviders.isEmpty()) {
+            return false;
+        }
+
+        final Class<?> cacheHintClass = resolveCacheHintClass();
+        final Object cacheHintNone = resolveCacheHintNone(cacheHintClass);
+        if (cacheHintClass == null || cacheHintNone == null) {
+            return false;
+        }
+
+        for (final String requiredMarkerKey : indexedRecipe.requiredMarkerKeys()) {
+            if (!hasRequiredMarker(itemProviders, requiredMarkerKey, cacheHintClass, cacheHintNone)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static Component resolvePotName(final String targetKey) {
