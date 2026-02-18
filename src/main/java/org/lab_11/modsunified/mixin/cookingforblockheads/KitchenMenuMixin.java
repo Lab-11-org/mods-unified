@@ -1,175 +1,157 @@
 package org.lab_11.modsunified.mixin.cookingforblockheads;
 
-import net.minecraft.core.NonNullList;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.crafting.Ingredient;
-import net.minecraft.world.item.crafting.Recipe;
 import net.blay09.mods.cookingforblockheads.crafting.RecipeWithStatus;
-import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotIndexedRecipe;
+import net.minecraft.core.NonNullList;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.ItemStack;
+import org.lab_11.modsunified.impl.cookingforblockheads.BridgeKeys;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-import java.lang.reflect.Method;
 import java.util.List;
 
 @Pseudo
 @Mixin(targets = "net.blay09.mods.cookingforblockheads.menu.KitchenMenu")
 abstract class KitchenMenuMixin {
-    private static final String INDEXED_RECIPE_NAMESPACE = "lab_11_mods_unified";
-    private static final String INDEXED_RECIPE_PATH_PREFIX = "cfbh_indexed/";
-
-    @Shadow
-    private List<?> matrixSlots;
     @Shadow
     private NonNullList<ItemStack> lockedInputs;
+    @Shadow
+    private List<RecipeWithStatus> recipesForSelection;
+    @Shadow
+    private int recipesForSelectionIndex;
 
     @Shadow
     public abstract RecipeWithStatus getSelectedRecipe();
 
-    @Inject(
-            method = "updateMatrixSlots(Lnet/minecraft/world/item/crafting/Recipe;Lnet/blay09/mods/cookingforblockheads/crafting/RecipeWithStatus;)V",
-            at = @At("HEAD"),
-            cancellable = true,
-            remap = false
-    )
-    private void lab11$renderIndexedRecipeMatrix(final Recipe<?> recipe,
-                                                 final RecipeWithStatus status,
-                                                 final CallbackInfo ci) {
-        if (!(recipe instanceof CookingPotIndexedRecipe indexedRecipe)) {
-            return;
-        }
-
-        final NonNullList<Ingredient> ingredients = recipe.getIngredients();
-        final NonNullList<Ingredient> matrix = NonNullList.withSize(9, Ingredient.EMPTY);
-        final boolean[] missingMatrix = new boolean[9];
-        final int[] ingredientIndexMatrix = new int[9];
-
-        final int syntheticIngredientCount = Math.max(0, indexedRecipe.syntheticIngredientCount());
-        for (int i = syntheticIngredientCount; i < ingredients.size(); i++) {
-            final int visibleIngredientIndex = i - syntheticIngredientCount;
-            final int matrixSlot = visibleIngredientIndex < 9 ? visibleIngredientIndex : 8;
-            matrix.set(matrixSlot, ingredients.get(i));
-            missingMatrix[matrixSlot] = isMissingIngredient(status, i);
-            ingredientIndexMatrix[matrixSlot] = i;
-        }
-
-        for (int i = 0; i < matrixSlots.size(); i++) {
-            final Object matrixSlot = matrixSlots.get(i);
-            if (matrixSlot == null) {
-                continue;
-            }
-
-            final ItemStack lockedInput = resolveLockedInput(status, ingredientIndexMatrix[i]);
-            invokeSetIngredient(matrixSlot, ingredientIndexMatrix[i], matrix.get(i), lockedInput);
-            invokeSetMissing(matrixSlot, missingMatrix[i]);
-        }
-
-        ci.cancel();
+    @Shadow
+    private void updateMatrixSlots() {
+        throw new AssertionError();
     }
 
-    private static boolean isMissingIngredient(final Object status, final int ingredientIndex) {
-        if (status == null || ingredientIndex < 0 || ingredientIndex >= Integer.SIZE) {
-            return false;
-        }
-
-        try {
-            final Method missingMaskGetter = status.getClass().getMethod("missingIngredientsMask");
-            final Object value = missingMaskGetter.invoke(status);
-            if (value instanceof Integer missingMask) {
-                return (missingMask & (1 << ingredientIndex)) != 0;
-            }
-        } catch (ReflectiveOperationException ignored) {
-            // Keep default false if CFBH internals change.
-        }
-
-        return false;
-    }
-
-    private static ItemStack resolveLockedInput(final Object status, final int ingredientIndex) {
-        if (status == null || ingredientIndex < 0) {
-            return ItemStack.EMPTY;
-        }
-
-        try {
-            final Method lockedInputsGetter = status.getClass().getMethod("lockedInputs");
-            final Object value = lockedInputsGetter.invoke(status);
-            if (!(value instanceof List<?> lockedInputs) || ingredientIndex >= lockedInputs.size()) {
-                return ItemStack.EMPTY;
-            }
-
-            final Object lockedInput = lockedInputs.get(ingredientIndex);
-            if (lockedInput instanceof ItemStack stack && !stack.isEmpty()) {
-                return stack;
-            }
-        } catch (ReflectiveOperationException ignored) {
-            // Keep default empty if CFBH internals change.
-        }
-
-        return ItemStack.EMPTY;
-    }
-
-    private static void invokeSetIngredient(final Object matrixSlot,
-                                            final int ingredientIndex,
-                                            final Ingredient ingredient,
-                                            final ItemStack lockedInput) {
-        try {
-            final Method setIngredient = matrixSlot.getClass().getMethod(
-                    "setIngredient",
-                    int.class,
-                    Ingredient.class,
-                    ItemStack.class
-            );
-            setIngredient.invoke(matrixSlot, ingredientIndex, ingredient, lockedInput);
-        } catch (ReflectiveOperationException ignored) {
-            // no-op
-        }
-    }
-
-    private static void invokeSetMissing(final Object matrixSlot, final boolean missing) {
-        try {
-            final Method setMissing = matrixSlot.getClass().getMethod("setMissing", boolean.class);
-            setMissing.invoke(matrixSlot, missing);
-        } catch (ReflectiveOperationException ignored) {
-            // no-op
-        }
-    }
+    @Unique
+    private String lab11$selectedVariantSignatureBeforeRefresh;
 
     @Inject(
             method = "nextRecipe",
             at = @At("TAIL"),
             remap = false
     )
-    private void lab11$syncLockedInputsWithSelectedVariant(final int dir, final CallbackInfo ci) {
+    private void lab11$syncSelectedVariantLocks(final int dir, final CallbackInfo ci) {
         final RecipeWithStatus selected = getSelectedRecipe();
-        if (selected == null || !isIndexedRecipe(selected)) {
+        if (!isIndexedRecipe(selected)) {
             return;
         }
 
-        lab11$applySelectedIndexedVariant(selected);
+        copySelectedLocksToMenu(selected.lockedInputs());
     }
 
-    @Unique
-    private void lab11$applySelectedIndexedVariant(final RecipeWithStatus selected) {
-        final List<ItemStack> selectedLocks = selected.lockedInputs();
-        for (int i = 0; i < lockedInputs.size(); i++) {
-            if (i < selectedLocks.size()) {
-                final ItemStack stack = selectedLocks.get(i);
-                lockedInputs.set(i, stack.isEmpty() ? ItemStack.EMPTY : stack.copy());
-            } else {
-                lockedInputs.set(i, ItemStack.EMPTY);
+    @ModifyVariable(
+            method = "craft",
+            at = @At("HEAD"),
+            argsOnly = true,
+            index = 2,
+            remap = false
+    )
+    private NonNullList<ItemStack> lab11$useSelectedVariantLocksForCraft(final NonNullList<ItemStack> incomingLockedInputs) {
+        final RecipeWithStatus selected = getSelectedRecipe();
+        if (!isIndexedRecipe(selected) || incomingLockedInputs == null) {
+            return incomingLockedInputs;
+        }
+
+        final NonNullList<ItemStack> normalizedIncoming = normalizeLocks(incomingLockedInputs, incomingLockedInputs.size());
+        copySelectedLocksToMenu(normalizedIncoming);
+        return normalizedIncoming;
+    }
+
+    @Inject(
+            method = "setRecipesForSelection",
+            at = @At("HEAD"),
+            remap = false
+    )
+    private void lab11$captureSelectedVariantSignature(final List<RecipeWithStatus> recipes, final CallbackInfo ci) {
+        final RecipeWithStatus selected = getSelectedRecipe();
+        lab11$selectedVariantSignatureBeforeRefresh = isIndexedRecipe(selected) ? signatureOf(selected) : null;
+    }
+
+    @Inject(
+            method = "setRecipesForSelection",
+            at = @At("RETURN"),
+            remap = false
+    )
+    private void lab11$restoreSelectedVariantSignature(final List<RecipeWithStatus> recipes, final CallbackInfo ci) {
+        final String signature = lab11$selectedVariantSignatureBeforeRefresh;
+        lab11$selectedVariantSignatureBeforeRefresh = null;
+        if (signature == null || recipesForSelection == null || recipesForSelection.isEmpty()) {
+            return;
+        }
+
+        for (int index = 0; index < recipesForSelection.size(); index++) {
+            final RecipeWithStatus candidate = recipesForSelection.get(index);
+            if (!signature.equals(signatureOf(candidate))) {
+                continue;
             }
+
+            if (recipesForSelectionIndex != index) {
+                recipesForSelectionIndex = index;
+                updateMatrixSlots();
+            }
+            return;
         }
     }
 
-    private static boolean isIndexedRecipe(final RecipeWithStatus status) {
-        final var recipeId = status.recipeId();
+    private void copySelectedLocksToMenu(final NonNullList<ItemStack> selectedLocks) {
+        final NonNullList<ItemStack> normalized = normalizeLocks(selectedLocks, lockedInputs.size());
+        for (int i = 0; i < lockedInputs.size(); i++) {
+            lockedInputs.set(i, normalized.get(i));
+        }
+    }
+
+    private static NonNullList<ItemStack> normalizeLocks(final NonNullList<ItemStack> selectedLocks, final int targetSize) {
+        final NonNullList<ItemStack> normalized = NonNullList.withSize(targetSize, ItemStack.EMPTY);
+        if (selectedLocks == null || selectedLocks.isEmpty()) {
+            return normalized;
+        }
+
+        final int copyCount = Math.min(targetSize, selectedLocks.size());
+        for (int i = 0; i < copyCount; i++) {
+            final ItemStack stack = selectedLocks.get(i);
+            normalized.set(i, stack.isEmpty() ? ItemStack.EMPTY : stack.copy());
+        }
+        return normalized;
+    }
+
+    private static boolean isIndexedRecipe(final RecipeWithStatus selected) {
+        if (selected == null) {
+            return false;
+        }
+
+        final ResourceLocation recipeId = selected.recipeId();
         return recipeId != null
-                && INDEXED_RECIPE_NAMESPACE.equals(recipeId.getNamespace())
-                && recipeId.getPath().startsWith(INDEXED_RECIPE_PATH_PREFIX);
+                && BridgeKeys.MOD_LAB11_UNIFIED.equals(recipeId.getNamespace())
+                && recipeId.getPath().startsWith(BridgeKeys.INDEXED_CFBH_RECIPE_PATH_PREFIX);
+    }
+
+    private static String signatureOf(final RecipeWithStatus status) {
+        final ResourceLocation recipeId = status.recipeId();
+        final StringBuilder signature = new StringBuilder(recipeId.toString());
+        final NonNullList<ItemStack> locks = status.lockedInputs();
+        if (locks == null || locks.isEmpty()) {
+            return signature.toString();
+        }
+
+        for (int i = 0; i < locks.size(); i++) {
+            final ItemStack stack = locks.get(i);
+            signature.append('|').append(i).append('=');
+            if (!stack.isEmpty()) {
+                signature.append(stack.getItem()).append('#').append(stack.getComponents());
+            }
+        }
+        return signature.toString();
     }
 }

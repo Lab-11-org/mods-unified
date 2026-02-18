@@ -16,11 +16,11 @@ public final class DungeonOvenClientHooks {
     private static final String PRIMARY_VARIANT = "standalone";
     private static final String[] FALLBACK_VARIANTS = {"inventory", "normal"};
     private static final ResourceLocation DOOR_MODEL_ID =
-            ResourceLocation.fromNamespaceAndPath(Unifiled.MOD_ID, "block/dungeon_oven_door");
+            ResourceLocation.fromNamespaceAndPath(Unifiled.MOD_ID, "blocks/dungeon_oven_door");
     private static final ResourceLocation ACTIVE_DOOR_MODEL_ID =
-            ResourceLocation.fromNamespaceAndPath(Unifiled.MOD_ID, "block/dungeon_oven_door_active");
+            ResourceLocation.fromNamespaceAndPath(Unifiled.MOD_ID, "blocks/dungeon_oven_door_active");
     private static final ResourceLocation HANDLE_MODEL_ID =
-            ResourceLocation.fromNamespaceAndPath(Unifiled.MOD_ID, "block/dungeon_oven_door_handle");
+            ResourceLocation.fromNamespaceAndPath(Unifiled.MOD_ID, "blocks/dungeon_oven_door_handle");
     public static final ModelResourceLocation DOOR_MODEL = new ModelResourceLocation(
             DOOR_MODEL_ID,
             PRIMARY_VARIANT

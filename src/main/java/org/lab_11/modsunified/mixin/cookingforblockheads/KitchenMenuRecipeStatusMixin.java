@@ -27,10 +27,20 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Pseudo
 @Mixin(targets = "net.blay09.mods.cookingforblockheads.menu.KitchenMenu")
 abstract class KitchenMenuRecipeStatusMixin {
+    private record VariantCandidate(String displayKey, RecipeWithStatus status) {
+    }
+
+    private record VariantAxis(int ingredientIndex, List<ItemStack> options) {
+    }
+
+    private record StackIdentity(Object item, Object components) {
+    }
 
     @Shadow
     private Player player;
@@ -56,44 +66,22 @@ abstract class KitchenMenuRecipeStatusMixin {
     )
     private void lab11$indexedVariantsForSelection(final ItemStack resultItem, final CallbackInfo ci) {
         final Collection<RecipeHolder<Recipe<?>>> recipesForResult = getRecipesFor(resultItem);
-        if (!containsIndexedRecipe(recipesForResult)) {
+        if (recipesForResult.stream().noneMatch(KitchenMenuRecipeStatusMixin::isIndexedRecipeHolder)) {
             return;
         }
 
-        final Map<String, RecipeWithStatus> deduped = new LinkedHashMap<>();
         final CraftingContext context = new CraftingContext(kitchen, player);
-
-        for (final RecipeHolder<Recipe<?>> recipeHolder : recipesForResult) {
-            final ItemStack recipeResult = recipeHolder.value().getResultItem(player.level().registryAccess());
-            final NonNullList<ItemStack> baseLocks = copyLocks(lockedInputs);
-            sanitizeLocksForRecipe(baseLocks, recipeHolder.value());
-
-            appendVariant(deduped, context, recipeHolder, recipeResult, baseLocks);
-            appendGeneratedTagVariants(deduped, context, recipeHolder, recipeResult, baseLocks);
-        }
+        final Map<String, RecipeWithStatus> deduped = recipesForResult.stream()
+                .flatMap(recipeHolder -> buildVariantCandidates(context, recipeHolder))
+                .collect(Collectors.toMap(
+                        VariantCandidate::displayKey,
+                        VariantCandidate::status,
+                        (existing, ignored) -> existing,
+                        LinkedHashMap::new
+                ));
 
         final List<RecipeWithStatus> result = new ArrayList<>(deduped.values());
-        result.sort((left, right) -> {
-            final boolean leftIndexed = isIndexedRecipe(left);
-            final boolean rightIndexed = isIndexedRecipe(right);
-            if (leftIndexed != rightIndexed) {
-                return leftIndexed ? -1 : 1;
-            }
-
-            if (left.canCraft() && !right.canCraft()) {
-                return -1;
-            }
-            if (!left.canCraft() && right.canCraft()) {
-                return 1;
-            }
-
-            final int missingCompare = Integer.compare(left.missingIngredients().size(), right.missingIngredients().size());
-            if (missingCompare != 0) {
-                return missingCompare;
-            }
-
-            return currentSorting.compare(left, right);
-        });
+        result.sort(selectionComparator());
 
         recipesForSelection = result;
         Balm.getNetworking().sendTo(player, new SelectionRecipesListMessage(result));
@@ -106,13 +94,111 @@ abstract class KitchenMenuRecipeStatusMixin {
                 && recipeId.getPath().startsWith(BridgeKeys.INDEXED_CFBH_RECIPE_PATH_PREFIX);
     }
 
-    private static boolean containsIndexedRecipe(final Collection<RecipeHolder<Recipe<?>>> recipesForResult) {
-        for (final RecipeHolder<Recipe<?>> recipeHolder : recipesForResult) {
-            if (recipeHolder.value() instanceof CookingPotIndexedRecipe) {
-                return true;
+    private Comparator<RecipeWithStatus> selectionComparator() {
+        return (left, right) -> {
+            final boolean leftIndexed = isIndexedRecipe(left);
+            final boolean rightIndexed = isIndexedRecipe(right);
+            if (leftIndexed != rightIndexed) {
+                return leftIndexed ? -1 : 1;
+            }
+
+            if (left.canCraft() != right.canCraft()) {
+                return left.canCraft() ? -1 : 1;
+            }
+
+            final int missingCompare = Integer.compare(left.missingIngredients().size(), right.missingIngredients().size());
+            if (missingCompare != 0) {
+                return missingCompare;
+            }
+
+            return currentSorting.compare(left, right);
+        };
+    }
+
+    private Stream<VariantCandidate> buildVariantCandidates(final CraftingContext context,
+                                                            final RecipeHolder<Recipe<?>> recipeHolder) {
+        final Recipe<?> recipe = recipeHolder.value();
+        final ItemStack recipeResult = recipe.getResultItem(player.level().registryAccess());
+        final NonNullList<ItemStack> baseLocks = recipe instanceof CookingPotIndexedRecipe
+                ? emptyLocksForRecipe(recipe)
+                : prepareLocksForRecipe(lockedInputs, recipe);
+
+        return Stream.concat(
+                        Stream.of(baseLocks),
+                        expandTagVariantLocks(recipe, baseLocks)
+                )
+                .map(variantLocks -> buildVariantCandidate(context, recipeHolder, recipeResult, variantLocks));
+    }
+
+    private static VariantCandidate buildVariantCandidate(final CraftingContext context,
+                                                          final RecipeHolder<Recipe<?>> recipeHolder,
+                                                          final ItemStack recipeResult,
+                                                          final List<ItemStack> locks) {
+        final Recipe<?> recipe = recipeHolder.value();
+        final NonNullList<ItemStack> operationLocks = prepareLocksForRecipe(locks, recipe);
+        final var operation = context.createOperation(recipeHolder).withLockedInputs(operationLocks).prepare();
+        final NonNullList<ItemStack> displayLocks = copyLocks(operation.getLockedInputs());
+        final RecipeWithStatus status = new RecipeWithStatus(
+                recipeHolder.id(),
+                recipeResult,
+                operation.getMissingIngredients(),
+                operation.getMissingIngredientsMask(),
+                displayLocks
+        );
+        return new VariantCandidate(buildDisplayKey(recipe, recipeResult, displayLocks), status);
+    }
+
+    private static Stream<NonNullList<ItemStack>> expandTagVariantLocks(final Recipe<?> recipe,
+                                                                        final NonNullList<ItemStack> baseLocks) {
+        final List<VariantAxis> axes = collectVariantAxes(recipe, baseLocks);
+        if (axes.isEmpty()) {
+            return Stream.empty();
+        }
+
+        final List<NonNullList<ItemStack>> expanded = new ArrayList<>();
+        final int[] cursor = new int[axes.size()];
+        while (advanceCursor(cursor, axes)) {
+            expanded.add(applyCursor(baseLocks, axes, cursor));
+        }
+
+        return expanded.stream();
+    }
+
+    private static List<VariantAxis> collectVariantAxes(final Recipe<?> recipe,
+                                                        final List<ItemStack> baseLocks) {
+        final List<Ingredient> ingredients = recipe.getIngredients();
+        if (ingredients.isEmpty()) {
+            return List.of();
+        }
+
+        final int start = recipe instanceof CookingPotIndexedRecipe indexedRecipe
+                ? Math.max(0, indexedRecipe.syntheticIngredientCount())
+                : 0;
+        final int end = Math.min(ingredients.size(), baseLocks.size());
+        final List<VariantAxis> axes = new ArrayList<>();
+        for (int index = start; index < end && axes.size() < Integer.SIZE; index++) {
+            if (!baseLocks.get(index).isEmpty()) {
+                continue;
+            }
+
+            final List<ItemStack> options = collectIngredientOptions(ingredients.get(index));
+            if (options.size() > 1) {
+                axes.add(new VariantAxis(index, options));
             }
         }
-        return false;
+
+        return axes;
+    }
+
+    private static NonNullList<ItemStack> applyCursor(final List<ItemStack> baseLocks,
+                                                      final List<VariantAxis> axes,
+                                                      final int[] cursor) {
+        final NonNullList<ItemStack> variantLocks = copyLocks(baseLocks);
+        for (int axisIndex = 0; axisIndex < axes.size(); axisIndex++) {
+            final VariantAxis axis = axes.get(axisIndex);
+            variantLocks.set(axis.ingredientIndex(), axis.options().get(cursor[axisIndex]));
+        }
+        return variantLocks;
     }
 
     private static NonNullList<ItemStack> copyLocks(final List<ItemStack> source) {
@@ -128,10 +214,11 @@ abstract class KitchenMenuRecipeStatusMixin {
         return copy;
     }
 
-    private static void sanitizeLocksForRecipe(final NonNullList<ItemStack> operationLocks,
-                                               final Recipe<?> recipe) {
-        if (operationLocks == null || operationLocks.isEmpty()) {
-            return;
+    private static NonNullList<ItemStack> prepareLocksForRecipe(final List<ItemStack> source,
+                                                                final Recipe<?> recipe) {
+        final NonNullList<ItemStack> operationLocks = copyLocks(source);
+        if (operationLocks.isEmpty()) {
+            return operationLocks;
         }
 
         final List<Ingredient> ingredients = recipe.getIngredients();
@@ -151,90 +238,11 @@ abstract class KitchenMenuRecipeStatusMixin {
         for (int i = max; i < operationLocks.size(); i++) {
             operationLocks.set(i, ItemStack.EMPTY);
         }
+        return operationLocks;
     }
 
-    private static void appendVariant(final Map<String, RecipeWithStatus> deduped,
-                                      final CraftingContext context,
-                                      final RecipeHolder<Recipe<?>> recipeHolder,
-                                      final ItemStack recipeResult,
-                                      final NonNullList<ItemStack> locks) {
-        final NonNullList<ItemStack> attemptLocks = copyLocks(locks);
-        sanitizeLocksForRecipe(attemptLocks, recipeHolder.value());
-        final var operation = context.createOperation(recipeHolder).withLockedInputs(attemptLocks).prepare();
-
-        final NonNullList<ItemStack> displayLocks = copyLocks(operation.getLockedInputs());
-        final RecipeWithStatus candidate = new RecipeWithStatus(
-                recipeHolder.id(),
-                recipeResult,
-                operation.getMissingIngredients(),
-                operation.getMissingIngredientsMask(),
-                displayLocks
-        );
-
-        final String displayKey = buildDisplayKey(recipeHolder.value(), recipeResult, displayLocks);
-        deduped.putIfAbsent(displayKey, candidate);
-    }
-
-    private static void appendGeneratedTagVariants(final Map<String, RecipeWithStatus> deduped,
-                                                   final CraftingContext context,
-                                                   final RecipeHolder<Recipe<?>> recipeHolder,
-                                                   final ItemStack recipeResult,
-                                                   final NonNullList<ItemStack> baseLocks) {
-        final Recipe<?> recipe = recipeHolder.value();
-        final List<Ingredient> ingredients = recipe.getIngredients();
-        if (ingredients.isEmpty()) {
-            return;
-        }
-
-        final int ingredientStart = recipe instanceof CookingPotIndexedRecipe indexedRecipe
-                ? Math.max(0, indexedRecipe.syntheticIngredientCount())
-                : 0;
-
-        final List<Integer> variantIndices = new ArrayList<>();
-        final List<List<ItemStack>> variantOptions = new ArrayList<>();
-
-        for (int i = ingredientStart; i < ingredients.size() && variantIndices.size() < Integer.SIZE; i++) {
-            if (i >= baseLocks.size()) {
-                break;
-            }
-
-            if (!baseLocks.get(i).isEmpty()) {
-                continue;
-            }
-
-            final List<ItemStack> options = collectIngredientOptions(ingredients.get(i));
-            if (options.size() <= 1) {
-                continue;
-            }
-
-            variantIndices.add(i);
-            variantOptions.add(options);
-        }
-
-        if (variantIndices.isEmpty()) {
-            return;
-        }
-
-        final int[] cursor = new int[variantIndices.size()];
-        while (true) {
-            final NonNullList<ItemStack> candidateLocks = copyLocks(baseLocks);
-            boolean changed = false;
-
-            for (int i = 0; i < variantIndices.size(); i++) {
-                final int ingredientIndex = variantIndices.get(i);
-                final ItemStack selected = variantOptions.get(i).get(cursor[i]);
-                candidateLocks.set(ingredientIndex, selected);
-                changed |= cursor[i] != 0;
-            }
-
-            if (changed) {
-                appendVariant(deduped, context, recipeHolder, recipeResult, candidateLocks);
-            }
-
-            if (!advanceCursor(cursor, variantOptions)) {
-                break;
-            }
-        }
+    private static NonNullList<ItemStack> emptyLocksForRecipe(final Recipe<?> recipe) {
+        return NonNullList.withSize(recipe.getIngredients().size(), ItemStack.EMPTY);
     }
 
     private static List<ItemStack> collectIngredientOptions(final Ingredient ingredient) {
@@ -243,33 +251,27 @@ abstract class KitchenMenuRecipeStatusMixin {
             return List.of();
         }
 
-        final List<ItemStack> options = new ArrayList<>(rawOptions.length);
+        final LinkedHashMap<StackIdentity, ItemStack> options = new LinkedHashMap<>(rawOptions.length);
         for (final ItemStack raw : rawOptions) {
             if (raw.isEmpty()) {
                 continue;
             }
 
             final ItemStack option = raw.copyWithCount(1);
-            boolean duplicate = false;
-            for (final ItemStack existing : options) {
-                if (ItemStack.isSameItemSameComponents(existing, option)) {
-                    duplicate = true;
-                    break;
-                }
-            }
-
-            if (!duplicate) {
-                options.add(option);
-            }
+            options.putIfAbsent(new StackIdentity(option.getItem(), option.getComponents()), option);
         }
 
-        return options;
+        final List<ItemStack> sorted = new ArrayList<>(options.values());
+        sorted.sort(Comparator
+                .comparing((ItemStack stack) -> BuiltInRegistries.ITEM.getKey(stack.getItem()).toString())
+                .thenComparing(stack -> stack.getComponents().toString()));
+        return List.copyOf(sorted);
     }
 
-    private static boolean advanceCursor(final int[] cursor, final List<List<ItemStack>> options) {
+    private static boolean advanceCursor(final int[] cursor, final List<VariantAxis> axes) {
         for (int i = cursor.length - 1; i >= 0; i--) {
             final int next = cursor[i] + 1;
-            if (next < options.get(i).size()) {
+            if (next < axes.get(i).options().size()) {
                 cursor[i] = next;
                 for (int j = i + 1; j < cursor.length; j++) {
                     cursor[j] = 0;
@@ -278,6 +280,10 @@ abstract class KitchenMenuRecipeStatusMixin {
             }
         }
         return false;
+    }
+
+    private static boolean isIndexedRecipeHolder(final RecipeHolder<Recipe<?>> recipeHolder) {
+        return recipeHolder.value() instanceof CookingPotIndexedRecipe;
     }
 
     private static String buildDisplayKey(final Recipe<?> recipe,
@@ -297,7 +303,10 @@ abstract class KitchenMenuRecipeStatusMixin {
             if (lockedInputs != null && i < lockedInputs.size()) {
                 final ItemStack locked = lockedInputs.get(i);
                 if (!locked.isEmpty()) {
-                    key.append('@').append(BuiltInRegistries.ITEM.getKey(locked.getItem()));
+                    key.append('@')
+                            .append(BuiltInRegistries.ITEM.getKey(locked.getItem()))
+                            .append('#')
+                            .append(locked.getComponents());
                 }
             }
         }
