@@ -1,39 +1,23 @@
 package org.lab_11.modsunified.mixin.cookingforblockheads;
 
-import net.blay09.mods.cookingforblockheads.crafting.RecipeWithStatus;
 import net.minecraft.core.NonNullList;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import org.lab_11.modsunified.impl.cookingforblockheads.BridgeKeys;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
-import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import java.lang.reflect.Field;
 import java.util.List;
 
 @Pseudo
 @Mixin(targets = "net.blay09.mods.cookingforblockheads.menu.KitchenMenu")
 abstract class KitchenMenuMixin {
-    @Shadow
-    private NonNullList<ItemStack> lockedInputs;
-    @Shadow
-    private List<RecipeWithStatus> recipesForSelection;
-    @Shadow
-    private int recipesForSelectionIndex;
-
-    @Shadow
-    public abstract RecipeWithStatus getSelectedRecipe();
-
-    @Shadow
-    private void updateMatrixSlots() {
-        throw new AssertionError();
-    }
-
     @Unique
     private String lab11$selectedVariantSignatureBeforeRefresh;
 
@@ -43,12 +27,12 @@ abstract class KitchenMenuMixin {
             remap = false
     )
     private void lab11$syncSelectedVariantLocks(final int dir, final CallbackInfo ci) {
-        final RecipeWithStatus selected = getSelectedRecipe();
+        final Object selected = invokeNoArg(this, "getSelectedRecipe");
         if (!isIndexedRecipe(selected)) {
             return;
         }
 
-        copySelectedLocksToMenu(selected.lockedInputs());
+        copySelectedLocksToMenu(lockedInputsOf(selected));
     }
 
     @ModifyVariable(
@@ -59,7 +43,7 @@ abstract class KitchenMenuMixin {
             remap = false
     )
     private NonNullList<ItemStack> lab11$useSelectedVariantLocksForCraft(final NonNullList<ItemStack> incomingLockedInputs) {
-        final RecipeWithStatus selected = getSelectedRecipe();
+        final Object selected = invokeNoArg(this, "getSelectedRecipe");
         if (!isIndexedRecipe(selected) || incomingLockedInputs == null) {
             return incomingLockedInputs;
         }
@@ -74,8 +58,8 @@ abstract class KitchenMenuMixin {
             at = @At("HEAD"),
             remap = false
     )
-    private void lab11$captureSelectedVariantSignature(final List<RecipeWithStatus> recipes, final CallbackInfo ci) {
-        final RecipeWithStatus selected = getSelectedRecipe();
+    private void lab11$captureSelectedVariantSignature(final List<?> recipes, final CallbackInfo ci) {
+        final Object selected = invokeNoArg(this, "getSelectedRecipe");
         lab11$selectedVariantSignatureBeforeRefresh = isIndexedRecipe(selected) ? signatureOf(selected) : null;
     }
 
@@ -84,34 +68,72 @@ abstract class KitchenMenuMixin {
             at = @At("RETURN"),
             remap = false
     )
-    private void lab11$restoreSelectedVariantSignature(final List<RecipeWithStatus> recipes, final CallbackInfo ci) {
+    private void lab11$restoreSelectedVariantSignature(final List<?> recipes, final CallbackInfo ci) {
         final String signature = lab11$selectedVariantSignatureBeforeRefresh;
         lab11$selectedVariantSignatureBeforeRefresh = null;
-        if (signature == null || recipesForSelection == null || recipesForSelection.isEmpty()) {
+        final List<?> recipesForSelection = recipesForSelection();
+        if (signature == null || recipesForSelection.isEmpty()) {
             return;
         }
 
         for (int index = 0; index < recipesForSelection.size(); index++) {
-            final RecipeWithStatus candidate = recipesForSelection.get(index);
+            final Object candidate = recipesForSelection.get(index);
             if (!signature.equals(signatureOf(candidate))) {
                 continue;
             }
 
-            if (recipesForSelectionIndex != index) {
-                recipesForSelectionIndex = index;
-                updateMatrixSlots();
+            if (recipesForSelectionIndex() != index) {
+                setRecipesForSelectionIndex(index);
+                invokeNoArg(this, "updateMatrixSlots");
             }
             return;
         }
     }
 
+    @Unique
+    private NonNullList<ItemStack> lockedInputs() {
+        final Object value = readFieldValue(this, "lockedInputs");
+        if (value instanceof NonNullList<?> list) {
+            @SuppressWarnings("unchecked")
+            final NonNullList<ItemStack> cast = (NonNullList<ItemStack>) list;
+            return cast;
+        }
+        return NonNullList.create();
+    }
+
+    @Unique
+    private List<?> recipesForSelection() {
+        final Object value = readFieldValue(this, "recipesForSelection");
+        if (value instanceof List<?> list) {
+            return list;
+        }
+        return List.of();
+    }
+
+    @Unique
+    private int recipesForSelectionIndex() {
+        final Object value = readFieldValue(this, "recipesForSelectionIndex");
+        if (value instanceof Integer index) {
+            return index;
+        }
+        return 0;
+    }
+
+    @Unique
+    private void setRecipesForSelectionIndex(final int index) {
+        writeFieldValue(this, "recipesForSelectionIndex", index);
+    }
+
+    @Unique
     private void copySelectedLocksToMenu(final NonNullList<ItemStack> selectedLocks) {
+        final NonNullList<ItemStack> lockedInputs = lockedInputs();
         final NonNullList<ItemStack> normalized = normalizeLocks(selectedLocks, lockedInputs.size());
         for (int i = 0; i < lockedInputs.size(); i++) {
             lockedInputs.set(i, normalized.get(i));
         }
     }
 
+    @Unique
     private static NonNullList<ItemStack> normalizeLocks(final NonNullList<ItemStack> selectedLocks, final int targetSize) {
         final NonNullList<ItemStack> normalized = NonNullList.withSize(targetSize, ItemStack.EMPTY);
         if (selectedLocks == null || selectedLocks.isEmpty()) {
@@ -126,21 +148,27 @@ abstract class KitchenMenuMixin {
         return normalized;
     }
 
-    private static boolean isIndexedRecipe(final RecipeWithStatus selected) {
+    @Unique
+    private static boolean isIndexedRecipe(final Object selected) {
         if (selected == null) {
             return false;
         }
 
-        final ResourceLocation recipeId = selected.recipeId();
+        final ResourceLocation recipeId = recipeIdOf(selected);
         return recipeId != null
                 && BridgeKeys.MOD_LAB11_UNIFIED.equals(recipeId.getNamespace())
                 && recipeId.getPath().startsWith(BridgeKeys.INDEXED_CFBH_RECIPE_PATH_PREFIX);
     }
 
-    private static String signatureOf(final RecipeWithStatus status) {
-        final ResourceLocation recipeId = status.recipeId();
+    @Unique
+    private static String signatureOf(final Object status) {
+        final ResourceLocation recipeId = recipeIdOf(status);
+        if (recipeId == null) {
+            return "";
+        }
+
         final StringBuilder signature = new StringBuilder(recipeId.toString());
-        final NonNullList<ItemStack> locks = status.lockedInputs();
+        final NonNullList<ItemStack> locks = lockedInputsOf(status);
         if (locks == null || locks.isEmpty()) {
             return signature.toString();
         }
@@ -153,5 +181,90 @@ abstract class KitchenMenuMixin {
             }
         }
         return signature.toString();
+    }
+
+    @Unique
+    private static ResourceLocation recipeIdOf(final Object status) {
+        final Object value = invokeNoArg(status, "recipeId");
+        if (value instanceof ResourceLocation recipeId) {
+            return recipeId;
+        }
+        return null;
+    }
+
+    @Unique
+    private static NonNullList<ItemStack> lockedInputsOf(final Object status) {
+        final Object value = invokeNoArg(status, "lockedInputs");
+        if (value instanceof NonNullList<?> list) {
+            @SuppressWarnings("unchecked")
+            final NonNullList<ItemStack> cast = (NonNullList<ItemStack>) list;
+            return cast;
+        }
+        return NonNullList.create();
+    }
+
+    @Unique
+    private static Object invokeNoArg(final Object target, final String methodName) {
+        if (target == null) {
+            return null;
+        }
+
+        try {
+            final var method = target.getClass().getMethod(methodName);
+            return method.invoke(target);
+        } catch (ReflectiveOperationException ignored) {
+            return null;
+        }
+    }
+
+    @Unique
+    private static Object readFieldValue(final Object target, final String fieldName) {
+        if (target == null) {
+            return null;
+        }
+
+        final Field field = findField(target.getClass(), fieldName);
+        if (field == null) {
+            return null;
+        }
+
+        try {
+            field.setAccessible(true);
+            return field.get(target);
+        } catch (ReflectiveOperationException ignored) {
+            return null;
+        }
+    }
+
+    @Unique
+    private static void writeFieldValue(final Object target, final String fieldName, final Object value) {
+        if (target == null) {
+            return;
+        }
+
+        final Field field = findField(target.getClass(), fieldName);
+        if (field == null) {
+            return;
+        }
+
+        try {
+            field.setAccessible(true);
+            field.set(target, value);
+        } catch (ReflectiveOperationException ignored) {
+            // no-op
+        }
+    }
+
+    @Unique
+    private static Field findField(final Class<?> ownerClass, final String fieldName) {
+        Class<?> current = ownerClass;
+        while (current != null) {
+            try {
+                return current.getDeclaredField(fieldName);
+            } catch (NoSuchFieldException ignored) {
+                current = current.getSuperclass();
+            }
+        }
+        return null;
     }
 }

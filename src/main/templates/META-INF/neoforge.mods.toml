@@ -30,28 +30,28 @@ side="BOTH"
 [[dependencies.${mod_id}]]
 modId="cookingforblockheads"
 type="optional"
-versionRange="[21.1.17,)"
+versionRange="[0,)"
 ordering="AFTER"
 side="BOTH"
 
 [[dependencies.${mod_id}]]
 modId="farmersdelight"
 type="optional"
-versionRange="[1.2.9,)"
+versionRange="[0,)"
 ordering="AFTER"
 side="BOTH"
 
 [[dependencies.${mod_id}]]
 modId="balm"
 type="optional"
-versionRange="[21.0.56,)"
+versionRange="[0,)"
 ordering="AFTER"
 side="BOTH"
 
 [[dependencies.${mod_id}]]
 modId="dungeonsdelight"
 type="optional"
-versionRange="[1.4.5,)"
+versionRange="[0,)"
 ordering="AFTER"
 side="BOTH"
 

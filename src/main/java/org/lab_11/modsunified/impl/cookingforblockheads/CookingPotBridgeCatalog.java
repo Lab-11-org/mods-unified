@@ -14,6 +14,11 @@ public final class CookingPotBridgeCatalog {
         final List<CookingPotBridgeTarget> activeTargets = new ArrayList<>();
         for (final CookingPotBridgeTarget target : allTargets()) {
             if (!target.isModSetLoaded()) {
+                logger.info(
+                        "Skipping cooking-pot bridge target '{}' because required mods are not loaded: {}.",
+                        target.displayName(),
+                        String.join(", ", target.missingRequiredModIds())
+                );
                 continue;
             }
 
@@ -27,6 +32,7 @@ public final class CookingPotBridgeCatalog {
             }
 
             activeTargets.add(target);
+            logger.info("Enabled cooking-pot bridge target '{}'.", target.displayName());
         }
 
         return List.copyOf(activeTargets);

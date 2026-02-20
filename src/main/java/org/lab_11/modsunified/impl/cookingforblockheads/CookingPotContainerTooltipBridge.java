@@ -1,7 +1,6 @@
 package org.lab_11.modsunified.impl.cookingforblockheads;
 
 import net.minecraft.ChatFormatting;
-import net.blay09.mods.balm.mixin.AbstractContainerScreenAccessor;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
@@ -241,9 +240,7 @@ public final class CookingPotContainerTooltipBridge {
             return;
         }
 
-        final Object hoveredSlot = screen instanceof AbstractContainerScreenAccessor accessor
-                ? accessor.getHoveredSlot()
-                : invokeNoArg(screen, "getHoveredSlot");
+        final Object hoveredSlot = invokeNoArg(screen, "getHoveredSlot");
         if (hoveredSlot == null || !CRAFT_MATRIX_FAKE_SLOT_CLASS.equals(hoveredSlot.getClass().getName())) {
             return;
         }
@@ -588,7 +585,7 @@ public final class CookingPotContainerTooltipBridge {
                                                                       final Object cacheHintNone) {
         boolean foundTargetProvider = false;
         for (final Object itemProvider : itemProviders) {
-            if (!(itemProvider instanceof CookingPotActivationMarkerProvider markerProvider)
+            if (!(itemProvider instanceof MarkerProviderView markerProvider)
                     || !markerProvider.isMarkerKey(targetKey)) {
                 continue;
             }

@@ -2,7 +2,6 @@ package org.lab_11.modsunified.impl.cookingforblockheads;
 
 import com.google.common.collect.Multimap;
 import com.mojang.logging.LogUtils;
-import net.blay09.mods.cookingforblockheads.registry.CookingForBlockheadsRegistry;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
@@ -22,12 +21,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 
 public final class CookingPotRecipeIndexer {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final String INDEXED_RECIPE_NAMESPACE = "lab_11_mods_unified";
     private static final String INDEXED_RECIPE_PATH_PREFIX = "cfbh_indexed/";
     private static final String RECIPE_MANAGER_BY_NAME_FIELD = "byName";
+    private static final String CFBH_REGISTRY_CLASS = "net.blay09.mods.cookingforblockheads.registry.CookingForBlockheadsRegistry";
 
     private CookingPotRecipeIndexer() {
     }
@@ -46,7 +47,11 @@ public final class CookingPotRecipeIndexer {
             return;
         }
 
-        final Multimap<ResourceLocation, RecipeHolder<Recipe<?>>> recipesByItemId = CookingForBlockheadsRegistry.getRecipesByItemId();
+        final Multimap<ResourceLocation, RecipeHolder<Recipe<?>>> recipesByItemId = resolveRecipesByItemId();
+        if (recipesByItemId == null) {
+            LOGGER.warn("Skipping indexed cooking-pot recipe injection because CookingForBlockheads recipe registry is unavailable.");
+            return;
+        }
         final Map<ResourceLocation, RecipeHolder<?>> indexedRecipesById = new HashMap<>();
 
         int removed = 0;
@@ -113,6 +118,21 @@ public final class CookingPotRecipeIndexer {
         installIndexedRecipesByName(recipeManager, indexedRecipesById);
         LOGGER.info("Injected {} cooking-pot recipes into Cooking for Blockheads recipe index (removed {}) via {}.",
                 added, removed, source);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Multimap<ResourceLocation, RecipeHolder<Recipe<?>>> resolveRecipesByItemId() {
+        try {
+            final Class<?> registryClass = Class.forName(CFBH_REGISTRY_CLASS);
+            final Method getRecipesByItemIdMethod = registryClass.getMethod("getRecipesByItemId");
+            final Object value = getRecipesByItemIdMethod.invoke(null);
+            if (value instanceof Multimap<?, ?> multimap) {
+                return (Multimap<ResourceLocation, RecipeHolder<Recipe<?>>>) multimap;
+            }
+        } catch (ReflectiveOperationException ignored) {
+            // no-op
+        }
+        return null;
     }
 
     @SuppressWarnings("unchecked")

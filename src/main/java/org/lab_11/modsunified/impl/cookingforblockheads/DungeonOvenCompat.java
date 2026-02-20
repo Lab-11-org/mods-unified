@@ -1,10 +1,9 @@
 package org.lab_11.modsunified.impl.cookingforblockheads;
 
 import com.mojang.logging.LogUtils;
-import net.blay09.mods.balm.api.Balm;
-import net.blay09.mods.cookingforblockheads.block.OvenBlock;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.CreativeModeTabs;
@@ -25,6 +24,8 @@ import org.slf4j.Logger;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Array;
+import java.lang.reflect.Constructor;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
@@ -46,6 +47,8 @@ public final class DungeonOvenCompat {
     private static final String CFBH_OVEN_DEFERRED_FIELD = "oven";
     private static final String[] CFBH_OVENS_FIELD_CANDIDATES = {"ovens", "dyedOvens"};
     private static final String BLOCK_ENTITY_VALID_BLOCKS_FIELD = "validBlocks";
+    private static final String CFBH_OVEN_BLOCK_CLASS = "net.blay09.mods.cookingforblockheads.block.OvenBlock";
+    private static final String BALM_CLASS = "net.blay09.mods.balm.api.Balm";
     private static final String LOCAL_CLIENT_HOOKS_CLASS =
             "org.lab_11.modsunified.impl.cookingforblockheads.client.DungeonOvenClientHooks";
 
@@ -53,16 +56,67 @@ public final class DungeonOvenCompat {
     private static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(Unifiled.MOD_ID);
     private static final DeferredHolder<Block, Block> DUNGEON_OVEN = BLOCKS.register(
             "dungeon_oven",
-            () -> new OvenBlock(DyeColor.BLACK, Balm.getBlocks().blockProperties())
+            DungeonOvenCompat::createDungeonOvenBlock
     );
     private static final DeferredHolder<Item, BlockItem> DUNGEON_OVEN_ITEM = ITEMS.register(
             "dungeon_oven",
-            () -> new BlockItem(DUNGEON_OVEN.get(), Balm.getItems().itemProperties())
+            () -> new BlockItem(DUNGEON_OVEN.get(), resolveBalmItemProperties())
     );
 
     private static boolean registered;
 
     private DungeonOvenCompat() {
+    }
+
+    private static Block createDungeonOvenBlock() {
+        try {
+            final Class<?> ovenBlockClass = Class.forName(CFBH_OVEN_BLOCK_CLASS);
+            if (!Block.class.isAssignableFrom(ovenBlockClass)) {
+                LOGGER.warn("Unable to create dungeon oven block: CFBH oven block class is not a Block.");
+                return fallbackBlock();
+            }
+
+            final Constructor<?> constructor = ovenBlockClass.getConstructor(DyeColor.class, BlockBehaviour.Properties.class);
+            final Object created = constructor.newInstance(DyeColor.BLACK, resolveBalmBlockProperties());
+            if (created instanceof Block block) {
+                return block;
+            }
+        } catch (ReflectiveOperationException e) {
+            LOGGER.error("Failed to create dungeon oven block using CFBH oven implementation.", e);
+        }
+        return fallbackBlock();
+    }
+
+    private static BlockBehaviour.Properties resolveBalmBlockProperties() {
+        try {
+            final Class<?> balmClass = Class.forName(BALM_CLASS);
+            final Object blocksApi = balmClass.getMethod("getBlocks").invoke(null);
+            final Object properties = blocksApi.getClass().getMethod("blockProperties").invoke(blocksApi);
+            if (properties instanceof BlockBehaviour.Properties blockProperties) {
+                return blockProperties;
+            }
+        } catch (ReflectiveOperationException ignored) {
+            // no-op
+        }
+        return BlockBehaviour.Properties.of();
+    }
+
+    private static Item.Properties resolveBalmItemProperties() {
+        try {
+            final Class<?> balmClass = Class.forName(BALM_CLASS);
+            final Object itemsApi = balmClass.getMethod("getItems").invoke(null);
+            final Object properties = itemsApi.getClass().getMethod("itemProperties").invoke(itemsApi);
+            if (properties instanceof Item.Properties itemProperties) {
+                return itemProperties;
+            }
+        } catch (ReflectiveOperationException ignored) {
+            // no-op
+        }
+        return new Item.Properties();
+    }
+
+    private static Block fallbackBlock() {
+        return new Block(BlockBehaviour.Properties.of());
     }
 
     public static void register(final IEventBus modEventBus) {
@@ -192,25 +246,30 @@ public final class DungeonOvenCompat {
                 return;
             }
             final Object rawOvens = ovensField.get(null);
-            if (!(rawOvens instanceof OvenBlock[] ovens)) {
-                LOGGER.warn("Unable to attach dungeon oven to CFBH oven category: ovens field is not an OvenBlock array.");
+            if (rawOvens == null || !rawOvens.getClass().isArray()) {
+                LOGGER.warn("Unable to attach dungeon oven to CFBH oven category: ovens field is not an array.");
                 return;
             }
 
+            final Class<?> componentType = rawOvens.getClass().getComponentType();
             final Block dungeonOvenBlock = DUNGEON_OVEN.get();
-            if (!(dungeonOvenBlock instanceof OvenBlock dungeonOvenAsOven)) {
-                LOGGER.warn("Unable to attach dungeon oven to CFBH oven category: dungeon oven is not an OvenBlock.");
+            if (componentType == null || !componentType.isInstance(dungeonOvenBlock)) {
+                LOGGER.warn("Unable to attach dungeon oven to CFBH oven category: dungeon oven type does not match oven array component.");
                 return;
             }
 
-            for (final OvenBlock oven : ovens) {
-                if (oven == dungeonOvenAsOven) {
+            final int length = Array.getLength(rawOvens);
+            for (int i = 0; i < length; i++) {
+                if (Array.get(rawOvens, i) == dungeonOvenBlock) {
                     return;
                 }
             }
 
-            final OvenBlock[] updated = Arrays.copyOf(ovens, ovens.length + 1);
-            updated[ovens.length] = dungeonOvenAsOven;
+            final Object updated = Array.newInstance(componentType, length + 1);
+            for (int i = 0; i < length; i++) {
+                Array.set(updated, i, Array.get(rawOvens, i));
+            }
+            Array.set(updated, length, dungeonOvenBlock);
             ovensField.set(null, updated);
             LOGGER.info("Attached dungeon oven block to CFBH oven category.");
         } catch (ReflectiveOperationException e) {

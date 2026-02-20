@@ -80,14 +80,98 @@ configurations {
     runtimeClasspath.extendsFrom localRuntime
 }
 
-dependencies {
-    compileOnly files("libs/balm-neoforge-${balm_minecraft_version}-${balm_version}.jar")
-    compileOnly files("libs/cookingforblockheads-neoforge-${minecraft_version}-${cfbh_version}.jar")
-    compileOnly files("libs/FarmersDelight-${minecraft_version}-${farmersdelight_version}.jar")
+def optionalLoaderPlatform = providers.gradleProperty('optional_loader_platform').orElse('neoforge').get()
+def optionalModsSearchDirsProperty = providers.gradleProperty('optional_mods_dirs').orNull
+def optionalModsSearchDirsEnv = providers.environmentVariable('LAB11_MODS_DIRS').orNull
 
-    localRuntime files("libs/balm-neoforge-${balm_minecraft_version}-${balm_version}.jar")
-    localRuntime files("libs/cookingforblockheads-neoforge-${minecraft_version}-${cfbh_version}.jar")
-    localRuntime files("libs/FarmersDelight-${minecraft_version}-${farmersdelight_version}.jar")
+def defaultOptionalModsSearchDirs = [
+        "${System.getProperty('user.home')}/.minecraft/versions/${minecraft_version}-NeoForge_${neo_version}/mods",
+        "${System.getProperty('user.home')}/.minecraft/versions/modpack/mods",
+        "${System.getProperty('user.home')}/.minecraft/mods"
+]
+
+def optionalModsSearchDirs = optionalModsSearchDirsProperty != null && !optionalModsSearchDirsProperty.trim().isEmpty()
+        ? optionalModsSearchDirsProperty
+        : optionalModsSearchDirsEnv != null && !optionalModsSearchDirsEnv.trim().isEmpty()
+            ? optionalModsSearchDirsEnv
+            : defaultOptionalModsSearchDirs.join(',')
+
+def findOptionalModJar = { String logicalName, List<String> includePatterns ->
+    final List<File> searchRoots = optionalModsSearchDirs
+            .split(',')
+            .collect { it.trim() }
+            .findAll { !it.isEmpty() }
+            .collect { file(it) }
+            .findAll { it.exists() && it.isDirectory() }
+
+    if (searchRoots.isEmpty()) {
+        logger.lifecycle(
+                "No optional mod search directories exist; skipping {} runtime injection. Checked: '{}'.",
+                logicalName,
+                optionalModsSearchDirs
+        )
+        return null
+    }
+
+    final Set<File> matches = new LinkedHashSet<>()
+    for (final File searchRoot : searchRoots) {
+        for (final String includePattern : includePatterns) {
+            matches.addAll(fileTree(dir: searchRoot, include: [includePattern]).files)
+        }
+    }
+
+    if (matches.isEmpty()) {
+        logger.lifecycle(
+                "No matching optional dependency found for {}. Searched: {} with patterns {}.",
+                logicalName,
+                searchRoots*.absolutePath,
+                includePatterns
+        )
+        return null
+    }
+
+    final List<File> orderedMatches = matches.toList().sort { left, right ->
+        final int byModifiedTime = Long.compare(left.lastModified(), right.lastModified())
+        if (byModifiedTime != 0) {
+            return byModifiedTime
+        }
+        return left.name <=> right.name
+    }
+    final File selected = orderedMatches.last()
+    logger.lifecycle("Resolved optional dependency '{}' to '{}'.", logicalName, selected.absolutePath)
+    if (orderedMatches.size() > 1) {
+        logger.lifecycle("Resolved optional dependency '{}' to '{}' from {} candidates.",
+                logicalName, selected.name, orderedMatches.size())
+    }
+    return selected
+}
+
+def balmJar = findOptionalModJar('Balm', [
+        "balm-${optionalLoaderPlatform}-${balm_minecraft_version}-*.jar",
+        "balm-${optionalLoaderPlatform}-${minecraft_version}-*.jar",
+        "balm-${optionalLoaderPlatform}-*.jar"
+])
+def cookingForBlockheadsJar = findOptionalModJar('CookingForBlockheads', [
+        "cookingforblockheads-${optionalLoaderPlatform}-${minecraft_version}-*.jar",
+        "cookingforblockheads-${optionalLoaderPlatform}-*.jar"
+])
+def farmersDelightJar = findOptionalModJar('FarmersDelight', [
+        "FarmersDelight-${minecraft_version}-*.jar",
+        "farmersdelight-${minecraft_version}-*.jar",
+        "FarmersDelight-*.jar",
+        "farmersdelight-*.jar"
+])
+
+dependencies {
+    if (balmJar != null) {
+        localRuntime files(balmJar)
+    }
+    if (cookingForBlockheadsJar != null) {
+        localRuntime files(cookingForBlockheadsJar)
+    }
+    if (farmersDelightJar != null) {
+        localRuntime files(farmersDelightJar)
+    }
 }
 
 var generateModMetadata = tasks.register('generateModMetadata', ProcessResources) {

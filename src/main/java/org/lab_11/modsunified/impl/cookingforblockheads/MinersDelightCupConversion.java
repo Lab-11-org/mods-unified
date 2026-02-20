@@ -1,7 +1,5 @@
 package org.lab_11.modsunified.impl.cookingforblockheads;
 
-import net.blay09.mods.cookingforblockheads.crafting.CraftingContext;
-import net.blay09.mods.cookingforblockheads.kitchen.CombinedKitchenItemProvider;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 
@@ -87,22 +85,20 @@ final class MinersDelightCupConversion {
         }
     }
 
-    static boolean isCopperPotActive(final CraftingContext context) {
-        for (final var itemProvider : context.getItemProviders()) {
-            if (itemProvider instanceof CookingPotActivationMarkerProvider markerProvider) {
+    static boolean isCopperPotActive(final Object context) {
+        for (final Object itemProvider : CfbhRuntime.contextItemProviders(context)) {
+            if (itemProvider instanceof MarkerProviderView markerProvider) {
                 if (markerProvider.isMarkerKey(COPPER_POT_TARGET_KEY) && markerProvider.isActiveForCurrentTableMarker()) {
                     return true;
                 }
                 continue;
             }
 
-            if (itemProvider instanceof CombinedKitchenItemProvider combined) {
-                for (final var nestedProvider : combined.providers()) {
-                    if (nestedProvider instanceof CookingPotActivationMarkerProvider markerProvider
+            for (final Object nestedProvider : CfbhRuntime.tryGetCombinedProviders(itemProvider)) {
+                if (nestedProvider instanceof MarkerProviderView markerProvider
                             && markerProvider.isMarkerKey(COPPER_POT_TARGET_KEY)
                             && markerProvider.isActiveForCurrentTableMarker()) {
-                        return true;
-                    }
+                    return true;
                 }
             }
         }

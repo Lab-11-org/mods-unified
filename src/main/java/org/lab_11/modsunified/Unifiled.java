@@ -108,7 +108,11 @@ public final class Unifiled {
         try {
             final Class<?> apiClass = Class.forName(RUNTIME.cfbhApiClassName());
             final Class<?> handlerClass = Class.forName(RUNTIME.cfbhHandlerClassName());
-            final Object handler = new CookingPotKitchenHandler();
+            final Object handler = CookingPotKitchenHandler.createRuntimeHandlerProxy();
+            if (handler == null) {
+                LOGGER.warn("Skipping cooking-pot bridge because KitchenRecipeHandler runtime class is unavailable.");
+                return;
+            }
             final var registerKitchenRecipeHandler =
                     apiClass.getMethod("registerKitchenRecipeHandler", Class.class, handlerClass);
 

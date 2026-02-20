@@ -12,6 +12,7 @@ import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Supplier;
+import java.util.ArrayList;
 
 public final class CookingPotBridgeTarget {
     private final String targetKey;
@@ -135,6 +136,20 @@ public final class CookingPotBridgeTarget {
 
     public String displayName() {
         return displayName;
+    }
+
+    public List<String> requiredModIds() {
+        return requiredModIds;
+    }
+
+    public List<String> missingRequiredModIds() {
+        final List<String> missing = new ArrayList<>();
+        for (final String modId : requiredModIds) {
+            if (!ModList.get().isLoaded(modId)) {
+                missing.add(modId);
+            }
+        }
+        return List.copyOf(missing);
     }
 
     public List<String> requiredMarkerKeys() {

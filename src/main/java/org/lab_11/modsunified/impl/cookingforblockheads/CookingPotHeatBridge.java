@@ -111,8 +111,9 @@ public final class CookingPotHeatBridge {
             return false;
         }
 
-        final BlockState belowState = level.getBlockState(potPos.below());
-        return matchesOvenPolicy(belowState, OvenPolicy.ANY_OVEN);
+        final BlockPos ovenPos = potPos.below();
+        final BlockState belowState = level.getBlockState(ovenPos);
+        return matchesOvenPolicy(level, ovenPos, belowState, OvenPolicy.ANY_OVEN);
     }
 
     public static void tickOvenForPotHeat(final Level level,
@@ -122,7 +123,7 @@ public final class CookingPotHeatBridge {
             return;
         }
 
-        if (!matchesOvenPolicy(ovenState, OvenPolicy.ANY_OVEN)) {
+        if (!matchesOvenPolicy(level, ovenPos, ovenState, OvenPolicy.ANY_OVEN)) {
             return;
         }
 
@@ -170,7 +171,8 @@ public final class CookingPotHeatBridge {
         if (level == null || potPos == null) {
             return false;
         }
-        return matchesOvenPolicy(level.getBlockState(potPos.below()), OvenPolicy.DUNGEON_OVEN_ONLY);
+        final BlockPos ovenPos = potPos.below();
+        return matchesOvenPolicy(level, ovenPos, level.getBlockState(ovenPos), OvenPolicy.DUNGEON_OVEN_ONLY);
     }
 
     private static boolean isOvenHeatedBelow(final Level level,
@@ -183,7 +185,7 @@ public final class CookingPotHeatBridge {
 
         final BlockPos ovenPos = potPos.below();
         final BlockState belowState = level.getBlockState(ovenPos);
-        if (!matchesOvenPolicy(belowState, ovenPolicy)) {
+        if (!matchesOvenPolicy(level, ovenPos, belowState, ovenPolicy)) {
             return false;
         }
 
@@ -273,13 +275,20 @@ public final class CookingPotHeatBridge {
         return value instanceof Boolean b && b;
     }
 
-    private static boolean matchesOvenPolicy(final BlockState ovenState,
+    private static boolean matchesOvenPolicy(final Level level,
+                                             final BlockPos ovenPos,
+                                             final BlockState ovenState,
                                              final OvenPolicy ovenPolicy) {
         final ResourceLocation blockId = BuiltInRegistries.BLOCK.getKey(ovenState.getBlock());
         if (ovenPolicy == OvenPolicy.DUNGEON_OVEN_ONLY) {
             return isDungeonOvenBlockId(blockId);
         }
-        return isDungeonOvenBlockId(blockId) || isTaggedAsCfbhOven(ovenState);
+        if (isDungeonOvenBlockId(blockId) || isTaggedAsCfbhOven(ovenState)) {
+            return true;
+        }
+
+        // Fallback for setups where datapack tags are missing or third-party ovens are not tagged.
+        return level != null && ovenPos != null && isCfbhOvenBlockEntity(level.getBlockEntity(ovenPos));
     }
 
     private static boolean isDungeonOvenBlockId(final ResourceLocation blockId) {

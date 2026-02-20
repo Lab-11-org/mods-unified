@@ -1,6 +1,9 @@
 {
   "replace": false,
   "values": [
-    "lab_11_mods_unified:dungeon_oven"
+    {
+      "id": "lab_11_mods_unified:dungeon_oven",
+      "required": false
+    }
   ]
 }
