@@ -324,7 +324,12 @@ public final class CookingPotHeatBridge {
             return false;
         }
 
-        return readIntField(ovenBlockEntity, OVEN_FIELD_FURNACE_BURN_TIME) > 0;
+        if (readIntField(ovenBlockEntity, OVEN_FIELD_FURNACE_BURN_TIME) > 0) {
+            return true;
+        }
+
+        // Client-side animation checks can run before reflective burn-time fields are visible.
+        return level.isClientSide && isActive(level.getBlockState(ovenPos));
     }
 
     private static void syncOvenActiveVisual(final Level level,

@@ -49,9 +49,10 @@ public final class CookingPotKitchenHandler implements CfbhRuntime.KitchenRecipe
                                                      final CookingPotIndexedRecipe recipe,
                                                      final List<?> ingredientTokens,
                                                      final RegistryAccess registryAccess) {
-        final boolean copperPotActive = MinersDelightCupConversion.isCopperPotActive(context);
+        final boolean convertForCopperTarget =
+                MinersDelightCupConversion.COPPER_POT_TARGET_KEY.equals(recipe.targetKey());
         final List<Object> processingTokens = new ArrayList<>(ingredientTokens);
-        if (!appendRequiredContainerTokens(context, recipe, processingTokens, registryAccess, copperPotActive)) {
+        if (!appendRequiredContainerTokens(context, recipe, processingTokens, registryAccess, convertForCopperTarget)) {
             return ItemStack.EMPTY;
         }
 
@@ -74,11 +75,7 @@ public final class CookingPotKitchenHandler implements CfbhRuntime.KitchenRecipe
                                               final Recipe<?> recipe,
                                               final List<?> ingredientTokens,
                                               final RegistryAccess registryAccess) {
-        final boolean copperPotActive = MinersDelightCupConversion.isCopperPotActive(context);
         ItemStack output = recipe.getResultItem(registryAccess).copy();
-        if (copperPotActive) {
-            output = MinersDelightCupConversion.convertOutputForCopperPot(output);
-        }
         if (output.isEmpty()) {
             return ItemStack.EMPTY;
         }
@@ -103,7 +100,7 @@ public final class CookingPotKitchenHandler implements CfbhRuntime.KitchenRecipe
             consumed.add(new TokenConsumption(ingredientToken, consumedStack));
         }
 
-        if (!consumeRequiredContainers(context, recipe, registryAccess, copperPotActive, consumed)) {
+        if (!consumeRequiredContainers(context, recipe, registryAccess, false, consumed)) {
             restoreConsumed(context, consumed);
             return ItemStack.EMPTY;
         }

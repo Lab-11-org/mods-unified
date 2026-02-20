@@ -3,11 +3,15 @@
   "package": "org.lab_11.modsunified.mixin.cookingforblockheads",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "CookingPotBlockMixin",
     "CookingPotBlockEntityMixin",
+    "CopperPotBlockMixin",
     "CopperPotBlockEntityMixin",
     "KitchenMenuMixin",
     "KitchenMenuRecipeStatusMixin",
+    "MonsterPotBlock120Mixin",
     "MonsterPotBlockEntity120Mixin",
+    "MonsterPotBlockMixin",
     "MonsterPotBlockEntityMixin",
     "OvenBlockEntity120Mixin",
     "OvenBlockEntityMixin"

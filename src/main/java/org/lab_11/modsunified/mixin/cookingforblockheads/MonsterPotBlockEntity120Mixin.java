@@ -35,7 +35,27 @@ abstract class MonsterPotBlockEntity120Mixin {
         return callNativeIsHeated(self, level, worldPosition);
     }
 
-    @Inject(method = "isHeated", at = @At("HEAD"), cancellable = true)
+    @Redirect(
+            method = "animationTick",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lnet/yirmiri/dungeonsdelight/common/block/entity/MonsterPotBlockEntity;isHeated(Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;)Z"
+            ),
+            remap = false
+    )
+    private static boolean lab11$redirectAnimationTickHeatCheck(final @Coerce Object self,
+                                                                final Level level,
+                                                                final BlockPos worldPosition) {
+        if (level != null
+                && worldPosition != null
+                && CookingPotHeatBridge.isAnyManagedOvenBelow(level, worldPosition)) {
+            return CookingPotHeatBridge.isDungeonOvenHeatedBelow(level, worldPosition, self);
+        }
+
+        return callNativeIsHeated(self, level, worldPosition);
+    }
+
+    @Inject(method = "isHeated()Z", at = @At("HEAD"), cancellable = true, remap = false)
     private void lab11$requireDungeonOvenHeat(final CallbackInfoReturnable<Boolean> cir) {
         final BlockEntity self = (BlockEntity) (Object) this;
         final Level level = self.getLevel();
