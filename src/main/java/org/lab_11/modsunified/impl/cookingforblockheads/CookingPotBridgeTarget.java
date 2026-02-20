@@ -1,11 +1,11 @@
 package org.lab_11.modsunified.impl.cookingforblockheads;
 
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
-import net.neoforged.fml.ModList;
+import org.lab_11.modsunified.impl.platform.LoaderApiCompat;
+import org.lab_11.modsunified.impl.platform.RecipeRuntimeCompat;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -145,7 +145,7 @@ public final class CookingPotBridgeTarget {
     public List<String> missingRequiredModIds() {
         final List<String> missing = new ArrayList<>();
         for (final String modId : requiredModIds) {
-            if (!ModList.get().isLoaded(modId)) {
+            if (!LoaderApiCompat.isModLoaded(modId)) {
                 missing.add(modId);
             }
         }
@@ -158,7 +158,7 @@ public final class CookingPotBridgeTarget {
 
     public boolean isModSetLoaded() {
         for (final String modId : requiredModIds) {
-            if (!ModList.get().isLoaded(modId)) {
+            if (!LoaderApiCompat.isModLoaded(modId)) {
                 return false;
             }
         }
@@ -250,13 +250,21 @@ public final class CookingPotBridgeTarget {
         return blockEntityClass.filter(aClass -> aClass.isInstance(blockEntity)).isPresent();
     }
 
-    public boolean acceptsRecipe(final RecipeHolder<?> recipeHolder) {
-        final Class<?> recipeClass = resolveRecipeClass().orElse(null);
-        if (recipeClass == null || !recipeClass.isInstance(recipeHolder.value())) {
+    public boolean acceptsRecipe(final Object recipeEntry) {
+        final var recipe = RecipeRuntimeCompat.recipeValue(recipeEntry);
+        if (recipe == null) {
             return false;
         }
 
-        final ResourceLocation recipeId = recipeHolder.id();
+        final Class<?> recipeClass = resolveRecipeClass().orElse(null);
+        if (recipeClass == null || !recipeClass.isInstance(recipe)) {
+            return false;
+        }
+
+        final ResourceLocation recipeId = RecipeRuntimeCompat.recipeId(recipeEntry);
+        if (recipeId == null) {
+            return false;
+        }
         final String recipeNamespace = recipeId.getNamespace();
         final String fullRecipeId = recipeId.toString();
 
@@ -301,15 +309,50 @@ public final class CookingPotBridgeTarget {
             return null;
         }
 
+        final Boolean present = queryPresence(holder);
+        if (Boolean.FALSE.equals(present)) {
+            return null;
+        }
+
         if (holder instanceof Supplier<?> supplier) {
-            return supplier.get();
+            try {
+                return supplier.get();
+            } catch (RuntimeException ignored) {
+                return null;
+            }
         }
 
         try {
             final Method getMethod = holder.getClass().getMethod("get");
             return getMethod.invoke(holder);
         } catch (ReflectiveOperationException ignored) {
+            // Some holders are direct values and do not expose a get() API.
             return holder;
+        } catch (RuntimeException ignored) {
+            return null;
         }
+    }
+
+    private static Boolean queryPresence(final Object holder) {
+        final Boolean byIsPresent = invokeBooleanMethod(holder, "isPresent");
+        if (byIsPresent != null) {
+            return byIsPresent;
+        }
+        return invokeBooleanMethod(holder, "isBound");
+    }
+
+    private static Boolean invokeBooleanMethod(final Object holder, final String methodName) {
+        try {
+            final Method method = holder.getClass().getMethod(methodName);
+            final Object value = method.invoke(holder);
+            if (value instanceof Boolean bool) {
+                return bool;
+            }
+        } catch (ReflectiveOperationException ignored) {
+            return null;
+        } catch (RuntimeException ignored) {
+            return null;
+        }
+        return null;
     }
 }

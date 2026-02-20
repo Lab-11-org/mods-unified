@@ -6,10 +6,10 @@ import net.minecraft.world.Container;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.Recipe;
-import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.item.crafting.RecipeSerializer;
 import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.level.Level;
+import org.lab_11.modsunified.impl.platform.RecipeRuntimeCompat;
 
 import java.util.List;
 
@@ -35,14 +35,18 @@ public final class CookingPotIndexedRecipe implements Recipe<Container> {
         this.indexedIngredients = buildIndexedIngredients(delegate, markerKey);
     }
 
-    public static RecipeHolder<Recipe<?>> toIndexedRecipeHolder(final RecipeHolder<?> recipeHolder,
-                                                                final net.minecraft.resources.ResourceLocation indexedId,
-                                                                final RegistryAccess registryAccess,
-                                                                final String markerKey,
-                                                                final List<String> requiredMarkerKeys) {
+    public static Object toIndexedRecipeHolder(final Object recipeEntry,
+                                               final net.minecraft.resources.ResourceLocation indexedId,
+                                               final RegistryAccess registryAccess,
+                                               final String markerKey,
+                                               final List<String> requiredMarkerKeys) {
+        final Recipe<?> recipe = RecipeRuntimeCompat.recipeValue(recipeEntry);
+        if (recipe == null) {
+            return null;
+        }
         final CookingPotIndexedRecipe indexedRecipe =
-                new CookingPotIndexedRecipe(recipeHolder.value(), registryAccess, markerKey, requiredMarkerKeys);
-        return new RecipeHolder<>(indexedId, indexedRecipe);
+                new CookingPotIndexedRecipe(recipe, registryAccess, markerKey, requiredMarkerKeys);
+        return RecipeRuntimeCompat.recipeEntry(indexedId, indexedRecipe);
     }
 
     @Override

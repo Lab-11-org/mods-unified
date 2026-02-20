@@ -1,7 +1,8 @@
 plugins {
     id 'java-library'
     id 'maven-publish'
-    id 'net.neoforged.moddev' version '2.0.140'
+    id 'net.neoforged.moddev' version '2.0.91' apply false
+    id 'net.neoforged.moddev.legacyforge' version '2.0.91' apply false
     id 'idea'
 }
 
@@ -17,6 +18,16 @@ def targetId = providers.gradleProperty('target_id')
         .get()
 def javaVersion = providers.gradleProperty('java_version').orElse('21').get().toInteger()
 def useParchment = providers.gradleProperty('use_parchment').orElse('true').get().toBoolean()
+def isForgeTarget = targetId.startsWith('forge-')
+def isNeoForgeTarget = targetId.startsWith('neoforge-')
+
+if (isForgeTarget) {
+    apply plugin: 'net.neoforged.moddev.legacyforge'
+} else if (isNeoForgeTarget) {
+    apply plugin: 'net.neoforged.moddev'
+} else {
+    throw new GradleException("Unsupported target_id '${targetId}'. Expected prefix 'forge-' or 'neoforge-'.")
+}
 
 repositories {
     mavenLocal()
@@ -37,47 +48,96 @@ base {
 
 java.toolchain.languageVersion = JavaLanguageVersion.of(javaVersion)
 
-neoForge {
-    version = project.neo_version
+if (isNeoForgeTarget) {
+    neoForge {
+        version = project.neo_version
 
-    if (useParchment) {
-        parchment {
-            mappingsVersion = project.parchment_mappings_version
-            minecraftVersion = project.parchment_minecraft_version
+        if (useParchment) {
+            parchment {
+                mappingsVersion = project.parchment_mappings_version
+                minecraftVersion = project.parchment_minecraft_version
+            }
+        }
+
+        runs {
+            client {
+                client()
+                systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+            }
+
+            server {
+                server()
+                programArgument '--nogui'
+                systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+            }
+
+            gameTestServer {
+                type = 'gameTestServer'
+                systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+            }
+
+            data {
+                data()
+                programArguments.addAll '--mod', project.mod_id, '--all', '--output', file('src/generated/resources/').getAbsolutePath(), '--existing', file('src/main/resources/').getAbsolutePath()
+            }
+
+            configureEach {
+                systemProperty 'forge.logging.markers', 'REGISTRIES'
+                logLevel = org.slf4j.event.Level.DEBUG
+            }
+        }
+
+        mods {
+            "${mod_id}" {
+                sourceSet(sourceSets.main)
+            }
         }
     }
+}
 
-    runs {
-        client {
-            client()
-            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+if (isForgeTarget) {
+    legacyForge {
+        version = project.minecraft_version + '-' + project.forge_version
+
+        if (useParchment) {
+            parchment {
+                mappingsVersion = project.parchment_mappings_version
+                minecraftVersion = project.parchment_minecraft_version
+            }
         }
 
-        server {
-            server()
-            programArgument '--nogui'
-            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+        runs {
+            client {
+                client()
+                systemProperty 'forge.enabledGameTestNamespaces', project.mod_id
+            }
+
+            server {
+                server()
+                programArgument '--nogui'
+                systemProperty 'forge.enabledGameTestNamespaces', project.mod_id
+            }
+
+            gameTestServer {
+                type = 'gameTestServer'
+                systemProperty 'forge.enabledGameTestNamespaces', project.mod_id
+            }
+
+            data {
+                data()
+                programArguments.addAll '--mod', project.mod_id, '--all', '--output', file('src/generated/resources/').getAbsolutePath(), '--existing', file('src/main/resources/').getAbsolutePath()
+            }
+
+            configureEach {
+                systemProperty 'forge.logging.markers', 'REGISTRIES'
+                logLevel = org.slf4j.event.Level.DEBUG
+            }
         }
 
-        gameTestServer {
-            type = 'gameTestServer'
-            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
-        }
-
-        data {
-            data()
-            programArguments.addAll '--mod', project.mod_id, '--all', '--output', file('src/generated/resources/').getAbsolutePath(), '--existing', file('src/main/resources/').getAbsolutePath()
-        }
-
-        configureEach {
-            systemProperty 'forge.logging.markers', 'REGISTRIES'
-            logLevel = org.slf4j.event.Level.DEBUG
-        }
-    }
-
-    mods {
-        "${mod_id}" {
-            sourceSet(sourceSets.main)
+        mods {
+            "${mod_id}" {
+                sourceSet(sourceSets.main)
+            }
         }
     }
 }
@@ -88,16 +148,45 @@ if (file(targetSpecificJavaDir).exists()) {
     sourceSets.main.java.srcDir targetSpecificJavaDir
 }
 
+if (isForgeTarget) {
+    final List<String> mainOverridePaths = [
+            '/src/main/java/org/lab_11/modsunified/Unifiled.java',
+            '/src/main/java/org/lab_11/modsunified/impl/cookingforblockheads/CookingPotContainerTooltipBridge.java',
+            '/src/main/java/org/lab_11/modsunified/impl/cookingforblockheads/CookingPotProcessorCapability.java',
+            '/src/main/java/org/lab_11/modsunified/impl/cookingforblockheads/DungeonOvenCompat.java',
+            '/src/main/java/org/lab_11/modsunified/impl/cookingforblockheads/client/DungeonOvenClientHooks.java',
+            '/src/main/java/org/lab_11/modsunified/impl/cookingforblockheads/CookingPotIndexedRecipe.java'
+    ]
+    sourceSets.main.java.exclude { details ->
+        final String normalizedPath = details.file.absolutePath.replace('\\', '/')
+        return mainOverridePaths.any { normalizedPath.endsWith(it) }
+    }
+}
+
 configurations {
     runtimeClasspath.extendsFrom localRuntime
 }
 
-def optionalLoaderPlatform = providers.gradleProperty('optional_loader_platform').orElse('neoforge').get()
+if (isForgeTarget) {
+    obfuscation {
+        createRemappingConfiguration(configurations.localRuntime)
+    }
+}
+
+def defaultOptionalLoaderPlatform = isForgeTarget ? 'forge' : 'neoforge'
+def optionalLoaderPlatform = providers.gradleProperty('optional_loader_platform').orElse(defaultOptionalLoaderPlatform).get()
 def optionalModsSearchDirsProperty = providers.gradleProperty('optional_mods_dirs').orNull
 def optionalModsSearchDirsEnv = providers.environmentVariable('LAB11_MODS_DIRS').orNull
 
+def currentMinecraftVersion = providers.gradleProperty('minecraft_version').orElse('1.21.1').get()
+def currentNeoVersion = providers.gradleProperty('neo_version').orElse('21.1.219').get()
+def currentForgeVersion = providers.gradleProperty('forge_version').orElse('0.0.0').get()
+def defaultVersionDirName = isForgeTarget
+        ? "${currentMinecraftVersion}-Forge_${currentForgeVersion}"
+        : "${currentMinecraftVersion}-NeoForge_${currentNeoVersion}"
+
 def defaultOptionalModsSearchDirs = [
-        "${System.getProperty('user.home')}/.minecraft/versions/${minecraft_version}-NeoForge_${neo_version}/mods",
+        "${System.getProperty('user.home')}/.minecraft/versions/${defaultVersionDirName}/mods",
         "${System.getProperty('user.home')}/.minecraft/versions/modpack/mods",
         "${System.getProperty('user.home')}/.minecraft/mods"
 ]
@@ -187,29 +276,62 @@ dependencies {
 }
 
 var generateModMetadata = tasks.register('generateModMetadata', ProcessResources) {
+    def defaultPackFormat = '34'
+    if (targetId == 'forge-1.20.1') {
+        defaultPackFormat = '15'
+    } else if (targetId == 'neoforge-20.x') {
+        defaultPackFormat = '22'
+    }
+
     var replaceProperties = [
-            minecraft_version      : minecraft_version,
-            minecraft_version_range: minecraft_version_range,
-            neo_version            : neo_version,
-            loader_version_range   : loader_version_range,
-            mod_id                 : mod_id,
-            mod_name               : mod_name,
-            mod_license            : mod_license,
-            mod_version            : mod_version,
-            mod_authors            : mod_authors,
-            mod_description        : mod_description,
-            mod_homepage           : mod_homepage,
-            mod_issues             : mod_issues,
-            mod_logo_file          : mod_logo_file
+            minecraft_version       : minecraft_version,
+            minecraft_version_range : minecraft_version_range,
+            loader_version_range    : loader_version_range,
+            mod_id                  : mod_id,
+            mod_name                : mod_name,
+            mod_license             : mod_license,
+            mod_version             : mod_version,
+            mod_authors             : mod_authors,
+            mod_description         : mod_description,
+            mod_homepage            : mod_homepage,
+            mod_issues              : mod_issues,
+            mod_logo_file           : mod_logo_file,
+            pack_format             : providers.gradleProperty('pack_format').orElse(defaultPackFormat).get()
     ]
+
+    from('src/main/templates/pack.mcmeta')
+
+    if (isNeoForgeTarget) {
+        replaceProperties.putAll([
+                neo_version: neo_version
+        ])
+        from('src/main/templates/META-INF/neoforge.mods.toml') {
+            into 'META-INF'
+        }
+    }
+
+    if (isForgeTarget) {
+        replaceProperties.putAll([
+                forge_version      : forge_version,
+                forge_version_range: forge_version_range
+        ])
+        from('src/main/templates/META-INF/mods.toml') {
+            into 'META-INF'
+        }
+    }
+
     inputs.properties replaceProperties
     expand replaceProperties
-    from 'src/main/templates'
     into 'build/generated/sources/modMetadata'
 }
 
 sourceSets.main.resources.srcDir generateModMetadata
-neoForge.ideSyncTask generateModMetadata
+if (isNeoForgeTarget) {
+    neoForge.ideSyncTask generateModMetadata
+}
+if (isForgeTarget) {
+    legacyForge.ideSyncTask generateModMetadata
+}
 
 publishing {
     publications {
@@ -229,27 +351,42 @@ tasks.withType(JavaCompile).configureEach {
 }
 
 def targetPropsNeoForge211 = [
-        target_id                 : 'neoforge-1.21.1',
-        minecraft_version         : providers.gradleProperty('minecraft_version').orElse('1.21.1').get(),
-        minecraft_version_range   : providers.gradleProperty('minecraft_version_range').orElse('[1.21.1,1.22)').get(),
-        neo_version               : providers.gradleProperty('neo_version').orElse('21.1.219').get(),
-        loader_version_range      : providers.gradleProperty('loader_version_range').orElse('[4,)').get(),
+        target_id                  : 'neoforge-1.21.1',
+        minecraft_version          : providers.gradleProperty('minecraft_version').orElse('1.21.1').get(),
+        minecraft_version_range    : providers.gradleProperty('minecraft_version_range').orElse('[1.21.1,1.22)').get(),
+        neo_version                : providers.gradleProperty('neo_version').orElse('21.1.219').get(),
+        loader_version_range       : providers.gradleProperty('loader_version_range').orElse('[4,)').get(),
         parchment_minecraft_version: providers.gradleProperty('parchment_minecraft_version').orElse('1.21').get(),
-        parchment_mappings_version: providers.gradleProperty('parchment_mappings_version').orElse('2024.07.28').get(),
-        java_version              : '21',
-        use_parchment             : 'true'
+        parchment_mappings_version : providers.gradleProperty('parchment_mappings_version').orElse('2024.07.28').get(),
+        java_version               : '21',
+        use_parchment              : 'true'
 ]
 
 def targetPropsNeoForge20x = [
-        target_id                 : 'neoforge-20.x',
-        minecraft_version         : providers.gradleProperty('neo20_minecraft_version').orElse('1.20.4').get(),
-        minecraft_version_range   : providers.gradleProperty('neo20_minecraft_version_range').orElse('[1.20.4,1.21)').get(),
-        neo_version               : providers.gradleProperty('neo20_version').orElse('20.4.251').get(),
-        loader_version_range      : providers.gradleProperty('neo20_loader_version_range').orElse('[1,)').get(),
+        target_id                  : 'neoforge-20.x',
+        minecraft_version          : providers.gradleProperty('neo20_minecraft_version').orElse('1.20.4').get(),
+        minecraft_version_range    : providers.gradleProperty('neo20_minecraft_version_range').orElse('[1.20.4,1.21)').get(),
+        neo_version                : providers.gradleProperty('neo20_version').orElse('20.4.251').get(),
+        loader_version_range       : providers.gradleProperty('neo20_loader_version_range').orElse('[1,)').get(),
         parchment_minecraft_version: providers.gradleProperty('neo20_parchment_minecraft_version').orElse('1.20.4').get(),
-        parchment_mappings_version: providers.gradleProperty('neo20_parchment_mappings_version').orElse('2024.04.14').get(),
-        java_version              : providers.gradleProperty('neo20_java_version').orElse('21').get(),
-        use_parchment             : providers.gradleProperty('neo20_use_parchment').orElse('false').get()
+        parchment_mappings_version : providers.gradleProperty('neo20_parchment_mappings_version').orElse('2024.04.14').get(),
+        java_version               : providers.gradleProperty('neo20_java_version').orElse('21').get(),
+        use_parchment              : providers.gradleProperty('neo20_use_parchment').orElse('false').get(),
+        optional_loader_platform   : 'neoforge'
+]
+
+def targetPropsForge1201 = [
+        target_id                  : 'forge-1.20.1',
+        minecraft_version          : providers.gradleProperty('forge1201_minecraft_version').orElse('1.20.1').get(),
+        minecraft_version_range    : providers.gradleProperty('forge1201_minecraft_version_range').orElse('[1.20.1,1.21)').get(),
+        forge_version              : providers.gradleProperty('forge1201_forge_version').orElse('47.4.0').get(),
+        forge_version_range        : providers.gradleProperty('forge1201_forge_version_range').orElse('[47,)').get(),
+        loader_version_range       : providers.gradleProperty('forge1201_loader_version_range').orElse('[47,)').get(),
+        parchment_minecraft_version: providers.gradleProperty('forge1201_parchment_minecraft_version').orElse('1.20.1').get(),
+        parchment_mappings_version : providers.gradleProperty('forge1201_parchment_mappings_version').orElse('2023.09.03').get(),
+        java_version               : providers.gradleProperty('forge1201_java_version').orElse('17').get(),
+        use_parchment              : providers.gradleProperty('forge1201_use_parchment').orElse('true').get(),
+        optional_loader_platform   : 'forge'
 ]
 
 def registerNestedBuild = { String taskName, Map<String, String> props ->
@@ -264,22 +401,12 @@ def registerNestedBuild = { String taskName, Map<String, String> props ->
 
 registerNestedBuild('buildNeoForge211', targetPropsNeoForge211)
 registerNestedBuild('buildNeoForge20x', targetPropsNeoForge20x)
-
-tasks.register('buildForge1201') {
-    group = 'build'
-    description = 'Placeholder for Forge 1.20.1 target (requires dedicated loader port).'
-    doLast {
-        throw new GradleException(
-                "forge-1.20.1 target is not implemented in this module yet. " +
-                        "This codebase currently builds NeoForge targets (20.x and 1.21.1)."
-        )
-    }
-}
+registerNestedBuild('buildForge1201', targetPropsForge1201)
 
 tasks.register('buildAllTargets') {
     group = 'build'
     description = 'Build all currently supported loader/version targets.'
-    dependsOn 'buildNeoForge211', 'buildNeoForge20x'
+    dependsOn 'buildNeoForge211', 'buildNeoForge20x', 'buildForge1201'
 }
 
 idea {

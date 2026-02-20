@@ -55,8 +55,14 @@ public final class CookingPotHeatBridge {
     private static final String POT_METHOD_CAN_COOK = "canCook";
     private static final String POT_METHOD_GET_INVENTORY = "getInventory";
     private static final String POT_FIELD_INVENTORY = "inventory";
-    private static final String NEOFORGE_RECIPE_WRAPPER_CLASS = "net.neoforged.neoforge.items.wrapper.RecipeWrapper";
-    private static final String NEOFORGE_ITEM_HANDLER_CLASS = "net.neoforged.neoforge.items.IItemHandler";
+    private static final String[] RECIPE_WRAPPER_CLASS_CANDIDATES = {
+            "net.neoforged.neoforge.items.wrapper.RecipeWrapper",
+            "net.minecraftforge.items.wrapper.RecipeWrapper"
+    };
+    private static final String[] ITEM_HANDLER_CLASS_CANDIDATES = {
+            "net.neoforged.neoforge.items.IItemHandler",
+            "net.minecraftforge.items.IItemHandler"
+    };
 
     private static volatile Class<?> cachedCfbhOvenBlockEntityClass;
     private static volatile boolean cfbhOvenBlockEntityLookupFailed;
@@ -262,13 +268,18 @@ public final class CookingPotHeatBridge {
             return null;
         }
 
-        try {
-            final Class<?> recipeWrapperClass = Class.forName(NEOFORGE_RECIPE_WRAPPER_CLASS);
-            return recipeWrapperClass.getConstructor(Class.forName(NEOFORGE_ITEM_HANDLER_CLASS))
-                    .newInstance(effectiveInventory);
-        } catch (ReflectiveOperationException ignored) {
-            return null;
+        for (final String recipeWrapperClassName : RECIPE_WRAPPER_CLASS_CANDIDATES) {
+            for (final String itemHandlerClassName : ITEM_HANDLER_CLASS_CANDIDATES) {
+                try {
+                    final Class<?> recipeWrapperClass = Class.forName(recipeWrapperClassName);
+                    final Class<?> itemHandlerClass = Class.forName(itemHandlerClassName);
+                    return recipeWrapperClass.getConstructor(itemHandlerClass).newInstance(effectiveInventory);
+                } catch (ReflectiveOperationException ignored) {
+                    // Try next wrapper/item handler pair.
+                }
+            }
         }
+        return null;
     }
 
     private static boolean invokeBooleanNoArg(final Object target, final String methodName) {

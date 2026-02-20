@@ -3,7 +3,6 @@ package org.lab_11.modsunified.impl.cookingforblockheads;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.Containers;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -12,9 +11,8 @@ import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
-import net.neoforged.neoforge.capabilities.BlockCapability;
-import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
-import net.neoforged.neoforge.items.IItemHandler;
+import net.minecraftforge.common.capabilities.RegisterCapabilitiesEvent;
+import net.minecraftforge.items.IItemHandler;
 import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
 
 import java.lang.reflect.Constructor;
@@ -28,8 +26,6 @@ import java.util.WeakHashMap;
 import java.util.function.Predicate;
 
 public final class CookingPotProcessorCapability {
-    private static final ResourceLocation CFBH_KITCHEN_ITEM_PROCESSOR_CAPABILITY_ID =
-            MinecraftApiCompat.resourceLocation(BridgeKeys.MOD_COOKING_FOR_BLOCKHEADS, "kitchen_item_processor");
     private static final String CFBH_KITCHEN_IMPL_CLASS = "net.blay09.mods.cookingforblockheads.crafting.KitchenImpl";
     private static final String[] CFBH_COOKING_TABLE_BLOCK_ENTITY_CLASS_CANDIDATES = {
             "net.blay09.mods.cookingforblockheads.block.entity.CookingTableBlockEntity",
@@ -54,7 +50,6 @@ public final class CookingPotProcessorCapability {
 
     private static final Map<BlockEntity, Recipe<?>> LAST_RECIPE_BY_POT = new WeakHashMap<>();
 
-    private static volatile BlockCapability<Object, Void> kitchenItemProcessorCapability;
     private static volatile Object potTransferOperation;
     private static volatile Object potNotConnectedOperation;
     private static volatile Object potInputBlockedOperation;
@@ -120,33 +115,16 @@ public final class CookingPotProcessorCapability {
         return isCfbhCookingTableBlockEntity(level.getBlockEntity(blockEntity.getBlockPos().below()));
     }
 
-    @SuppressWarnings({"unchecked", "rawtypes"})
     public static void register(final RegisterCapabilitiesEvent event, final List<CookingPotBridgeTarget> targets) {
-        final BlockCapability<Object, Void> capability = resolveKitchenItemProcessorCapability();
-        if (capability == null) {
+        final Class<?> processorClass = CfbhRuntime.kitchenItemProcessorClass();
+        if (processorClass == null) {
             return;
         }
 
-        for (final CookingPotBridgeTarget target : targets) {
-            final var recipeTypeOptional = target.resolveRecipeType();
-            final var blockEntityTypeOptional = target.resolveBlockEntityType();
-            if (recipeTypeOptional.isEmpty() || blockEntityTypeOptional.isEmpty()) {
-                continue;
-            }
-
-            final RecipeType<?> recipeType = recipeTypeOptional.get();
-            final BlockEntityType<?> blockEntityType = blockEntityTypeOptional.get();
-
-            event.registerBlockEntity(
-                    (BlockCapability) capability,
-                    (BlockEntityType) blockEntityType,
-                    (blockEntity, context) -> createProcessor(
-                            blockEntity,
-                            Set.of(recipeType),
-                            target.requiredMarkerKeys(),
-                            target.targetKey()
-                    )
-            );
+        try {
+            event.register(processorClass);
+        } catch (RuntimeException ignored) {
+            // Some environments may reject late/duplicate capability registration.
         }
     }
 
@@ -162,25 +140,6 @@ public final class CookingPotProcessorCapability {
                                                       final List<ItemStack> ingredientStacks,
                                                       final ItemStack containerCost) {
         return transferResolvedStacksToPotInternal(blockEntity, recipe, ingredientStacks, containerCost, false);
-    }
-
-    private static BlockCapability<Object, Void> resolveKitchenItemProcessorCapability() {
-        final BlockCapability<Object, Void> cached = kitchenItemProcessorCapability;
-        if (cached != null) {
-            return cached;
-        }
-
-        final Class<?> processorClass = CfbhRuntime.kitchenItemProcessorClass();
-        if (processorClass == null) {
-            return null;
-        }
-
-        final BlockCapability<Object, Void> created = BlockCapability.createVoid(
-                CFBH_KITCHEN_ITEM_PROCESSOR_CAPABILITY_ID,
-                (Class<Object>) processorClass
-        );
-        kitchenItemProcessorCapability = created;
-        return created;
     }
 
     private static Object potTransferOperation() {

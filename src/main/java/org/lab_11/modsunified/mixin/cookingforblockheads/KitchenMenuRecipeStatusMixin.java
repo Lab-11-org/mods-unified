@@ -7,10 +7,10 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.Recipe;
-import net.minecraft.world.item.crafting.RecipeHolder;
 import org.lab_11.modsunified.impl.cookingforblockheads.BridgeKeys;
 import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotIndexedRecipe;
 import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
+import org.lab_11.modsunified.impl.platform.RecipeRuntimeCompat;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.Unique;
@@ -59,7 +59,7 @@ abstract class KitchenMenuRecipeStatusMixin {
             remap = false
     )
     private void lab11$indexedVariantsForSelection(final ItemStack resultItem, final CallbackInfo ci) {
-        final Collection<RecipeHolder<Recipe<?>>> recipesForResult = getRecipesFor(resultItem);
+        final Collection<Object> recipesForResult = getRecipesFor(resultItem);
         if (recipesForResult.stream().noneMatch(KitchenMenuRecipeStatusMixin::isIndexedRecipeHolder)) {
             return;
         }
@@ -116,13 +116,16 @@ abstract class KitchenMenuRecipeStatusMixin {
 
     @Unique
     private Stream<VariantCandidate> buildVariantCandidates(final Object context,
-                                                            final RecipeHolder<Recipe<?>> recipeHolder) {
+                                                            final Object recipeEntry) {
         final Player player = player();
         if (player == null) {
             return Stream.empty();
         }
 
-        final Recipe<?> recipe = recipeHolder.value();
+        final Recipe<?> recipe = RecipeRuntimeCompat.recipeValue(recipeEntry);
+        if (recipe == null) {
+            return Stream.empty();
+        }
         final ItemStack recipeResult = recipe.getResultItem(player.level().registryAccess());
         final NonNullList<ItemStack> baseLocks = recipe instanceof CookingPotIndexedRecipe
                 ? emptyLocksForRecipe(recipe)
@@ -132,18 +135,24 @@ abstract class KitchenMenuRecipeStatusMixin {
                         Stream.of(baseLocks),
                         expandTagVariantLocks(recipe, baseLocks)
                 )
-                .map(variantLocks -> buildVariantCandidate(context, recipeHolder, recipeResult, variantLocks));
+                .map(variantLocks -> buildVariantCandidate(context, recipeEntry, recipeResult, variantLocks))
+                .filter(java.util.Objects::nonNull);
     }
 
     @Unique
     private static VariantCandidate buildVariantCandidate(final Object context,
-                                                          final RecipeHolder<Recipe<?>> recipeHolder,
+                                                          final Object recipeEntry,
                                                           final ItemStack recipeResult,
                                                           final List<ItemStack> locks) {
-        final Recipe<?> recipe = recipeHolder.value();
+        final Recipe<?> recipe = RecipeRuntimeCompat.recipeValue(recipeEntry);
+        final ResourceLocation recipeId = RecipeRuntimeCompat.recipeId(recipeEntry);
+        if (recipe == null || recipeId == null) {
+            return null;
+        }
         final NonNullList<ItemStack> operationLocks = prepareLocksForRecipe(locks, recipe);
+        final Class<?> recipeEntryClass = recipeEntry.getClass();
         final Object operationWithLocks = invoke(
-                invoke(context, "createOperation", new Class<?>[]{RecipeHolder.class}, recipeHolder),
+                invoke(context, "createOperation", new Class<?>[]{recipeEntryClass}, recipeEntry),
                 "withLockedInputs",
                 new Class<?>[]{NonNullList.class},
                 operationLocks
@@ -152,7 +161,7 @@ abstract class KitchenMenuRecipeStatusMixin {
 
         final NonNullList<ItemStack> displayLocks = copyLocks(lockedInputs(operation));
         final Object status = newRecipeWithStatus(
-                recipeHolder.id(),
+                recipeId,
                 recipeResult,
                 missingIngredients(operation),
                 missingIngredientsMask(operation),
@@ -304,8 +313,8 @@ abstract class KitchenMenuRecipeStatusMixin {
     }
 
     @Unique
-    private static boolean isIndexedRecipeHolder(final RecipeHolder<Recipe<?>> recipeHolder) {
-        return recipeHolder.value() instanceof CookingPotIndexedRecipe;
+    private static boolean isIndexedRecipeHolder(final Object recipeEntry) {
+        return RecipeRuntimeCompat.recipeValue(recipeEntry) instanceof CookingPotIndexedRecipe;
     }
 
     @Unique
@@ -379,12 +388,10 @@ abstract class KitchenMenuRecipeStatusMixin {
     }
 
     @Unique
-    private Collection<RecipeHolder<Recipe<?>>> getRecipesFor(final ItemStack resultItem) {
+    private Collection<Object> getRecipesFor(final ItemStack resultItem) {
         final Object value = invokeDeclared(this, "getRecipesFor", new Class<?>[]{ItemStack.class}, resultItem);
         if (value instanceof Collection<?> collection) {
-            @SuppressWarnings("unchecked")
-            final Collection<RecipeHolder<Recipe<?>>> cast = (Collection<RecipeHolder<Recipe<?>>>) collection;
-            return cast;
+            return new ArrayList<>(collection);
         }
         return List.of();
     }

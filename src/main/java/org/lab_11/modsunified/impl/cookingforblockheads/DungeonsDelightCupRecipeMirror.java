@@ -8,10 +8,10 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.Recipe;
-import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.item.crafting.RecipeManager;
-import net.neoforged.fml.ModList;
+import org.lab_11.modsunified.impl.platform.LoaderApiCompat;
 import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
+import org.lab_11.modsunified.impl.platform.RecipeRuntimeCompat;
 import org.slf4j.Logger;
 
 import java.lang.reflect.Constructor;
@@ -52,7 +52,7 @@ public final class DungeonsDelightCupRecipeMirror {
     private DungeonsDelightCupRecipeMirror() {
     }
 
-    public static boolean shouldRouteToCopperPotOnly(final RecipeHolder<?> recipeHolder) {
+    public static boolean shouldRouteToCopperPotOnly(final Object recipeEntry) {
         if (!isMirrorSupported()) {
             return false;
         }
@@ -62,7 +62,10 @@ public final class DungeonsDelightCupRecipeMirror {
             return false;
         }
 
-        final Recipe<?> recipe = recipeHolder.value();
+        final Recipe<?> recipe = RecipeRuntimeCompat.recipeValue(recipeEntry);
+        if (recipe == null) {
+            return false;
+        }
         if (!monsterRecipeClass.isInstance(recipe)) {
             return false;
         }
@@ -86,53 +89,58 @@ public final class DungeonsDelightCupRecipeMirror {
             return;
         }
 
-        final Collection<RecipeHolder<?>> allRecipes = recipeManager.getRecipes();
-        final List<RecipeHolder<?>> mergedRecipes = new ArrayList<>(allRecipes.size() + 32);
+        final List<Object> allRecipes = RecipeRuntimeCompat.getAllRecipes(recipeManager);
+        final List<Object> mergedRecipes = new ArrayList<>(allRecipes.size() + 32);
         final Set<ResourceLocation> recipeIds = new HashSet<>(allRecipes.size() * 2);
 
         int removed = 0;
-        for (final RecipeHolder<?> recipeHolder : allRecipes) {
-            if (isMirroredRecipeId(recipeHolder.id()) || isIndexedRecipeId(recipeHolder.id())) {
+        for (final Object recipeEntry : allRecipes) {
+            final ResourceLocation entryId = RecipeRuntimeCompat.recipeId(recipeEntry);
+            if (entryId == null || isMirroredRecipeId(entryId) || isIndexedRecipeId(entryId)) {
                 removed++;
                 continue;
             }
 
-            mergedRecipes.add(recipeHolder);
-            recipeIds.add(recipeHolder.id());
+            mergedRecipes.add(recipeEntry);
+            recipeIds.add(entryId);
         }
 
         int added = 0;
-        for (final RecipeHolder<?> recipeHolder : allRecipes) {
-            if (isMirroredRecipeId(recipeHolder.id()) || isIndexedRecipeId(recipeHolder.id())) {
+        for (final Object recipeEntry : allRecipes) {
+            final ResourceLocation entryId = RecipeRuntimeCompat.recipeId(recipeEntry);
+            if (entryId == null || isMirroredRecipeId(entryId) || isIndexedRecipeId(entryId)) {
                 continue;
             }
 
-            final Recipe<?> sourceRecipe = recipeHolder.value();
+            final Recipe<?> sourceRecipe = RecipeRuntimeCompat.recipeValue(recipeEntry);
+            if (sourceRecipe == null) {
+                continue;
+            }
             if (!monsterRecipeClass.isInstance(sourceRecipe)) {
                 continue;
             }
 
-            if (!shouldRouteToCopperPotOnly(recipeHolder)) {
+            if (!shouldRouteToCopperPotOnly(recipeEntry)) {
                 continue;
             }
 
-            final ResourceLocation mirroredRecipeId = mirroredRecipeId(recipeHolder.id());
+            final ResourceLocation mirroredRecipeId = mirroredRecipeId(entryId);
             if (!recipeIds.add(mirroredRecipeId)) {
                 continue;
             }
 
-            final RecipeHolder<?> mirroredRecipeHolder = createMirroredFdRecipe(
+            final Object mirroredRecipeEntry = createMirroredFdRecipe(
                     sourceRecipe,
                     mirroredRecipeId,
                     registryAccess,
                     fdRecipeConstructor,
                     fdRecipeTabFindByName
             );
-            if (mirroredRecipeHolder == null) {
+            if (mirroredRecipeEntry == null) {
                 continue;
             }
 
-            mergedRecipes.add(mirroredRecipeHolder);
+            mergedRecipes.add(mirroredRecipeEntry);
             added++;
         }
 
@@ -140,16 +148,16 @@ public final class DungeonsDelightCupRecipeMirror {
             return;
         }
 
-        recipeManager.replaceRecipes((Iterable) mergedRecipes);
+        RecipeRuntimeCompat.replaceRecipes(recipeManager, mergedRecipes);
         LOGGER.info("Mirrored {} DungeonsDelight copper-cup monster recipes into FarmersDelight cooking recipes (removed {}) via {}.",
                 added, removed, source);
     }
 
-    private static RecipeHolder<?> createMirroredFdRecipe(final Recipe<?> sourceRecipe,
-                                                          final ResourceLocation mirroredRecipeId,
-                                                          final RegistryAccess registryAccess,
-                                                          final Constructor<?> fdRecipeConstructor,
-                                                          final Method fdRecipeTabFindByName) {
+    private static Object createMirroredFdRecipe(final Recipe<?> sourceRecipe,
+                                                 final ResourceLocation mirroredRecipeId,
+                                                 final RegistryAccess registryAccess,
+                                                 final Constructor<?> fdRecipeConstructor,
+                                                 final Method fdRecipeTabFindByName) {
         final ItemStack output = sourceRecipe.getResultItem(registryAccess).copy();
         if (output.isEmpty()) {
             return null;
@@ -186,7 +194,7 @@ public final class DungeonsDelightCupRecipeMirror {
             if (!(fdRecipe instanceof Recipe<?> recipe)) {
                 return null;
             }
-            return new RecipeHolder<>(mirroredRecipeId, recipe);
+            return RecipeRuntimeCompat.recipeEntry(mirroredRecipeId, recipe);
         } catch (ReflectiveOperationException ignored) {
             return null;
         }
@@ -232,9 +240,9 @@ public final class DungeonsDelightCupRecipeMirror {
     }
 
     private static boolean isMirrorSupported() {
-        return ModList.get().isLoaded(BridgeKeys.MOD_DUNGEONS_DELIGHT)
-                && ModList.get().isLoaded(BridgeKeys.MOD_MINERS_DELIGHT)
-                && ModList.get().isLoaded(BridgeKeys.MOD_FARMERS_DELIGHT);
+        return LoaderApiCompat.isModLoaded(BridgeKeys.MOD_DUNGEONS_DELIGHT)
+                && LoaderApiCompat.isModLoaded(BridgeKeys.MOD_MINERS_DELIGHT)
+                && LoaderApiCompat.isModLoaded(BridgeKeys.MOD_FARMERS_DELIGHT);
     }
 
     private static Class<?> resolveMonsterRecipeClass() {

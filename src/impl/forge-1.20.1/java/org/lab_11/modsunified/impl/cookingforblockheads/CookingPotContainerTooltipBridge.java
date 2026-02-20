@@ -10,10 +10,11 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.Recipe;
-import net.neoforged.neoforge.client.event.RenderTooltipEvent;
-import net.neoforged.neoforge.event.entity.player.ItemTooltipEvent;
+import net.minecraftforge.client.event.RenderTooltipEvent;
+import net.minecraftforge.event.entity.player.ItemTooltipEvent;
 import org.lab_11.modsunified.impl.platform.LoaderApiCompat;
 import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
+import org.lab_11.modsunified.impl.platform.RecipeRuntimeCompat;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -73,7 +74,6 @@ public final class CookingPotContainerTooltipBridge {
         if (recipe == null) {
             return;
         }
-
         final ItemStack hoveredStack = event.getItemStack();
         final ItemStack selectedResult = recipe.getResultItem(minecraft.level.registryAccess());
         if (selectedResult.isEmpty()) {
@@ -323,9 +323,9 @@ public final class CookingPotContainerTooltipBridge {
             return null;
         }
 
-        final var recipeHolder = minecraft.level.getRecipeManager().byKey(recipeId).orElse(null);
-        if (recipeHolder != null) {
-            return recipeHolder.value();
+        final Recipe<?> recipe = RecipeRuntimeCompat.findById(minecraft.level.getRecipeManager(), recipeId);
+        if (recipe != null) {
+            return recipe;
         }
 
         return CookingPotRecipeIndexer.findIndexedRecipe(recipeId);
