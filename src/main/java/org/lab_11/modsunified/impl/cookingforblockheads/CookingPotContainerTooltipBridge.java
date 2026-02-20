@@ -144,12 +144,11 @@ public final class CookingPotContainerTooltipBridge {
     }
 
     private static ItemStack resolveContainerCost(final Recipe<?> recipe) {
-        if (recipe instanceof CookingPotIndexedRecipe indexedRecipe) {
-            return indexedRecipe.indexedContainerCost();
-        }
-
         final Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.level == null) {
+            if (recipe instanceof CookingPotIndexedRecipe indexedRecipe) {
+                return indexedRecipe.indexedContainerCost();
+            }
             return ItemStack.EMPTY;
         }
 

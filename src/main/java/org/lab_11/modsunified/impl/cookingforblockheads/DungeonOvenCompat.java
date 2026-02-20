@@ -36,10 +36,15 @@ public final class DungeonOvenCompat {
 
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final String COOKING_FOR_BLOCKHEADS_MOD_ID = BridgeKeys.MOD_COOKING_FOR_BLOCKHEADS;
-    private static final String CFBH_BLOCK_ENTITY_REGISTRY_CLASS = "net.blay09.mods.cookingforblockheads.block.entity.ModBlockEntities";
-    private static final String CFBH_BLOCK_REGISTRY_CLASS = "net.blay09.mods.cookingforblockheads.block.ModBlocks";
+    private static final String[] CFBH_BLOCK_ENTITY_REGISTRY_CLASS_CANDIDATES = {
+            "net.blay09.mods.cookingforblockheads.block.entity.ModBlockEntities",
+            "net.blay09.mods.cookingforblockheads.tile.ModBlockEntities"
+    };
+    private static final String[] CFBH_BLOCK_REGISTRY_CLASS_CANDIDATES = {
+            "net.blay09.mods.cookingforblockheads.block.ModBlocks"
+    };
     private static final String CFBH_OVEN_DEFERRED_FIELD = "oven";
-    private static final String CFBH_OVENS_FIELD = "ovens";
+    private static final String[] CFBH_OVENS_FIELD_CANDIDATES = {"ovens", "dyedOvens"};
     private static final String BLOCK_ENTITY_VALID_BLOCKS_FIELD = "validBlocks";
     private static final String LOCAL_CLIENT_HOOKS_CLASS =
             "org.lab_11.modsunified.impl.cookingforblockheads.client.DungeonOvenClientHooks";
@@ -98,7 +103,12 @@ public final class DungeonOvenCompat {
     @SuppressWarnings("unchecked")
     private static void attachDungeonOvenToCfbhOvenBlockEntityType() {
         try {
-            final Class<?> modBlockEntitiesClass = Class.forName(CFBH_BLOCK_ENTITY_REGISTRY_CLASS);
+            final Class<?> modBlockEntitiesClass = resolveFirstPresentClass(CFBH_BLOCK_ENTITY_REGISTRY_CLASS_CANDIDATES);
+            if (modBlockEntitiesClass == null) {
+                LOGGER.warn("Unable to attach dungeon oven to CFBH oven block entity type: ModBlockEntities class is unavailable.");
+                return;
+            }
+
             final Field ovenField = modBlockEntitiesClass.getField(CFBH_OVEN_DEFERRED_FIELD);
             final Object deferredObject = ovenField.get(null);
             final Object blockEntityTypeObject = invokeNoArg(deferredObject, "get");
@@ -170,8 +180,17 @@ public final class DungeonOvenCompat {
 
     private static void attachDungeonOvenToCfbhOvenCategory() {
         try {
-            final Class<?> modBlocksClass = Class.forName(CFBH_BLOCK_REGISTRY_CLASS);
-            final Field ovensField = modBlocksClass.getField(CFBH_OVENS_FIELD);
+            final Class<?> modBlocksClass = resolveFirstPresentClass(CFBH_BLOCK_REGISTRY_CLASS_CANDIDATES);
+            if (modBlocksClass == null) {
+                LOGGER.warn("Unable to attach dungeon oven to CFBH oven category: ModBlocks class is unavailable.");
+                return;
+            }
+
+            final Field ovensField = resolveFirstPresentField(modBlocksClass, CFBH_OVENS_FIELD_CANDIDATES);
+            if (ovensField == null) {
+                LOGGER.warn("Unable to attach dungeon oven to CFBH oven category: oven array field is unavailable.");
+                return;
+            }
             final Object rawOvens = ovensField.get(null);
             if (!(rawOvens instanceof OvenBlock[] ovens)) {
                 LOGGER.warn("Unable to attach dungeon oven to CFBH oven category: ovens field is not an OvenBlock array.");
@@ -211,5 +230,27 @@ public final class DungeonOvenCompat {
         } catch (ReflectiveOperationException e) {
             LOGGER.error("Failed to register dungeon oven client hooks.", e);
         }
+    }
+
+    private static Class<?> resolveFirstPresentClass(final String[] classNameCandidates) {
+        for (final String className : classNameCandidates) {
+            try {
+                return Class.forName(className);
+            } catch (ClassNotFoundException ignored) {
+                // Try the next known CFBH class layout.
+            }
+        }
+        return null;
+    }
+
+    private static Field resolveFirstPresentField(final Class<?> ownerClass, final String[] fieldNameCandidates) {
+        for (final String fieldName : fieldNameCandidates) {
+            try {
+                return ownerClass.getField(fieldName);
+            } catch (NoSuchFieldException ignored) {
+                // Try the next known field name.
+            }
+        }
+        return null;
     }
 }

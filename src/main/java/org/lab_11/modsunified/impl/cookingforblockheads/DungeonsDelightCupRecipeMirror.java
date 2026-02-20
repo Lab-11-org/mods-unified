@@ -25,8 +25,10 @@ import java.util.Set;
 public final class DungeonsDelightCupRecipeMirror {
     private static final Logger LOGGER = LogUtils.getLogger();
 
-    private static final String MONSTER_POT_RECIPE_CLASS =
-            "net.yirmiri.dungeonsdelight.common.block.monster_pot.MonsterPotRecipe";
+    private static final String[] MONSTER_POT_RECIPE_CLASS_CANDIDATES = {
+            "net.yirmiri.dungeonsdelight.common.block.monster_pot.MonsterPotRecipe",
+            "net.yirmiri.dungeonsdelight.common.block.entity.container.MonsterPotRecipe"
+    };
     private static final String FD_COOKING_POT_RECIPE_CLASS =
             "vectorwing.farmersdelight.common.crafting.CookingPotRecipe";
     private static final String FD_COOKING_POT_RECIPE_TAB_CLASS =
@@ -251,13 +253,16 @@ public final class DungeonsDelightCupRecipeMirror {
                 return null;
             }
 
-            try {
-                cachedMonsterPotRecipeClass = Class.forName(MONSTER_POT_RECIPE_CLASS);
-                return cachedMonsterPotRecipeClass;
-            } catch (ClassNotFoundException ignored) {
-                reflectionLookupFailed = true;
-                return null;
+            for (final String candidateClassName : MONSTER_POT_RECIPE_CLASS_CANDIDATES) {
+                try {
+                    cachedMonsterPotRecipeClass = Class.forName(candidateClassName);
+                    return cachedMonsterPotRecipeClass;
+                } catch (ClassNotFoundException ignored) {
+                    // Try the next known DD class layout.
+                }
             }
+            reflectionLookupFailed = true;
+            return null;
         }
     }
 

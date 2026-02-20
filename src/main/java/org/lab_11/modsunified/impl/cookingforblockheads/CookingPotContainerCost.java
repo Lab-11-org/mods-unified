@@ -32,7 +32,13 @@ final class CookingPotContainerCost {
                                              final RegistryAccess registryAccess,
                                              final boolean copperPotOutputConversion) {
         if (recipe instanceof CookingPotIndexedRecipe indexedRecipe) {
-            return indexedRecipe.indexedContainerCost();
+            final boolean indexedCopperPotTarget =
+                    MinersDelightCupConversion.COPPER_POT_TARGET_KEY.equals(indexedRecipe.targetKey());
+            return resolveInternal(
+                    indexedRecipe.delegateRecipe(),
+                    registryAccess,
+                    copperPotOutputConversion || indexedCopperPotTarget
+            );
         }
 
         final ItemStack rawResult = recipe.getResultItem(registryAccess);

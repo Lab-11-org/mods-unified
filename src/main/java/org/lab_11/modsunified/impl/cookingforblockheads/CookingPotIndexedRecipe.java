@@ -105,6 +105,10 @@ public final class CookingPotIndexedRecipe implements Recipe<RecipeInput> {
         return indexedContainerCost.copy();
     }
 
+    Recipe<?> delegateRecipe() {
+        return delegate;
+    }
+
     public List<String> requiredMarkerKeys() {
         return requiredMarkerKeys;
     }

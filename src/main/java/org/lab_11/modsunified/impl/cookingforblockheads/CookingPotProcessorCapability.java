@@ -3,7 +3,6 @@ package org.lab_11.modsunified.impl.cookingforblockheads;
 import net.blay09.mods.cookingforblockheads.api.IngredientToken;
 import net.blay09.mods.cookingforblockheads.api.KitchenItemProcessor;
 import net.blay09.mods.cookingforblockheads.api.KitchenOperation;
-import net.blay09.mods.cookingforblockheads.block.entity.CookingTableBlockEntity;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
@@ -37,6 +36,10 @@ public final class CookingPotProcessorCapability {
                     KitchenItemProcessor.class
             );
     private static final String CFBH_KITCHEN_IMPL_CLASS = "net.blay09.mods.cookingforblockheads.crafting.KitchenImpl";
+    private static final String[] CFBH_COOKING_TABLE_BLOCK_ENTITY_CLASS_CANDIDATES = {
+            "net.blay09.mods.cookingforblockheads.block.entity.CookingTableBlockEntity",
+            "net.blay09.mods.cookingforblockheads.tile.CookingTableBlockEntity"
+    };
     private static final String POT_GET_INVENTORY_METHOD = "getInventory";
     private static final String POT_INVENTORY_FIELD = "inventory";
     private static final String POT_MEAL_DISPLAY_SLOT_FIELD = "MEAL_DISPLAY_SLOT";
@@ -134,7 +137,7 @@ public final class CookingPotProcessorCapability {
             return false;
         }
 
-        return level.getBlockEntity(blockEntity.getBlockPos().below()) instanceof CookingTableBlockEntity;
+        return isCfbhCookingTableBlockEntity(level.getBlockEntity(blockEntity.getBlockPos().below()));
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
@@ -380,8 +383,7 @@ public final class CookingPotProcessorCapability {
                 return false;
             }
 
-            final ItemStack oneContainer = consumed.copyWithCount(1);
-            final ItemStack remaining = potInventory.insertItem(containerSlot, oneContainer, false);
+            final ItemStack remaining = potInventory.insertItem(containerSlot, consumed.copy(), false);
             if (!remaining.isEmpty()) {
                 token.restore(consumed);
                 return false;
@@ -516,6 +518,21 @@ public final class CookingPotProcessorCapability {
             }
         }
 
+        return false;
+    }
+
+    private static boolean isCfbhCookingTableBlockEntity(final BlockEntity blockEntity) {
+        if (blockEntity == null) {
+            return false;
+        }
+
+        final Class<?> blockEntityClass = blockEntity.getClass();
+        final String className = blockEntityClass.getName();
+        for (final String candidateClassName : CFBH_COOKING_TABLE_BLOCK_ENTITY_CLASS_CANDIDATES) {
+            if (candidateClassName.equals(className)) {
+                return true;
+            }
+        }
         return false;
     }
 }

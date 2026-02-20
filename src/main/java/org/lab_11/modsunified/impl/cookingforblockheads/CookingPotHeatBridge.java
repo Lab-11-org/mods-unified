@@ -30,8 +30,10 @@ public final class CookingPotHeatBridge {
             ResourceLocation.fromNamespaceAndPath(Unifiled.MOD_ID, "cfbh_ovens")
     );
 
-    private static final String CFBH_OVEN_BLOCK_ENTITY_CLASS =
-            "net.blay09.mods.cookingforblockheads.block.entity.OvenBlockEntity";
+    private static final String[] CFBH_OVEN_BLOCK_ENTITY_CLASS_CANDIDATES = {
+            "net.blay09.mods.cookingforblockheads.block.entity.OvenBlockEntity",
+            "net.blay09.mods.cookingforblockheads.tile.OvenBlockEntity"
+    };
     private static final String CFBH_CONFIG_CLASS = "net.blay09.mods.cookingforblockheads.CookingForBlockheadsConfig";
     private static final String CFBH_CONFIG_FUEL_MULTIPLIER_FIELD = "ovenFuelTimeMultiplier";
     private static final String CFBH_GET_ACTIVE_CONFIG_METHOD = "getActive";
@@ -391,7 +393,10 @@ public final class CookingPotHeatBridge {
 
     private static boolean isValidOvenFuel(final ItemStack fuelStack) {
         try {
-            final Class<?> ovenClass = Class.forName(CFBH_OVEN_BLOCK_ENTITY_CLASS);
+            final Class<?> ovenClass = resolveCfbhOvenBlockEntityClass();
+            if (ovenClass == null) {
+                return false;
+            }
             final Method isItemFuelMethod = ovenClass.getMethod(CFBH_IS_ITEM_FUEL_METHOD, ItemStack.class);
             final Object value = isItemFuelMethod.invoke(null, fuelStack);
             return value instanceof Boolean result && result;
@@ -478,13 +483,16 @@ public final class CookingPotHeatBridge {
                 return null;
             }
 
-            try {
-                cachedCfbhOvenBlockEntityClass = Class.forName(CFBH_OVEN_BLOCK_ENTITY_CLASS);
-                return cachedCfbhOvenBlockEntityClass;
-            } catch (ClassNotFoundException ignored) {
-                cfbhOvenBlockEntityLookupFailed = true;
-                return null;
+            for (final String candidateClassName : CFBH_OVEN_BLOCK_ENTITY_CLASS_CANDIDATES) {
+                try {
+                    cachedCfbhOvenBlockEntityClass = Class.forName(candidateClassName);
+                    return cachedCfbhOvenBlockEntityClass;
+                } catch (ClassNotFoundException ignored) {
+                    // Try next CFBH class layout.
+                }
             }
+            cfbhOvenBlockEntityLookupFailed = true;
+            return null;
         }
     }
 
