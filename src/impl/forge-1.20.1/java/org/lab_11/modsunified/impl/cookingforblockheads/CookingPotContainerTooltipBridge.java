@@ -2,6 +2,7 @@ package org.lab_11.modsunified.impl.cookingforblockheads;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.contents.TranslatableContents;
@@ -20,6 +21,7 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 
 public final class CookingPotContainerTooltipBridge {
     private enum TargetConnectionState {
@@ -30,6 +32,11 @@ public final class CookingPotContainerTooltipBridge {
 
     private static final String COOKING_FOR_BLOCKHEADS_MOD_ID = BridgeKeys.MOD_COOKING_FOR_BLOCKHEADS;
     private static final String KITCHEN_SCREEN_CLASS = "net.blay09.mods.cookingforblockheads.client.gui.screen.KitchenScreen";
+    private static final String RECIPE_BOOK_SCREEN_CLASS = "net.blay09.mods.cookingforblockheads.client.gui.screen.RecipeBookScreen";
+    private static final Set<String> CFBH_RECIPE_SCREEN_CLASS_NAMES = Set.of(
+            KITCHEN_SCREEN_CLASS,
+            RECIPE_BOOK_SCREEN_CLASS
+    );
     private static final String CRAFT_MATRIX_FAKE_SLOT_CLASS = "net.blay09.mods.cookingforblockheads.menu.slot.CraftMatrixFakeSlot";
     private static final String CFBH_CACHE_HINT_CLASS = "net.blay09.mods.cookingforblockheads.api.CacheHint";
     private static final String CFBH_INGREDIENT_TOKEN_CLASS = "net.blay09.mods.cookingforblockheads.api.IngredientToken";
@@ -53,7 +60,7 @@ public final class CookingPotContainerTooltipBridge {
 
         final Minecraft minecraft = Minecraft.getInstance();
         final Object screen = minecraft.screen;
-        if (screen == null || !KITCHEN_SCREEN_CLASS.equals(screen.getClass().getName())) {
+        if (!isSupportedRecipeScreen(screen)) {
             return;
         }
 
@@ -65,12 +72,7 @@ public final class CookingPotContainerTooltipBridge {
 
         removeIndexedRecipeLockHints(event, screen, selectedRecipeWithStatus);
 
-        final Object recipeIdObject = invokeNoArg(selectedRecipeWithStatus, "recipeId");
-        if (!(recipeIdObject instanceof ResourceLocation recipeId)) {
-            return;
-        }
-
-        final Recipe<?> recipe = resolveRecipeById(minecraft, recipeId);
+        final Recipe<?> recipe = resolveSelectedRecipe(minecraft, menu, selectedRecipeWithStatus);
         if (recipe == null) {
             return;
         }
@@ -128,7 +130,7 @@ public final class CookingPotContainerTooltipBridge {
 
         final Minecraft minecraft = Minecraft.getInstance();
         final Object screen = minecraft.screen;
-        if (screen == null || !KITCHEN_SCREEN_CLASS.equals(screen.getClass().getName())) {
+        if (!isSupportedRecipeScreen(screen)) {
             return;
         }
 
@@ -283,7 +285,7 @@ public final class CookingPotContainerTooltipBridge {
             return false;
         }
 
-        final Recipe<?> recipe = resolveSelectedRecipe(minecraft, selectedRecipeWithStatus);
+        final Recipe<?> recipe = resolveSelectedRecipe(minecraft, menu, selectedRecipeWithStatus);
         if (recipe == null) {
             return false;
         }
@@ -309,13 +311,14 @@ public final class CookingPotContainerTooltipBridge {
     }
 
     private static Recipe<?> resolveSelectedRecipe(final Minecraft minecraft,
+                                                   final Object menu,
                                                    final Object selectedRecipeWithStatus) {
         final Object recipeIdObject = invokeNoArg(selectedRecipeWithStatus, "recipeId");
-        if (!(recipeIdObject instanceof ResourceLocation recipeId)) {
-            return null;
+        if (recipeIdObject instanceof ResourceLocation recipeId) {
+            return resolveRecipeById(minecraft, recipeId);
         }
 
-        return resolveRecipeById(minecraft, recipeId);
+        return resolveLegacySelectedIndexedRecipe(minecraft, menu);
     }
 
     private static Recipe<?> resolveRecipeById(final Minecraft minecraft, final ResourceLocation recipeId) {
@@ -329,6 +332,157 @@ public final class CookingPotContainerTooltipBridge {
         }
 
         return CookingPotRecipeIndexer.findIndexedRecipe(recipeId);
+    }
+
+    private static Recipe<?> resolveLegacySelectedIndexedRecipe(final Minecraft minecraft, final Object menu) {
+        if (minecraft.level == null || menu == null) {
+            return null;
+        }
+
+        final Object selection = invokeNoArg(menu, "getSelection");
+        if (selection == null) {
+            return null;
+        }
+
+        final Object recipeType = invokeNoArg(selection, "getRecipeType");
+        if (recipeType == null || !"CRAFTING".equals(recipeType.toString())) {
+            return null;
+        }
+
+        final ItemStack outputItem = readLegacySelectionOutput(selection);
+        if (outputItem.isEmpty()) {
+            return null;
+        }
+
+        final List<ItemStack> matrixStacks = readLegacyDisplayedMatrixStacks(menu);
+        if (matrixStacks.isEmpty()) {
+            return null;
+        }
+
+        return findIndexedRecipeByOutputAndMatrix(minecraft, outputItem, matrixStacks);
+    }
+
+    private static ItemStack readLegacySelectionOutput(final Object selection) {
+        final Object outputValue = invokeNoArg(selection, "getOutputItem");
+        return outputValue instanceof ItemStack outputItem ? outputItem : ItemStack.EMPTY;
+    }
+
+    private static List<ItemStack> readLegacyDisplayedMatrixStacks(final Object menu) {
+        final Object slotsValue = invokeNoArg(menu, "getCraftingMatrixSlots");
+        if (!(slotsValue instanceof List<?> slots) || slots.isEmpty()) {
+            return List.of();
+        }
+
+        final List<ItemStack> stacks = new ArrayList<>(slots.size());
+        for (final Object slot : slots) {
+            final Object stackValue = invokeNoArg(slot, "getItem");
+            if (stackValue instanceof ItemStack stack) {
+                stacks.add(stack.isEmpty() ? ItemStack.EMPTY : stack.copy());
+            } else {
+                stacks.add(ItemStack.EMPTY);
+            }
+        }
+        return stacks;
+    }
+
+    private static Recipe<?> findIndexedRecipeByOutputAndMatrix(final Minecraft minecraft,
+                                                                 final ItemStack outputItem,
+                                                                 final List<ItemStack> matrixStacks) {
+        final var recipeManager = minecraft.level.getRecipeManager();
+        for (final Object recipeEntry : RecipeRuntimeCompat.getAllRecipes(recipeManager)) {
+            final Recipe<?> recipe = RecipeRuntimeCompat.recipeValue(recipeEntry);
+            if (!(recipe instanceof CookingPotIndexedRecipe indexedRecipe)) {
+                continue;
+            }
+
+            final ItemStack indexedResult = indexedRecipe.getResultItem(minecraft.level.registryAccess());
+            if (!MinecraftApiCompat.isSameItemSameData(indexedResult, outputItem)) {
+                continue;
+            }
+            if (!matchesDisplayedMatrix(indexedRecipe, matrixStacks, minecraft.level.registryAccess())) {
+                continue;
+            }
+            return indexedRecipe;
+        }
+
+        return null;
+    }
+
+    private static boolean matchesDisplayedMatrix(final CookingPotIndexedRecipe indexedRecipe,
+                                                  final List<ItemStack> matrixStacks,
+                                                  final RegistryAccess registryAccess) {
+        final List<ItemStack> remainingStacks = new ArrayList<>();
+        for (final ItemStack matrixStack : matrixStacks) {
+            if (matrixStack != null && !matrixStack.isEmpty()) {
+                remainingStacks.add(matrixStack);
+            }
+        }
+
+        final int start = Math.max(0, indexedRecipe.syntheticIngredientCount());
+        final List<Ingredient> ingredients = indexedRecipe.getIngredients();
+        for (int i = start; i < ingredients.size(); i++) {
+            final Ingredient ingredient = ingredients.get(i);
+            if (ingredient == null || ingredient.isEmpty()) {
+                continue;
+            }
+
+            boolean matched = false;
+            for (int stackIndex = 0; stackIndex < remainingStacks.size(); stackIndex++) {
+                final ItemStack candidate = remainingStacks.get(stackIndex);
+                if (ingredient.test(candidate)) {
+                    remainingStacks.remove(stackIndex);
+                    matched = true;
+                    break;
+                }
+            }
+
+            if (!matched) {
+                return false;
+            }
+        }
+
+        if (remainingStacks.isEmpty()) {
+            return true;
+        }
+
+        ItemStack containerCost = indexedRecipe.indexedContainerCost();
+        if (containerCost.isEmpty()) {
+            containerCost = CookingPotContainerCost.resolveForIndexedRecipe(
+                    indexedRecipe.delegateRecipe(),
+                    registryAccess,
+                    indexedRecipe.targetKey()
+            );
+        }
+        if (containerCost.isEmpty()) {
+            return false;
+        }
+
+        int remainingContainerCount = containerCost.getCount();
+        final ItemStack containerUnit = containerCost.copy();
+        containerUnit.setCount(1);
+        for (final ItemStack extraStack : remainingStacks) {
+            if (remainingContainerCount <= 0) {
+                break;
+            }
+            if (extraStack.isEmpty() || !MinecraftApiCompat.isSameItemSameData(extraStack, containerUnit)) {
+                continue;
+            }
+
+            final int used = Math.min(remainingContainerCount, extraStack.getCount());
+            remainingContainerCount -= used;
+            extraStack.shrink(used);
+        }
+
+        if (remainingContainerCount > 0) {
+            return false;
+        }
+
+        for (final ItemStack extraStack : remainingStacks) {
+            if (!extraStack.isEmpty()) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static boolean showsContainerLine(final Recipe<?> recipe) {
@@ -570,6 +724,10 @@ public final class CookingPotContainerTooltipBridge {
         } catch (ReflectiveOperationException ignored) {
             return null;
         }
+    }
+
+    private static boolean isSupportedRecipeScreen(final Object screen) {
+        return screen != null && CFBH_RECIPE_SCREEN_CLASS_NAMES.contains(screen.getClass().getName());
     }
 
     private static void appendRedTooltip(final ItemTooltipEvent event, final String tooltipKey) {

@@ -11,6 +11,7 @@ import net.minecraft.world.item.crafting.RecipeManager;
 import net.minecraft.world.item.crafting.RecipeType;
 import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
 import org.lab_11.modsunified.impl.platform.RecipeRuntimeCompat;
+import org.lab_11.modsunified.impl.platform.RuntimeBindings;
 import org.slf4j.Logger;
 
 import java.util.Collections;
@@ -157,6 +158,7 @@ public final class CookingPotRecipeIndexer {
             return;
         }
 
+        final int legacyInjectedRecipes = LegacyCookingRegistryBridge.injectIndexedRecipes(indexedRecipesById, registryAccess);
         final int indexedRecipesInManager = countIndexedRecipesInRecipeManager(recipeManager);
         final int indexedRecipesInLegacyRegistry = countIndexedRecipesInLegacyRegistry();
         if (!isLegacyVisibilitySynchronized(added, indexedRecipesInManager, indexedRecipesInLegacyRegistry)) {
@@ -182,9 +184,10 @@ public final class CookingPotRecipeIndexer {
             );
         } else {
             LOGGER.info(
-                    "Injected {} cooking-pot recipes into legacy Cooking for Blockheads registry via {} (managerIndexed={}, legacyIndexed={}).",
+                    "Injected {} cooking-pot recipes into legacy Cooking for Blockheads registry via {} (legacyInjected={}, managerIndexed={}, legacyIndexed={}).",
                     added,
                     source,
+                    legacyInjectedRecipes,
                     finalIndexedRecipesInManager,
                     finalIndexedRecipesInLegacyRegistry
             );
@@ -325,6 +328,11 @@ public final class CookingPotRecipeIndexer {
 
     private static void installIndexedRecipes(final RecipeManager recipeManager,
                                               final Map<ResourceLocation, Object> indexedRecipesById) {
+        if (shouldUseMapInjectionOnly()) {
+            installIndexedRecipesByNameAndType(recipeManager, indexedRecipesById);
+            return;
+        }
+
         final List<Object> mergedRecipes = new ArrayList<>();
         for (final Object recipeEntry : RecipeRuntimeCompat.getAllRecipes(recipeManager)) {
             final ResourceLocation recipeId = RecipeRuntimeCompat.recipeId(recipeEntry);
@@ -465,7 +473,9 @@ public final class CookingPotRecipeIndexer {
         installIndexedRecipesByNameAndType(recipeManager, indexedRecipesById);
         if (!refreshLegacyCookingForBlockheadsRegistry(recipeManager, registryAccess)) {
             LOGGER.warn("Forced legacy Cooking for Blockheads registry rebuild failed.");
+            return;
         }
+        LegacyCookingRegistryBridge.injectIndexedRecipes(indexedRecipesById, registryAccess);
     }
 
     private static int countIndexedRecipesInRecipeManager(final RecipeManager recipeManager) {
@@ -480,6 +490,11 @@ public final class CookingPotRecipeIndexer {
     }
 
     private static int countIndexedRecipesInLegacyRegistry() {
+        final int injectedCount = LegacyCookingRegistryBridge.countInjectedRecipes();
+        if (injectedCount > 0) {
+            return injectedCount;
+        }
+
         try {
             final Class<?> legacyRegistryClass = Class.forName("net.blay09.mods.cookingforblockheads.registry.CookingRegistry");
             final Method getFoodRecipesMethod = legacyRegistryClass.getMethod("getFoodRecipes");
@@ -503,6 +518,11 @@ public final class CookingPotRecipeIndexer {
         } catch (ReflectiveOperationException ignored) {
             return 0;
         }
+    }
+
+    private static boolean shouldUseMapInjectionOnly() {
+        final var profile = RuntimeBindings.active().profile();
+        return "forge".equals(profile.loader()) && profile.minecraftVersion().startsWith("1.20.1");
     }
 
     private static ResourceLocation indexedRecipeId(final ResourceLocation originalRecipeId, final String targetKey) {

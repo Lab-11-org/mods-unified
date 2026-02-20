@@ -14,11 +14,12 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 @Mixin(targets = "net.yirmiri.dungeonsdelight.common.block.MonsterPotBlock")
 abstract class MonsterPotBlock120Mixin {
     @Redirect(
-            method = "animateTick",
+            method = {"animateTick", "m_214162_"},
             at = @At(
                     value = "INVOKE",
                     target = "Lnet/yirmiri/dungeonsdelight/common/block/entity/MonsterPotBlockEntity;isHeated()Z"
             ),
+            require = 0,
             remap = false
     )
     private boolean lab11$redirectAnimateTickHeatCheck(final @Coerce Object potBlockEntity) {

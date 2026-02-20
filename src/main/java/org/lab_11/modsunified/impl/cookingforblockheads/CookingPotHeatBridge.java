@@ -1,5 +1,6 @@
 package org.lab_11.modsunified.impl.cookingforblockheads;
 
+import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
@@ -15,15 +16,18 @@ import net.minecraft.world.level.block.state.properties.BooleanProperty;
 import net.minecraft.world.level.block.state.properties.Property;
 import org.lab_11.modsunified.Unifiled;
 import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
+import org.slf4j.Logger;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Optional;
 
 public final class CookingPotHeatBridge {
+    private static final Logger LOGGER = LogUtils.getLogger();
     private static final String ACTIVE_PROPERTY = "active";
     private static final String FARMERS_DELIGHT_COOKING_POT_ID = "farmersdelight:cooking_pot";
     private static final String MINERS_DELIGHT_COPPER_POT_ID = "minersdelight:copper_pot";
+    private static final String MINERS_DELIGHT_COPPER_POT_ID_ALT = "miners_delight:copper_pot";
     private static final String DUNGEONS_DELIGHT_MONSTER_POT_ID = "dungeonsdelight:monster_pot";
     private static final String DUNGEON_OVEN_PATH = "dungeon_oven";
     private static final TagKey<Block> LAB11_CFBH_OVEN_BLOCK_TAG = TagKey.create(
@@ -100,7 +104,9 @@ public final class CookingPotHeatBridge {
 
         final ResourceLocation potBlockId = BuiltInRegistries.BLOCK.getKey(level.getBlockState(potPos).getBlock());
         final String id = potBlockId.toString();
-        return FARMERS_DELIGHT_COOKING_POT_ID.equals(id) || MINERS_DELIGHT_COPPER_POT_ID.equals(id);
+        return FARMERS_DELIGHT_COOKING_POT_ID.equals(id)
+                || DUNGEONS_DELIGHT_MONSTER_POT_ID.equals(id)
+                || isMinersDelightCopperPotId(id);
     }
 
     public static boolean isAnyOvenHeatedBelow(final Level level, final BlockPos potPos) {
@@ -121,6 +127,45 @@ public final class CookingPotHeatBridge {
         final BlockPos ovenPos = potPos.below();
         final BlockState belowState = level.getBlockState(ovenPos);
         return matchesOvenPolicy(level, ovenPos, belowState, OvenPolicy.ANY_OVEN);
+    }
+
+    public static boolean tryIgniteManagedOvenForPot(final BlockEntity potBlockEntity) {
+        if (potBlockEntity == null) {
+            return false;
+        }
+
+        final Level level = potBlockEntity.getLevel();
+        if (level == null || level.isClientSide) {
+            return false;
+        }
+
+        final BlockPos potPos = potBlockEntity.getBlockPos();
+        if (!shouldUseOvenHeatForPot(level, potPos) || !isAnyManagedOvenBelow(level, potPos)) {
+            LOGGER.info("Skipping managed-oven ignition for pot at {} because no managed oven is detected below.", potPos);
+            return false;
+        }
+
+        final BlockPos ovenPos = potPos.below();
+        final BlockState ovenState = level.getBlockState(ovenPos);
+        if (!matchesOvenPolicy(level, ovenPos, ovenState, OvenPolicy.ANY_OVEN)) {
+            LOGGER.info("Skipping managed-oven ignition for pot at {} because block below {} does not match managed oven policy.", potPos, ovenPos);
+            return false;
+        }
+
+        if (isOvenBurning(level, ovenPos)) {
+            syncOvenActiveVisual(level, ovenPos, ovenState);
+            LOGGER.info("Managed oven at {} is already burning for pot at {}.", ovenPos, potPos);
+            return true;
+        }
+
+        final boolean ignited = igniteOvenFromFuel(level, ovenPos, ovenState);
+        if (ignited) {
+            syncOvenActiveVisual(level, ovenPos, level.getBlockState(ovenPos));
+            LOGGER.info("Ignited managed oven at {} for pot at {}.", ovenPos, potPos);
+        } else {
+            LOGGER.info("Failed to ignite managed oven at {} for pot at {} (no usable fuel found).", ovenPos, potPos);
+        }
+        return ignited;
     }
 
     public static void tickOvenForPotHeat(final Level level,
@@ -144,7 +189,7 @@ public final class CookingPotHeatBridge {
 
         final String potId = potBlockId.toString();
         if (!FARMERS_DELIGHT_COOKING_POT_ID.equals(potId)
-                && !MINERS_DELIGHT_COPPER_POT_ID.equals(potId)
+                && !isMinersDelightCopperPotId(potId)
                 && !DUNGEONS_DELIGHT_MONSTER_POT_ID.equals(potId)) {
             return;
         }
@@ -218,7 +263,7 @@ public final class CookingPotHeatBridge {
 
         try {
             if (!invokeBooleanNoArg(potBlockEntity, POT_METHOD_HAS_INPUT)) {
-                return false;
+                return hasAnyInputInPotInventory(potBlockEntity);
             }
 
             final Object recipeWrapper = resolveRecipeWrapper(potBlockEntity);
@@ -236,21 +281,93 @@ public final class CookingPotHeatBridge {
                 return false;
             }
 
-            final Object recipeHolder = recipeOptional.get();
-            final Object recipe = invokeNoArg(recipeHolder, "value");
+            final Object recipeOptionalValue = recipeOptional.get();
+            final Object recipe = resolveRecipeFromOptionalValue(recipeOptionalValue);
             if (recipe == null) {
                 return false;
             }
 
-            final Method canCookMethod = findMethod(potBlockEntity.getClass(), POT_METHOD_CAN_COOK, 1);
+            final Method canCookMethod = findCompatibleSingleArgMethod(
+                    potBlockEntity.getClass(),
+                    POT_METHOD_CAN_COOK,
+                    recipe,
+                    recipeOptionalValue
+            );
             if (canCookMethod == null) {
                 return false;
             }
             canCookMethod.setAccessible(true);
-            final Object canCook = canCookMethod.invoke(potBlockEntity, recipe);
+            final Object canCook = invokeCanCook(canCookMethod, potBlockEntity, recipe, recipeOptionalValue);
             return canCook instanceof Boolean result && result;
         } catch (ReflectiveOperationException ignored) {
+            return hasAnyInputInPotInventory(potBlockEntity);
+        }
+    }
+
+    private static boolean hasAnyInputInPotInventory(final Object potBlockEntity) {
+        final Object inventoryObject = invokeNoArg(potBlockEntity, POT_METHOD_GET_INVENTORY);
+        final Object inventory = inventoryObject != null ? inventoryObject : readFieldValue(potBlockEntity, POT_FIELD_INVENTORY);
+        if (inventory == null) {
             return false;
+        }
+
+        try {
+            final Method getSlotsMethod = findMethod(inventory.getClass(), "getSlots", 0);
+            if (getSlotsMethod == null) {
+                return false;
+            }
+            getSlotsMethod.setAccessible(true);
+            final Object slotsValue = getSlotsMethod.invoke(inventory);
+            if (!(slotsValue instanceof Number number)) {
+                return false;
+            }
+
+            final int slots = Math.max(0, number.intValue());
+            final Method getStackInSlotMethod = findMethod(inventory.getClass(), "getStackInSlot", 1);
+            if (getStackInSlotMethod == null) {
+                return false;
+            }
+            getStackInSlotMethod.setAccessible(true);
+
+            final int mealDisplaySlot = resolveStaticIntField(potBlockEntity.getClass(), "MEAL_DISPLAY_SLOT", 6);
+            final int inputSlotLimit = Math.max(1, Math.min(slots, mealDisplaySlot));
+            for (int slot = 0; slot < inputSlotLimit; slot++) {
+                final Object value = getStackInSlotMethod.invoke(inventory, slot);
+                if (value instanceof ItemStack itemStack && !itemStack.isEmpty()) {
+                    return true;
+                }
+            }
+            return false;
+        } catch (ReflectiveOperationException ignored) {
+            return false;
+        }
+    }
+
+    private static Object resolveRecipeFromOptionalValue(final Object recipeOptionalValue) {
+        if (recipeOptionalValue == null) {
+            return null;
+        }
+
+        // 1.20.x returns Optional<Recipe>; 1.21.x may return Optional<RecipeHolder>.
+        final Object valueMethodResult = invokeNoArg(recipeOptionalValue, "value");
+        if (valueMethodResult != null) {
+            return valueMethodResult;
+        }
+
+        return recipeOptionalValue;
+    }
+
+    private static Object invokeCanCook(final Method canCookMethod,
+                                        final Object potBlockEntity,
+                                        final Object resolvedRecipe,
+                                        final Object recipeOptionalValue) throws ReflectiveOperationException {
+        try {
+            return canCookMethod.invoke(potBlockEntity, resolvedRecipe);
+        } catch (IllegalArgumentException ignored) {
+            if (recipeOptionalValue != null && recipeOptionalValue != resolvedRecipe) {
+                return canCookMethod.invoke(potBlockEntity, recipeOptionalValue);
+            }
+            throw ignored;
         }
     }
 
@@ -314,7 +431,8 @@ public final class CookingPotHeatBridge {
     }
 
     private static boolean isMinersDelightCopperPot(final Level level, final BlockPos potPos) {
-        return isPotBlockId(level, potPos, MINERS_DELIGHT_COPPER_POT_ID);
+        final ResourceLocation blockId = BuiltInRegistries.BLOCK.getKey(level.getBlockState(potPos).getBlock());
+        return blockId != null && isMinersDelightCopperPotId(blockId.toString());
     }
 
     private static boolean isDungeonsDelightMonsterPot(final Level level, final BlockPos potPos) {
@@ -324,6 +442,11 @@ public final class CookingPotHeatBridge {
     private static boolean isPotBlockId(final Level level, final BlockPos potPos, final String expectedId) {
         final ResourceLocation blockId = BuiltInRegistries.BLOCK.getKey(level.getBlockState(potPos).getBlock());
         return blockId != null && expectedId.equals(blockId.toString());
+    }
+
+    private static boolean isMinersDelightCopperPotId(final String blockId) {
+        return MINERS_DELIGHT_COPPER_POT_ID.equals(blockId)
+                || MINERS_DELIGHT_COPPER_POT_ID_ALT.equals(blockId);
     }
 
     private static boolean isTaggedAsCfbhOven(final BlockState ovenState) {
@@ -536,6 +659,24 @@ public final class CookingPotHeatBridge {
         }
     }
 
+    private static int resolveStaticIntField(final Class<?> ownerClass,
+                                             final String fieldName,
+                                             final int fallback) {
+        Class<?> currentClass = ownerClass;
+        while (currentClass != null) {
+            try {
+                final Field field = currentClass.getDeclaredField(fieldName);
+                field.setAccessible(true);
+                return field.getInt(null);
+            } catch (NoSuchFieldException ignored) {
+                currentClass = currentClass.getSuperclass();
+            } catch (ReflectiveOperationException ignored) {
+                return fallback;
+            }
+        }
+        return fallback;
+    }
+
     private static void setIntField(final Object target, final String fieldName, final int value) {
         final Field field = findField(target, fieldName);
         if (field == null) {
@@ -628,6 +769,67 @@ public final class CookingPotHeatBridge {
             currentClass = currentClass.getSuperclass();
         }
         return null;
+    }
+
+    private static Method findCompatibleSingleArgMethod(final Class<?> ownerClass,
+                                                        final String methodName,
+                                                        final Object... candidates) {
+        Method fallback = null;
+        Class<?> currentClass = ownerClass;
+        while (currentClass != null) {
+            for (final Method method : currentClass.getDeclaredMethods()) {
+                if (!methodName.equals(method.getName()) || method.getParameterCount() != 1) {
+                    continue;
+                }
+
+                if (fallback == null) {
+                    fallback = method;
+                }
+
+                final Class<?> parameterType = wrapPrimitive(method.getParameterTypes()[0]);
+                for (final Object candidate : candidates) {
+                    if (candidate == null) {
+                        continue;
+                    }
+                    if (parameterType.isAssignableFrom(candidate.getClass())) {
+                        return method;
+                    }
+                }
+            }
+            currentClass = currentClass.getSuperclass();
+        }
+        return fallback;
+    }
+
+    private static Class<?> wrapPrimitive(final Class<?> type) {
+        if (!type.isPrimitive()) {
+            return type;
+        }
+        if (type == boolean.class) {
+            return Boolean.class;
+        }
+        if (type == byte.class) {
+            return Byte.class;
+        }
+        if (type == short.class) {
+            return Short.class;
+        }
+        if (type == int.class) {
+            return Integer.class;
+        }
+        if (type == long.class) {
+            return Long.class;
+        }
+        if (type == float.class) {
+            return Float.class;
+        }
+        if (type == double.class) {
+            return Double.class;
+        }
+        if (type == char.class) {
+            return Character.class;
+        }
+        return type;
     }
 
     private static boolean isActive(final BlockState state) {

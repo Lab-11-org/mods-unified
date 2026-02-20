@@ -14,11 +14,12 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 @Mixin(targets = "com.sammy.minersdelight.content.block.copper_pot.CopperPotBlock")
 abstract class CopperPotBlockMixin {
     @Redirect(
-            method = "animateTick",
+            method = {"animateTick", "m_214162_"},
             at = @At(
                     value = "INVOKE",
                     target = "Lcom/sammy/minersdelight/content/block/copper_pot/CopperPotBlockEntity;isHeated()Z"
             ),
+            require = 0,
             remap = false
     )
     private boolean lab11$redirectAnimateTickHeatCheck(final @Coerce Object potBlockEntity) {

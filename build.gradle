@@ -333,6 +333,16 @@ if (isForgeTarget) {
     legacyForge.ideSyncTask generateModMetadata
 }
 
+if (isForgeTarget) {
+    tasks.named('jar', Jar).configure {
+        manifest {
+            attributes(
+                    'MixinConfigs': "${mod_id}.mixins.json"
+            )
+        }
+    }
+}
+
 publishing {
     publications {
         register('mavenJava', MavenPublication) {

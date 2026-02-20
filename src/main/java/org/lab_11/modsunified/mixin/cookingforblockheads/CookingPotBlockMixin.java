@@ -19,6 +19,7 @@ abstract class CookingPotBlockMixin {
                     value = "INVOKE",
                     target = "Lvectorwing/farmersdelight/common/block/entity/CookingPotBlockEntity;isHeated()Z"
             ),
+            require = 0,
             remap = false
     )
     private boolean lab11$redirectAnimateTickHeatCheck(final @Coerce Object potBlockEntity) {

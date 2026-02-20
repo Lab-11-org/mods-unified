@@ -78,11 +78,39 @@ public final class DungeonOvenCompat {
                 return fallbackBlock();
             }
 
-            final Constructor<?> constructor = ovenBlockClass.getConstructor(DyeColor.class, BlockBehaviour.Properties.class);
-            final Object created = constructor.newInstance(DyeColor.BLACK, resolveBalmBlockProperties());
-            if (created instanceof Block block) {
-                return block;
+            // Forge 1.20.1 CFBH OvenBlock exposes a no-arg constructor.
+            try {
+                final Constructor<?> noArgConstructor = ovenBlockClass.getConstructor();
+                final Object created = noArgConstructor.newInstance();
+                if (created instanceof Block block) {
+                    return block;
+                }
+            } catch (ReflectiveOperationException ignored) {
+                // Fall through to legacy constructor signatures.
             }
+
+            try {
+                final Constructor<?> ctorWithProperties = ovenBlockClass.getConstructor(BlockBehaviour.Properties.class);
+                final Object created = ctorWithProperties.newInstance(resolveBalmBlockProperties());
+                if (created instanceof Block block) {
+                    return block;
+                }
+            } catch (ReflectiveOperationException ignored) {
+                // Fall through to legacy constructor signatures.
+            }
+
+            try {
+                final Constructor<?> ctorWithColorAndProperties =
+                        ovenBlockClass.getConstructor(DyeColor.class, BlockBehaviour.Properties.class);
+                final Object created = ctorWithColorAndProperties.newInstance(DyeColor.BLACK, resolveBalmBlockProperties());
+                if (created instanceof Block block) {
+                    return block;
+                }
+            } catch (ReflectiveOperationException ignored) {
+                // Fall through to final fallback.
+            }
+
+            LOGGER.warn("Unable to create dungeon oven block: no compatible OvenBlock constructor found.");
         } catch (ReflectiveOperationException e) {
             LOGGER.error("Failed to create dungeon oven block using CFBH oven implementation.", e);
         }

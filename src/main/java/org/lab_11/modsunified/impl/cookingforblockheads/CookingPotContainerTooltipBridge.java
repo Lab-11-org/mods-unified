@@ -19,6 +19,7 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 
 public final class CookingPotContainerTooltipBridge {
     private enum TargetConnectionState {
@@ -29,6 +30,11 @@ public final class CookingPotContainerTooltipBridge {
 
     private static final String COOKING_FOR_BLOCKHEADS_MOD_ID = BridgeKeys.MOD_COOKING_FOR_BLOCKHEADS;
     private static final String KITCHEN_SCREEN_CLASS = "net.blay09.mods.cookingforblockheads.client.gui.screen.KitchenScreen";
+    private static final String RECIPE_BOOK_SCREEN_CLASS = "net.blay09.mods.cookingforblockheads.client.gui.screen.RecipeBookScreen";
+    private static final Set<String> CFBH_RECIPE_SCREEN_CLASS_NAMES = Set.of(
+            KITCHEN_SCREEN_CLASS,
+            RECIPE_BOOK_SCREEN_CLASS
+    );
     private static final String CRAFT_MATRIX_FAKE_SLOT_CLASS = "net.blay09.mods.cookingforblockheads.menu.slot.CraftMatrixFakeSlot";
     private static final String CFBH_CACHE_HINT_CLASS = "net.blay09.mods.cookingforblockheads.api.CacheHint";
     private static final String CFBH_INGREDIENT_TOKEN_CLASS = "net.blay09.mods.cookingforblockheads.api.IngredientToken";
@@ -52,7 +58,7 @@ public final class CookingPotContainerTooltipBridge {
 
         final Minecraft minecraft = Minecraft.getInstance();
         final Object screen = minecraft.screen;
-        if (screen == null || !KITCHEN_SCREEN_CLASS.equals(screen.getClass().getName())) {
+        if (!isSupportedRecipeScreen(screen)) {
             return;
         }
 
@@ -128,7 +134,7 @@ public final class CookingPotContainerTooltipBridge {
 
         final Minecraft minecraft = Minecraft.getInstance();
         final Object screen = minecraft.screen;
-        if (screen == null || !KITCHEN_SCREEN_CLASS.equals(screen.getClass().getName())) {
+        if (!isSupportedRecipeScreen(screen)) {
             return;
         }
 
@@ -570,6 +576,10 @@ public final class CookingPotContainerTooltipBridge {
         } catch (ReflectiveOperationException ignored) {
             return null;
         }
+    }
+
+    private static boolean isSupportedRecipeScreen(final Object screen) {
+        return screen != null && CFBH_RECIPE_SCREEN_CLASS_NAMES.contains(screen.getClass().getName());
     }
 
     private static void appendRedTooltip(final ItemTooltipEvent event, final String tooltipKey) {

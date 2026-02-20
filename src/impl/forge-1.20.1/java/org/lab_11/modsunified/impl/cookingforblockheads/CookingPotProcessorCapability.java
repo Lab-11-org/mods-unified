@@ -211,6 +211,7 @@ public final class CookingPotProcessorCapability {
             LAST_RECIPE_BY_POT.put(blockEntity, recipe);
         }
         blockEntity.setChanged();
+        CookingPotHeatBridge.tryIgniteManagedOvenForPot(blockEntity);
         return true;
     }
 
@@ -423,6 +424,7 @@ public final class CookingPotProcessorCapability {
         }
 
         blockEntity.setChanged();
+        CookingPotHeatBridge.tryIgniteManagedOvenForPot(blockEntity);
         return TransferFailure.NONE;
     }
 

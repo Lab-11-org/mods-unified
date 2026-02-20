@@ -127,21 +127,21 @@ public final class LegacyRecipeBookCraftBridge {
 
         resetSimulation(providers);
         final boolean requireBucket = doesItemRequireBucketForCrafting(outputItem);
+        final List<ItemStack> requestedIngredientStacks = resolveIngredientStacksForLegacyTransfer(indexedRecipe, matrixStacks);
+        if (requestedIngredientStacks == null || requestedIngredientStacks.isEmpty()) {
+            return false;
+        }
 
         final List<SourceConsumption> ingredientSources = new ArrayList<>();
-        for (final ItemStack matrixStack : matrixStacks) {
-            if (matrixStack.isEmpty()) {
-                continue;
-            }
-
-            final SourceConsumption source = findSourceForStack(matrixStack, providers, requireBucket, true);
+        for (final ItemStack requestedIngredient : requestedIngredientStacks) {
+            final SourceConsumption source = findSourceForStack(requestedIngredient, providers, requireBucket, true);
             if (source == null) {
                 return false;
             }
             ingredientSources.add(source);
         }
 
-        final ItemStack containerCost = indexedRecipe.indexedContainerCost();
+        final ItemStack containerCost = resolveContainerCostForLegacyCraft(indexedRecipe, player, outputItem);
         final List<SourceConsumption> containerSources = new ArrayList<>();
         if (!containerCost.isEmpty()) {
             final ItemStack unit = containerCost.copy();
@@ -174,10 +174,59 @@ public final class LegacyRecipeBookCraftBridge {
         return CookingPotProcessorCapability.transferResolvedStacksToPot(targetPot, indexedRecipe, ingredientUnits, containerCost);
     }
 
+    private static List<ItemStack> resolveIngredientStacksForLegacyTransfer(final CookingPotIndexedRecipe indexedRecipe,
+                                                                            final List<ItemStack> matrixStacks) {
+        if (indexedRecipe == null || matrixStacks == null || matrixStacks.isEmpty()) {
+            return null;
+        }
+
+        final List<ItemStack> remainingMatrixUnits = new ArrayList<>();
+        for (final ItemStack matrixStack : matrixStacks) {
+            if (matrixStack == null || matrixStack.isEmpty()) {
+                continue;
+            }
+
+            final int count = Math.max(1, matrixStack.getCount());
+            for (int i = 0; i < count; i++) {
+                remainingMatrixUnits.add(matrixStack.copyWithCount(1));
+            }
+        }
+
+        final List<ItemStack> resolvedIngredients = new ArrayList<>();
+        final int start = Math.max(0, indexedRecipe.syntheticIngredientCount());
+        final List<Ingredient> ingredients = indexedRecipe.getIngredients();
+        for (int ingredientIndex = start; ingredientIndex < ingredients.size(); ingredientIndex++) {
+            final Ingredient ingredient = ingredients.get(ingredientIndex);
+            if (ingredient == null || ingredient.isEmpty()) {
+                continue;
+            }
+
+            boolean matched = false;
+            for (int matrixIndex = 0; matrixIndex < remainingMatrixUnits.size(); matrixIndex++) {
+                final ItemStack matrixUnit = remainingMatrixUnits.get(matrixIndex);
+                if (!ingredient.test(matrixUnit)) {
+                    continue;
+                }
+
+                remainingMatrixUnits.remove(matrixIndex);
+                resolvedIngredients.add(matrixUnit);
+                matched = true;
+                break;
+            }
+
+            if (!matched) {
+                return null;
+            }
+        }
+
+        return resolvedIngredients;
+    }
+
     private static List<CookingPotIndexedRecipe> findIndexedCandidates(final Player player,
                                                                        final ItemStack outputItem,
                                                                        final List<ItemStack> matrixStacks) {
-        final List<CookingPotIndexedRecipe> matches = new ArrayList<>();
+        final List<CookingPotIndexedRecipe> strictMatches = new ArrayList<>();
+        final List<CookingPotIndexedRecipe> outputMatches = new ArrayList<>();
         final var recipeManager = player.level().getRecipeManager();
         final var registryAccess = player.level().registryAccess();
         for (final Object recipeEntry : RecipeRuntimeCompat.getAllRecipes(recipeManager)) {
@@ -190,16 +239,127 @@ public final class LegacyRecipeBookCraftBridge {
             if (!MinecraftApiCompat.isSameItemSameData(result, outputItem)) {
                 continue;
             }
-            if (!matchesDisplayedMatrix(indexedRecipe, matrixStacks)) {
+
+            outputMatches.add(indexedRecipe);
+            if (matchesDisplayedMatrix(indexedRecipe, matrixStacks, registryAccess)) {
+                strictMatches.add(indexedRecipe);
+            }
+        }
+
+        // 1.20.1 CFBH matrix payload can differ from 1.21.1 (e.g. serving-container visibility),
+        // so fall back to output-based indexed recipes to keep pot/container transfer working.
+        if (!strictMatches.isEmpty()) {
+            return strictMatches;
+        }
+
+        outputMatches.sort((left, right) ->
+                Integer.compare(
+                        fallbackMatchScore(right, matrixStacks, player.level().registryAccess()),
+                        fallbackMatchScore(left, matrixStacks, player.level().registryAccess())
+                )
+        );
+        return outputMatches;
+    }
+
+    private static int fallbackMatchScore(final CookingPotIndexedRecipe indexedRecipe,
+                                          final List<ItemStack> matrixStacks,
+                                          final net.minecraft.core.RegistryAccess registryAccess) {
+        int score = 0;
+        final List<ItemStack> remaining = new ArrayList<>();
+        for (final ItemStack stack : matrixStacks) {
+            if (stack != null && !stack.isEmpty()) {
+                remaining.add(stack.copy());
+            }
+        }
+
+        final int start = Math.max(0, indexedRecipe.syntheticIngredientCount());
+        final List<Ingredient> ingredients = indexedRecipe.getIngredients();
+        for (int i = start; i < ingredients.size(); i++) {
+            final Ingredient ingredient = ingredients.get(i);
+            if (ingredient == null || ingredient.isEmpty()) {
                 continue;
             }
-            matches.add(indexedRecipe);
+
+            boolean matched = false;
+            for (int stackIndex = 0; stackIndex < remaining.size(); stackIndex++) {
+                final ItemStack candidate = remaining.get(stackIndex);
+                if (ingredient.test(candidate)) {
+                    remaining.remove(stackIndex);
+                    matched = true;
+                    break;
+                }
+            }
+
+            score += matched ? 10 : -25;
         }
-        return matches;
+
+        ItemStack containerCost = indexedRecipe.indexedContainerCost();
+        if (containerCost.isEmpty()) {
+            containerCost = CookingPotContainerCost.resolveForIndexedRecipe(
+                    indexedRecipe.delegateRecipe(),
+                    registryAccess,
+                    indexedRecipe.targetKey()
+            );
+        }
+        if (!containerCost.isEmpty()) {
+            score += 5;
+            final ItemStack containerUnit = containerCost.copy();
+            containerUnit.setCount(1);
+            for (final ItemStack extra : remaining) {
+                if (!extra.isEmpty() && MinecraftApiCompat.isSameItemSameData(extra, containerUnit)) {
+                    score += 3;
+                } else if (!extra.isEmpty()) {
+                    score -= 4;
+                }
+            }
+        } else {
+            for (final ItemStack extra : remaining) {
+                if (!extra.isEmpty()) {
+                    score -= 4;
+                }
+            }
+        }
+
+        return score;
+    }
+
+    private static ItemStack resolveContainerCostForLegacyCraft(final CookingPotIndexedRecipe indexedRecipe,
+                                                                final Player player,
+                                                                final ItemStack outputItem) {
+        ItemStack containerCost = indexedRecipe.indexedContainerCost();
+        if (containerCost.isEmpty()) {
+            containerCost = CookingPotContainerCost.resolveForIndexedRecipe(
+                    indexedRecipe.delegateRecipe(),
+                    player.level().registryAccess(),
+                    indexedRecipe.targetKey()
+            );
+        }
+        if (!containerCost.isEmpty()) {
+            return containerCost;
+        }
+
+        final ItemStack outputContainer = outputItem.getCraftingRemainingItem();
+        if (outputContainer.isEmpty()) {
+            return ItemStack.EMPTY;
+        }
+
+        final int outputCount = Math.max(1, outputItem.getCount());
+        final int containerCountPerServing = Math.max(1, outputContainer.getCount());
+        final long totalContainerCount = (long) outputCount * containerCountPerServing;
+        final ItemStack fallback = outputContainer.copy();
+        fallback.setCount((int) Math.min(Integer.MAX_VALUE, totalContainerCount));
+        LOGGER.info(
+                "Using output-container fallback for legacy recipe-book craft: output='{}', container='{}', count={}.",
+                outputItem.getItem(),
+                fallback.getItem(),
+                fallback.getCount()
+        );
+        return fallback;
     }
 
     private static boolean matchesDisplayedMatrix(final CookingPotIndexedRecipe indexedRecipe,
-                                                  final List<ItemStack> matrixStacks) {
+                                                  final List<ItemStack> matrixStacks,
+                                                  final net.minecraft.core.RegistryAccess registryAccess) {
         final List<ItemStack> remainingStacks = new ArrayList<>();
         for (final ItemStack matrixStack : matrixStacks) {
             if (!matrixStack.isEmpty()) {
@@ -230,7 +390,48 @@ public final class LegacyRecipeBookCraftBridge {
             }
         }
 
-        return remainingStacks.isEmpty();
+        if (remainingStacks.isEmpty()) {
+            return true;
+        }
+
+        ItemStack containerCost = indexedRecipe.indexedContainerCost();
+        if (containerCost.isEmpty()) {
+            containerCost = CookingPotContainerCost.resolveForIndexedRecipe(
+                    indexedRecipe.delegateRecipe(),
+                    registryAccess,
+                    indexedRecipe.targetKey()
+            );
+        }
+        if (containerCost.isEmpty()) {
+            return false;
+        }
+
+        int remainingContainerCount = containerCost.getCount();
+        final ItemStack containerUnit = containerCost.copy();
+        containerUnit.setCount(1);
+        for (final ItemStack extraStack : remainingStacks) {
+            if (remainingContainerCount <= 0) {
+                break;
+            }
+            if (extraStack.isEmpty() || !MinecraftApiCompat.isSameItemSameData(extraStack, containerUnit)) {
+                continue;
+            }
+
+            final int used = Math.min(remainingContainerCount, extraStack.getCount());
+            remainingContainerCount -= used;
+            extraStack.shrink(used);
+        }
+
+        if (remainingContainerCount > 0) {
+            return false;
+        }
+
+        for (final ItemStack extraStack : remainingStacks) {
+            if (!extraStack.isEmpty()) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static BlockEntity findConnectedPot(final Level level,

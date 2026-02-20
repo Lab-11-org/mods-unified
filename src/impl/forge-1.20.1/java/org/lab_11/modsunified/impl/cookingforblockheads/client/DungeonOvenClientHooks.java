@@ -14,14 +14,14 @@ import org.slf4j.Logger;
 
 public final class DungeonOvenClientHooks {
     private static final Logger LOGGER = LogUtils.getLogger();
-    private static final String PRIMARY_VARIANT = "standalone";
-    private static final String[] FALLBACK_VARIANTS = {"inventory", "normal"};
+    private static final String PRIMARY_VARIANT = "inventory";
+    private static final String[] FALLBACK_VARIANTS = {"normal", ""};
     private static final ResourceLocation DOOR_MODEL_ID =
-            MinecraftApiCompat.resourceLocation(Unifiled.MOD_ID, "blocks/dungeon_oven_door");
+            MinecraftApiCompat.resourceLocation(Unifiled.MOD_ID, "block/dungeon_oven_door");
     private static final ResourceLocation ACTIVE_DOOR_MODEL_ID =
-            MinecraftApiCompat.resourceLocation(Unifiled.MOD_ID, "blocks/dungeon_oven_door_active");
+            MinecraftApiCompat.resourceLocation(Unifiled.MOD_ID, "block/dungeon_oven_door_active");
     private static final ResourceLocation HANDLE_MODEL_ID =
-            MinecraftApiCompat.resourceLocation(Unifiled.MOD_ID, "blocks/dungeon_oven_door_handle");
+            MinecraftApiCompat.resourceLocation(Unifiled.MOD_ID, "block/dungeon_oven_door_handle");
     public static final ModelResourceLocation DOOR_MODEL = new ModelResourceLocation(
             DOOR_MODEL_ID,
             PRIMARY_VARIANT
@@ -53,9 +53,9 @@ public final class DungeonOvenClientHooks {
     }
 
     private static void onRegisterAdditional(final ModelEvent.RegisterAdditional event) {
-        event.register(DOOR_MODEL);
-        event.register(ACTIVE_DOOR_MODEL);
-        event.register(HANDLE_MODEL);
+        event.register(DOOR_MODEL_ID);
+        event.register(ACTIVE_DOOR_MODEL_ID);
+        event.register(HANDLE_MODEL_ID);
         LOGGER.info("Registered additional dungeon oven door models.");
     }
 

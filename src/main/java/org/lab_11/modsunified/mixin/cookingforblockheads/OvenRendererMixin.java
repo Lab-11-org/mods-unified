@@ -33,7 +33,8 @@ abstract class OvenRendererMixin {
                     value = "INVOKE",
                     target = "Lnet/minecraft/client/renderer/block/ModelBlockRenderer;tesselateBlock(Lnet/minecraft/world/level/BlockAndTintGetter;Lnet/minecraft/client/resources/model/BakedModel;Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/core/BlockPos;Lcom/mojang/blaze3d/vertex/PoseStack;Lcom/mojang/blaze3d/vertex/VertexConsumer;ZLnet/minecraft/util/RandomSource;JI)V",
                     ordinal = 0
-            )
+            ),
+            require = 0
     )
     private void lab11$renderDungeonDoor(final ModelBlockRenderer renderer,
                                          final BlockAndTintGetter level,
@@ -67,7 +68,8 @@ abstract class OvenRendererMixin {
                     value = "INVOKE",
                     target = "Lnet/minecraft/client/renderer/block/ModelBlockRenderer;tesselateBlock(Lnet/minecraft/world/level/BlockAndTintGetter;Lnet/minecraft/client/resources/model/BakedModel;Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/core/BlockPos;Lcom/mojang/blaze3d/vertex/PoseStack;Lcom/mojang/blaze3d/vertex/VertexConsumer;ZLnet/minecraft/util/RandomSource;JI)V",
                     ordinal = 1
-            )
+            ),
+            require = 0
     )
     private void lab11$renderDungeonDoorHandle(final ModelBlockRenderer renderer,
                                                final BlockAndTintGetter level,
