@@ -1,4 +1,7 @@
-package org.lab_11.modsunified.impl.runtime;
+package org.lab_11.modsunified.impl.platform;
+
+import org.lab_11.modsunified.impl.platform.neoforge.v1_20_1.NeoForge1201BridgeTargetProvider;
+import org.lab_11.modsunified.impl.platform.neoforge.v1_21_1.NeoForge121BridgeTargetProvider;
 
 public final class RuntimeBindings {
     private static final String PROFILE_OVERRIDE_PROPERTY = "lab11.runtime.profile";

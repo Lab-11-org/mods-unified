@@ -14,6 +14,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BooleanProperty;
 import net.minecraft.world.level.block.state.properties.Property;
 import org.lab_11.modsunified.Unifiled;
+import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -27,7 +28,7 @@ public final class CookingPotHeatBridge {
     private static final String DUNGEON_OVEN_PATH = "dungeon_oven";
     private static final TagKey<Block> LAB11_CFBH_OVEN_BLOCK_TAG = TagKey.create(
             Registries.BLOCK,
-            ResourceLocation.fromNamespaceAndPath(Unifiled.MOD_ID, "cfbh_ovens")
+            MinecraftApiCompat.resourceLocation(Unifiled.MOD_ID, "cfbh_ovens")
     );
 
     private static final String[] CFBH_OVEN_BLOCK_ENTITY_CLASS_CANDIDATES = {

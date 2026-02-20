@@ -1,4 +1,4 @@
-package org.lab_11.modsunified.impl.runtime;
+package org.lab_11.modsunified.impl.platform;
 
 public record ModRuntimeBindings(MinecraftRuntimeProfile profile,
                                  String cfbhApiClassName,

@@ -12,6 +12,12 @@ tasks.named('wrapper', Wrapper).configure {
 version = mod_version
 group = mod_group_id
 
+def targetId = providers.gradleProperty('target_id')
+        .orElse("neoforge-${minecraft_version}")
+        .get()
+def javaVersion = providers.gradleProperty('java_version').orElse('21').get().toInteger()
+def useParchment = providers.gradleProperty('use_parchment').orElse('true').get().toBoolean()
+
 repositories {
     mavenLocal()
     mavenCentral()
@@ -26,17 +32,19 @@ repositories {
 }
 
 base {
-    archivesName = mod_id
+    archivesName = "${mod_id}-${targetId}"
 }
 
-java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+java.toolchain.languageVersion = JavaLanguageVersion.of(javaVersion)
 
 neoForge {
     version = project.neo_version
 
-    parchment {
-        mappingsVersion = project.parchment_mappings_version
-        minecraftVersion = project.parchment_minecraft_version
+    if (useParchment) {
+        parchment {
+            mappingsVersion = project.parchment_mappings_version
+            minecraftVersion = project.parchment_minecraft_version
+        }
     }
 
     runs {
@@ -75,6 +83,10 @@ neoForge {
 }
 
 sourceSets.main.resources { srcDir 'src/generated/resources' }
+def targetSpecificJavaDir = "src/impl/${targetId}/java"
+if (file(targetSpecificJavaDir).exists()) {
+    sourceSets.main.java.srcDir targetSpecificJavaDir
+}
 
 configurations {
     runtimeClasspath.extendsFrom localRuntime
@@ -214,6 +226,60 @@ publishing {
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
+}
+
+def targetPropsNeoForge211 = [
+        target_id                 : 'neoforge-1.21.1',
+        minecraft_version         : providers.gradleProperty('minecraft_version').orElse('1.21.1').get(),
+        minecraft_version_range   : providers.gradleProperty('minecraft_version_range').orElse('[1.21.1,1.22)').get(),
+        neo_version               : providers.gradleProperty('neo_version').orElse('21.1.219').get(),
+        loader_version_range      : providers.gradleProperty('loader_version_range').orElse('[4,)').get(),
+        parchment_minecraft_version: providers.gradleProperty('parchment_minecraft_version').orElse('1.21').get(),
+        parchment_mappings_version: providers.gradleProperty('parchment_mappings_version').orElse('2024.07.28').get(),
+        java_version              : '21',
+        use_parchment             : 'true'
+]
+
+def targetPropsNeoForge20x = [
+        target_id                 : 'neoforge-20.x',
+        minecraft_version         : providers.gradleProperty('neo20_minecraft_version').orElse('1.20.4').get(),
+        minecraft_version_range   : providers.gradleProperty('neo20_minecraft_version_range').orElse('[1.20.4,1.21)').get(),
+        neo_version               : providers.gradleProperty('neo20_version').orElse('20.4.251').get(),
+        loader_version_range      : providers.gradleProperty('neo20_loader_version_range').orElse('[1,)').get(),
+        parchment_minecraft_version: providers.gradleProperty('neo20_parchment_minecraft_version').orElse('1.20.4').get(),
+        parchment_mappings_version: providers.gradleProperty('neo20_parchment_mappings_version').orElse('2024.04.14').get(),
+        java_version              : providers.gradleProperty('neo20_java_version').orElse('21').get(),
+        use_parchment             : providers.gradleProperty('neo20_use_parchment').orElse('false').get()
+]
+
+def registerNestedBuild = { String taskName, Map<String, String> props ->
+    tasks.register(taskName, GradleBuild) {
+        group = 'build'
+        description = "Build ${props.target_id} target artifact"
+        tasks = ['clean', 'build']
+        startParameter.excludedTaskNames = ['test'] as Set<String>
+        startParameter.projectProperties.putAll(props)
+    }
+}
+
+registerNestedBuild('buildNeoForge211', targetPropsNeoForge211)
+registerNestedBuild('buildNeoForge20x', targetPropsNeoForge20x)
+
+tasks.register('buildForge1201') {
+    group = 'build'
+    description = 'Placeholder for Forge 1.20.1 target (requires dedicated loader port).'
+    doLast {
+        throw new GradleException(
+                "forge-1.20.1 target is not implemented in this module yet. " +
+                        "This codebase currently builds NeoForge targets (20.x and 1.21.1)."
+        )
+    }
+}
+
+tasks.register('buildAllTargets') {
+    group = 'build'
+    description = 'Build all currently supported loader/version targets.'
+    dependsOn 'buildNeoForge211', 'buildNeoForge20x'
 }
 
 idea {

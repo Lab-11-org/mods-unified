@@ -1,10 +1,10 @@
 package org.lab_11.modsunified.impl.cookingforblockheads;
 
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
 
 import java.util.Collection;
 import java.util.Map;
@@ -70,7 +70,7 @@ public final class CookingPotActivationMarkerProvider implements CfbhRuntime.Kit
     @Override
     public Object findByItem(final ItemStack itemStack, final Collection<?> allocatedTokens) {
         final MarkerEntry marker = markerForKey(markerKey);
-        if (!isActiveForCurrentTable() || !ItemStack.isSameItemSameComponents(marker.stack, itemStack)) {
+        if (!isActiveForCurrentTable() || !MinecraftApiCompat.isSameItemSameData(marker.stack, itemStack)) {
             return null;
         }
 
@@ -109,8 +109,8 @@ public final class CookingPotActivationMarkerProvider implements CfbhRuntime.Kit
 
     private static ItemStack createMarkerStack(final String markerKey) {
         final ItemStack markerStack = new ItemStack(BridgeMarkerRegistry.markerItemFor(markerKey));
-        markerStack.set(
-                DataComponents.CUSTOM_NAME,
+        MinecraftApiCompat.setCustomName(
+                markerStack,
                 Component.translatable(markerTranslationKey(markerKey))
         );
         return markerStack;

@@ -20,6 +20,7 @@ import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
 import org.lab_11.modsunified.Unifiled;
+import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
 import org.slf4j.Logger;
 
 import java.lang.reflect.Field;
@@ -33,7 +34,7 @@ import java.util.Set;
 public final class DungeonOvenCompat {
     public static final String DUNGEON_OVEN_MARKER_KEY = BridgeKeys.MARKER_DUNGEON_OVEN;
     public static final ResourceLocation DUNGEON_OVEN_ID =
-            ResourceLocation.fromNamespaceAndPath(Unifiled.MOD_ID, "dungeon_oven");
+            MinecraftApiCompat.resourceLocation(Unifiled.MOD_ID, "dungeon_oven");
 
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final String COOKING_FOR_BLOCKHEADS_MOD_ID = BridgeKeys.MOD_COOKING_FOR_BLOCKHEADS;
@@ -225,11 +226,28 @@ public final class DungeonOvenCompat {
 
     private static void addDungeonOvenIfMissing(final BuildCreativeModeTabContentsEvent event) {
         final ItemStack dungeonOvenStack = new ItemStack(DUNGEON_OVEN_ITEM.get());
-        if (event.getParentEntries().contains(dungeonOvenStack) || event.getSearchEntries().contains(dungeonOvenStack)) {
+        if (creativeTabContainsStack(event, "getParentEntries", dungeonOvenStack)
+                || creativeTabContainsStack(event, "getSearchEntries", dungeonOvenStack)) {
             return;
         }
 
         event.accept(dungeonOvenStack, CreativeModeTab.TabVisibility.PARENT_AND_SEARCH_TABS);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static boolean creativeTabContainsStack(final BuildCreativeModeTabContentsEvent event,
+                                                    final String accessorMethod,
+                                                    final ItemStack stack) {
+        try {
+            final Method method = event.getClass().getMethod(accessorMethod);
+            final Object entries = method.invoke(event);
+            if (entries instanceof java.util.Collection<?> collection) {
+                return ((java.util.Collection<ItemStack>) collection).contains(stack);
+            }
+        } catch (ReflectiveOperationException ignored) {
+            // Legacy 1.20 tab event API does not expose parent/search entry collections.
+        }
+        return false;
     }
 
     private static void attachDungeonOvenToCfbhOvenCategory() {

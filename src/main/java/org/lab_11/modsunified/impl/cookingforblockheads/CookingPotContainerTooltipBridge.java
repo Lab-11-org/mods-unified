@@ -14,6 +14,7 @@ import net.minecraft.world.item.crafting.RecipeHolder;
 import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.client.event.RenderTooltipEvent;
 import net.neoforged.neoforge.event.entity.player.ItemTooltipEvent;
+import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -83,7 +84,7 @@ public final class CookingPotContainerTooltipBridge {
             return;
         }
 
-        final boolean resultHovered = ItemStack.isSameItemSameComponents(hoveredStack, selectedResult);
+        final boolean resultHovered = MinecraftApiCompat.isSameItemSameData(hoveredStack, selectedResult);
         final boolean ingredientHovered = isHoveredStackInRecipeIngredients(hoveredStack, recipe);
 
         if (recipe instanceof CookingPotIndexedRecipe indexedRecipe && (resultHovered || ingredientHovered)) {
@@ -296,7 +297,7 @@ public final class CookingPotContainerTooltipBridge {
             return false;
         }
 
-        final boolean resultHovered = ItemStack.isSameItemSameComponents(hoveredStack, resultStack);
+        final boolean resultHovered = MinecraftApiCompat.isSameItemSameData(hoveredStack, resultStack);
         final boolean ingredientHovered = isHoveredStackInRecipeIngredients(hoveredStack, recipe);
         final boolean showsPotOriginLine = recipe instanceof CookingPotIndexedRecipe && (resultHovered || ingredientHovered);
         if (showsPotOriginLine) {
@@ -374,11 +375,11 @@ public final class CookingPotContainerTooltipBridge {
     private static Component resolvePotName(final String targetKey) {
         final ResourceLocation blockId = switch (targetKey) {
             case BridgeKeys.TARGET_FARMERS_DELIGHT_COOKING_POT ->
-                    ResourceLocation.fromNamespaceAndPath(BridgeKeys.MOD_FARMERS_DELIGHT, "cooking_pot");
+                    MinecraftApiCompat.resourceLocation(BridgeKeys.MOD_FARMERS_DELIGHT, "cooking_pot");
             case BridgeKeys.TARGET_DUNGEONS_DELIGHT_MONSTER_POT ->
-                    ResourceLocation.fromNamespaceAndPath(BridgeKeys.MOD_DUNGEONS_DELIGHT, "monster_pot");
+                    MinecraftApiCompat.resourceLocation(BridgeKeys.MOD_DUNGEONS_DELIGHT, "monster_pot");
             case BridgeKeys.TARGET_MINERS_DELIGHT_COPPER_POT ->
-                    ResourceLocation.fromNamespaceAndPath(BridgeKeys.MOD_MINERS_DELIGHT, "copper_pot");
+                    MinecraftApiCompat.resourceLocation(BridgeKeys.MOD_MINERS_DELIGHT, "copper_pot");
             default -> null;
         };
         if (blockId == null) {

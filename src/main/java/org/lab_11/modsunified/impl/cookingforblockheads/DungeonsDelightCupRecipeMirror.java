@@ -11,6 +11,7 @@ import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.item.crafting.RecipeManager;
 import net.neoforged.fml.ModList;
+import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
 import org.slf4j.Logger;
 
 import java.lang.reflect.Constructor;
@@ -41,7 +42,7 @@ public final class DungeonsDelightCupRecipeMirror {
     private static final String TAB_FIND_BY_NAME_METHOD = "findByName";
 
     private static final ResourceLocation COPPER_CUP_ID =
-            ResourceLocation.fromNamespaceAndPath(BridgeKeys.MOD_MINERS_DELIGHT, "copper_cup");
+            MinecraftApiCompat.resourceLocation(BridgeKeys.MOD_MINERS_DELIGHT, "copper_cup");
 
     private static volatile Class<?> cachedMonsterPotRecipeClass;
     private static volatile Constructor<?> cachedFdRecipeConstructor;
@@ -217,7 +218,7 @@ public final class DungeonsDelightCupRecipeMirror {
         final String mirroredPath = BridgeKeys.MIRRORED_DD_CUP_RECIPE_PATH_PREFIX
                 + originalRecipeId.getNamespace() + "/"
                 + originalRecipeId.getPath();
-        return ResourceLocation.fromNamespaceAndPath(BridgeKeys.MOD_LAB11_UNIFIED, mirroredPath);
+        return MinecraftApiCompat.resourceLocation(BridgeKeys.MOD_LAB11_UNIFIED, mirroredPath);
     }
 
     private static boolean isMirroredRecipeId(final ResourceLocation recipeId) {

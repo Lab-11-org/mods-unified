@@ -1,7 +1,8 @@
-package org.lab_11.modsunified.impl.runtime;
+package org.lab_11.modsunified.impl.platform.neoforge.v1_21_1;
 
 import org.lab_11.modsunified.impl.cookingforblockheads.BridgeKeys;
 import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotBridgeTarget;
+import org.lab_11.modsunified.impl.platform.BridgeTargetProvider;
 
 import java.util.List;
 

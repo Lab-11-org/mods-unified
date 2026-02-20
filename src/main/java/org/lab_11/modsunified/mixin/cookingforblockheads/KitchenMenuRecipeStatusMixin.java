@@ -10,6 +10,7 @@ import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeHolder;
 import org.lab_11.modsunified.impl.cookingforblockheads.BridgeKeys;
 import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotIndexedRecipe;
+import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.Unique;
@@ -277,13 +278,13 @@ abstract class KitchenMenuRecipeStatusMixin {
             }
 
             final ItemStack option = raw.copyWithCount(1);
-            options.putIfAbsent(new StackIdentity(option.getItem(), option.getComponents()), option);
+            options.putIfAbsent(new StackIdentity(option.getItem(), MinecraftApiCompat.stackDataKey(option)), option);
         }
 
         final List<ItemStack> sorted = new ArrayList<>(options.values());
         sorted.sort(Comparator
                 .comparing((ItemStack stack) -> BuiltInRegistries.ITEM.getKey(stack.getItem()).toString())
-                .thenComparing(stack -> stack.getComponents().toString()));
+                .thenComparing(MinecraftApiCompat::stackDataKey));
         return List.copyOf(sorted);
     }
 
@@ -328,7 +329,7 @@ abstract class KitchenMenuRecipeStatusMixin {
                     key.append('@')
                             .append(BuiltInRegistries.ITEM.getKey(locked.getItem()))
                             .append('#')
-                            .append(locked.getComponents());
+                            .append(MinecraftApiCompat.stackDataKey(locked));
                 }
             }
         }

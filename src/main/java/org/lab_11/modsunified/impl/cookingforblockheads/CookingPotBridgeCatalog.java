@@ -1,6 +1,6 @@
 package org.lab_11.modsunified.impl.cookingforblockheads;
 
-import org.lab_11.modsunified.impl.runtime.RuntimeBindings;
+import org.lab_11.modsunified.impl.platform.RuntimeBindings;
 import org.slf4j.Logger;
 
 import java.util.ArrayList;

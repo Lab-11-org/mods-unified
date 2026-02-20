@@ -10,6 +10,7 @@ import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.item.crafting.RecipeManager;
 import net.minecraft.world.item.crafting.RecipeType;
+import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
 import org.slf4j.Logger;
 
 import java.util.Collections;
@@ -215,7 +216,7 @@ public final class CookingPotRecipeIndexer {
                 + targetKey + "/"
                 + originalRecipeId.getNamespace() + "/"
                 + originalRecipeId.getPath();
-        return ResourceLocation.fromNamespaceAndPath(INDEXED_RECIPE_NAMESPACE, path);
+        return MinecraftApiCompat.resourceLocation(INDEXED_RECIPE_NAMESPACE, path);
     }
 
     private static boolean isIndexedRecipeId(final ResourceLocation recipeId) {

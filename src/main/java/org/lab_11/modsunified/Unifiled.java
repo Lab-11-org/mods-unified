@@ -25,8 +25,8 @@ import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotKitchenHandler
 import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotProcessorCapability;
 import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotRecipeIndexer;
 import org.lab_11.modsunified.impl.cookingforblockheads.DungeonsDelightCupRecipeMirror;
-import org.lab_11.modsunified.impl.runtime.ModRuntimeBindings;
-import org.lab_11.modsunified.impl.runtime.RuntimeBindings;
+import org.lab_11.modsunified.impl.platform.ModRuntimeBindings;
+import org.lab_11.modsunified.impl.platform.RuntimeBindings;
 import org.slf4j.Logger;
 
 import java.util.HashSet;

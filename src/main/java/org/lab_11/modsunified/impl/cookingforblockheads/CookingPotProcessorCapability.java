@@ -15,6 +15,7 @@ import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.neoforged.neoforge.capabilities.BlockCapability;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import net.neoforged.neoforge.items.IItemHandler;
+import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -28,7 +29,7 @@ import java.util.function.Predicate;
 
 public final class CookingPotProcessorCapability {
     private static final ResourceLocation CFBH_KITCHEN_ITEM_PROCESSOR_CAPABILITY_ID =
-            ResourceLocation.fromNamespaceAndPath(BridgeKeys.MOD_COOKING_FOR_BLOCKHEADS, "kitchen_item_processor");
+            MinecraftApiCompat.resourceLocation(BridgeKeys.MOD_COOKING_FOR_BLOCKHEADS, "kitchen_item_processor");
     private static final String CFBH_KITCHEN_IMPL_CLASS = "net.blay09.mods.cookingforblockheads.crafting.KitchenImpl";
     private static final String[] CFBH_COOKING_TABLE_BLOCK_ENTITY_CLASS_CANDIDATES = {
             "net.blay09.mods.cookingforblockheads.block.entity.CookingTableBlockEntity",

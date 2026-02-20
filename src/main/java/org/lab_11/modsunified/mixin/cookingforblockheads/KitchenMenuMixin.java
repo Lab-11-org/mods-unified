@@ -4,6 +4,7 @@ import net.minecraft.core.NonNullList;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import org.lab_11.modsunified.impl.cookingforblockheads.BridgeKeys;
+import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.Unique;
@@ -177,7 +178,7 @@ abstract class KitchenMenuMixin {
             final ItemStack stack = locks.get(i);
             signature.append('|').append(i).append('=');
             if (!stack.isEmpty()) {
-                signature.append(stack.getItem()).append('#').append(stack.getComponents());
+                signature.append(stack.getItem()).append('#').append(MinecraftApiCompat.stackDataKey(stack));
             }
         }
         return signature.toString();
