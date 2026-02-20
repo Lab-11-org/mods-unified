@@ -44,6 +44,13 @@ public final class CookingPotActivationMarkerProvider implements KitchenItemProv
         return isActiveForCurrentTable();
     }
 
+    boolean isTargetPotConnectedForCurrentTableMarker() {
+        if (!isPotTargetMarker(markerKey)) {
+            return false;
+        }
+        return CookingPotHeatBridge.isTargetPotConnectedForCookingTable(blockEntity, markerKey);
+    }
+
     @Override
     public IngredientToken findIngredient(final Ingredient ingredient,
                                           final Collection<IngredientToken> ingredientTokens,

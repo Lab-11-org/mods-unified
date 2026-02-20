@@ -22,6 +22,12 @@ import java.util.Collection;
 import java.util.List;
 
 public final class CookingPotContainerTooltipBridge {
+    private enum TargetConnectionState {
+        MISSING,
+        PRESENT_BUT_WRONG_SETUP,
+        CONNECTED
+    }
+
     private static final String COOKING_FOR_BLOCKHEADS_MOD_ID = BridgeKeys.MOD_COOKING_FOR_BLOCKHEADS;
     private static final String KITCHEN_SCREEN_CLASS = "net.blay09.mods.cookingforblockheads.client.gui.screen.KitchenScreen";
     private static final String CRAFT_MATRIX_FAKE_SLOT_CLASS = "net.blay09.mods.cookingforblockheads.menu.slot.CraftMatrixFakeSlot";
@@ -34,6 +40,7 @@ public final class CookingPotContainerTooltipBridge {
     private static final String TOOLTIP_CONTAINER_ENTRY_KEY = "lab_11_mods_unified.tooltip.cooking_table.container_entry";
     private static final String TOOLTIP_CONTAINER_NOT_ENOUGH_KEY = "lab_11_mods_unified.tooltip.cooking_table.container_not_enough";
     private static final String TOOLTIP_COOKS_IN_FROM_KEY = "lab_11_mods_unified.tooltip.cooking_table.cooks_in_from";
+    private static final String TOOLTIP_POT_NOT_CONNECTED_KEY = "lab_11_mods_unified.tooltip.cooking_table.pot_not_connected";
     private static final int CUSTOM_TOOLTIP_Y_OFFSET = 14;
 
     private CookingPotContainerTooltipBridge() {
@@ -88,7 +95,10 @@ public final class CookingPotContainerTooltipBridge {
             return;
         }
 
-        appendMissingRequirementTooltips(event, menu, recipe, minecraft.player);
+        final boolean hasHardRequirementFailure = appendMissingRequirementTooltips(event, menu, recipe, minecraft.player);
+        if (hasHardRequirementFailure) {
+            return;
+        }
 
         final ItemStack containerCost = resolveContainerCost(recipe);
         if (containerCost.isEmpty()) {
@@ -154,7 +164,7 @@ public final class CookingPotContainerTooltipBridge {
             return false;
         }
 
-        if (menu == null || player == null || indexedRecipe.requiredMarkerKeys().isEmpty()) {
+        if (menu == null || player == null) {
             return false;
         }
 
@@ -163,19 +173,26 @@ public final class CookingPotContainerTooltipBridge {
             return false;
         }
 
-        // If the kitchen can process this recipe, all hard requirements are already satisfied.
-        if (canKitchenProcess(kitchen, recipe)) {
-            return false;
-        }
-
         final List<?> itemProviders = resolveItemProviders(kitchen, player);
         if (itemProviders == null || itemProviders.isEmpty()) {
-            return false;
+            appendRedTooltip(event, TOOLTIP_POT_NOT_CONNECTED_KEY);
+            return true;
         }
 
         final Class<?> cacheHintClass = resolveCacheHintClass();
         final Object cacheHintNone = resolveCacheHintNone(cacheHintClass);
         if (cacheHintClass == null || cacheHintNone == null) {
+            return false;
+        }
+
+        if (resolveTargetConnectionState(itemProviders, indexedRecipe.targetKey(), cacheHintClass, cacheHintNone)
+                != TargetConnectionState.CONNECTED) {
+            appendMissingTargetTooltip(event, indexedRecipe.targetKey());
+            return true;
+        }
+
+        if (BridgeKeys.TARGET_DUNGEONS_DELIGHT_MONSTER_POT.equals(indexedRecipe.targetKey())
+                || indexedRecipe.requiredMarkerKeys().isEmpty()) {
             return false;
         }
 
@@ -186,7 +203,7 @@ public final class CookingPotContainerTooltipBridge {
             }
 
             BridgeMarkerRegistry.missingRequirementTooltipKey(requiredMarkerKey).ifPresent(tooltipKey ->
-                    event.getToolTip().add(Component.translatable(tooltipKey).withStyle(ChatFormatting.RED))
+                    appendRedTooltip(event, tooltipKey)
             );
             appended = true;
         }
@@ -320,24 +337,33 @@ public final class CookingPotContainerTooltipBridge {
                                                         final Player player) {
         if (!(recipe instanceof CookingPotIndexedRecipe indexedRecipe)
                 || menu == null
-                || player == null
-                || indexedRecipe.requiredMarkerKeys().isEmpty()) {
+                || player == null) {
             return false;
         }
 
         final Object kitchen = invokeNoArg(menu, "getKitchen");
-        if (kitchen == null || canKitchenProcess(kitchen, recipe)) {
+        if (kitchen == null) {
             return false;
         }
 
         final List<?> itemProviders = resolveItemProviders(kitchen, player);
         if (itemProviders == null || itemProviders.isEmpty()) {
-            return false;
+            return true;
         }
 
         final Class<?> cacheHintClass = resolveCacheHintClass();
         final Object cacheHintNone = resolveCacheHintNone(cacheHintClass);
         if (cacheHintClass == null || cacheHintNone == null) {
+            return false;
+        }
+
+        if (resolveTargetConnectionState(itemProviders, indexedRecipe.targetKey(), cacheHintClass, cacheHintNone)
+                != TargetConnectionState.CONNECTED) {
+            return true;
+        }
+
+        if (BridgeKeys.TARGET_DUNGEONS_DELIGHT_MONSTER_POT.equals(indexedRecipe.targetKey())
+                || indexedRecipe.requiredMarkerKeys().isEmpty()) {
             return false;
         }
 
@@ -385,20 +411,6 @@ public final class CookingPotContainerTooltipBridge {
                 .getModContainerById(modId)
                 .map(container -> Component.literal(container.getModInfo().getDisplayName()))
                 .orElse(Component.literal(modId));
-    }
-
-    private static boolean canKitchenProcess(final Object kitchen, final Recipe<?> recipe) {
-        if (kitchen == null || recipe == null || recipe.getType() == null) {
-            return false;
-        }
-
-        try {
-            final Method canProcess = kitchen.getClass().getMethod("canProcess", net.minecraft.world.item.crafting.RecipeType.class);
-            final Object value = canProcess.invoke(kitchen, recipe.getType());
-            return value instanceof Boolean canProcessValue && canProcessValue;
-        } catch (ReflectiveOperationException ignored) {
-            return false;
-        }
     }
 
     private static boolean hasRequiredMarker(final List<?> itemProviders,
@@ -556,5 +568,45 @@ public final class CookingPotContainerTooltipBridge {
         } catch (ReflectiveOperationException ignored) {
             return null;
         }
+    }
+
+    private static void appendRedTooltip(final ItemTooltipEvent event, final String tooltipKey) {
+        event.getToolTip().add(Component.translatable(tooltipKey).withStyle(ChatFormatting.RED));
+    }
+
+    private static void appendMissingTargetTooltip(final ItemTooltipEvent event, final String targetKey) {
+        if (BridgeKeys.TARGET_DUNGEONS_DELIGHT_MONSTER_POT.equals(targetKey)) {
+            appendRedTooltip(event, BridgeKeys.TOOLTIP_MISSING_DUNGEON_OVEN);
+            return;
+        }
+
+        appendRedTooltip(event, TOOLTIP_POT_NOT_CONNECTED_KEY);
+    }
+
+    private static TargetConnectionState resolveTargetConnectionState(final List<?> itemProviders,
+                                                                      final String targetKey,
+                                                                      final Class<?> cacheHintClass,
+                                                                      final Object cacheHintNone) {
+        boolean foundTargetProvider = false;
+        for (final Object itemProvider : itemProviders) {
+            if (!(itemProvider instanceof CookingPotActivationMarkerProvider markerProvider)
+                    || !markerProvider.isMarkerKey(targetKey)) {
+                continue;
+            }
+
+            foundTargetProvider = true;
+            if (markerProvider.isTargetPotConnectedForCurrentTableMarker()) {
+                return TargetConnectionState.CONNECTED;
+            }
+        }
+
+        return foundTargetProvider
+                ? TargetConnectionState.PRESENT_BUT_WRONG_SETUP
+                : (hasRequiredMarker(
+                itemProviders,
+                targetKey,
+                cacheHintClass,
+                cacheHintNone
+        ) ? TargetConnectionState.CONNECTED : TargetConnectionState.MISSING);
     }
 }

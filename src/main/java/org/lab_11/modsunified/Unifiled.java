@@ -25,6 +25,8 @@ import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotKitchenHandler
 import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotProcessorCapability;
 import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotRecipeIndexer;
 import org.lab_11.modsunified.impl.cookingforblockheads.DungeonsDelightCupRecipeMirror;
+import org.lab_11.modsunified.impl.runtime.ModRuntimeBindings;
+import org.lab_11.modsunified.impl.runtime.RuntimeBindings;
 import org.slf4j.Logger;
 
 import java.util.HashSet;
@@ -35,16 +37,16 @@ import java.util.Set;
 public final class Unifiled {
     public static final String MOD_ID = "lab_11_mods_unified";
     private static final Logger LOGGER = LogUtils.getLogger();
-
-    private static final String COOKING_FOR_BLOCKHEADS_API_CLASS = "net.blay09.mods.cookingforblockheads.api.CookingForBlockheadsAPI";
-    private static final String COOKING_FOR_BLOCKHEADS_HANDLER_CLASS = "net.blay09.mods.cookingforblockheads.api.KitchenRecipeHandler";
-    private static final String LOCAL_BALM_FALLBACK_PROVIDER_BRIDGE_CLASS = "org.lab_11.modsunified.impl.cookingforblockheads.BalmFallbackProviderBridge";
-    private static final String LOCAL_BALM_RECIPE_SYNC_BRIDGE_CLASS = "org.lab_11.modsunified.impl.cookingforblockheads.BalmRecipeSyncBridge";
-    private static final String LOCAL_DUNGEON_OVEN_COMPAT_CLASS = "org.lab_11.modsunified.impl.cookingforblockheads.DungeonOvenCompat";
+    private static final ModRuntimeBindings RUNTIME = RuntimeBindings.active();
 
     private List<CookingPotBridgeTarget> activeCookingPotTargets = List.of();
 
     public Unifiled(IEventBus modEventBus) {
+        LOGGER.info("Bootstrapping runtime profile {} (loader={}, minecraft={}, loaderVersion={}).",
+                RUNTIME.profile().id(),
+                RUNTIME.profile().loader(),
+                RUNTIME.profile().minecraftVersion(),
+                RUNTIME.profile().loaderVersion());
         registerDungeonOvenCompat(modEventBus);
         modEventBus.addListener(this::onCommonSetup);
         modEventBus.addListener(this::onRegisterCapabilities);
@@ -64,7 +66,7 @@ public final class Unifiled {
         }
 
         try {
-            final Class<?> compatClass = Class.forName(LOCAL_DUNGEON_OVEN_COMPAT_CLASS);
+            final Class<?> compatClass = Class.forName(RUNTIME.dungeonOvenCompatClassName());
             compatClass.getMethod("register", IEventBus.class).invoke(null, modEventBus);
             LOGGER.info("Registered LAB-11 mods-unified dungeon oven compatibility.");
         } catch (ReflectiveOperationException e) {
@@ -104,8 +106,8 @@ public final class Unifiled {
         }
 
         try {
-            final Class<?> apiClass = Class.forName(COOKING_FOR_BLOCKHEADS_API_CLASS);
-            final Class<?> handlerClass = Class.forName(COOKING_FOR_BLOCKHEADS_HANDLER_CLASS);
+            final Class<?> apiClass = Class.forName(RUNTIME.cfbhApiClassName());
+            final Class<?> handlerClass = Class.forName(RUNTIME.cfbhHandlerClassName());
             final Object handler = new CookingPotKitchenHandler();
             final var registerKitchenRecipeHandler =
                     apiClass.getMethod("registerKitchenRecipeHandler", Class.class, handlerClass);
@@ -133,7 +135,7 @@ public final class Unifiled {
 
     private void registerKitchenProcessorFallbackProvider() {
         try {
-            final Class<?> bridgeClass = Class.forName(LOCAL_BALM_FALLBACK_PROVIDER_BRIDGE_CLASS);
+            final Class<?> bridgeClass = Class.forName(RUNTIME.fallbackProviderBridgeClassName());
             final Object result = bridgeClass
                     .getMethod("registerFallbackKitchenProcessorProvider", List.class)
                     .invoke(null, activeCookingPotTargets);
@@ -150,7 +152,7 @@ public final class Unifiled {
 
     private void registerBalmRecipeSyncListeners() {
         try {
-            final Class<?> bridgeClass = Class.forName(LOCAL_BALM_RECIPE_SYNC_BRIDGE_CLASS);
+            final Class<?> bridgeClass = Class.forName(RUNTIME.recipeSyncBridgeClassName());
             bridgeClass.getMethod("registerListeners", List.class).invoke(null, activeCookingPotTargets);
             LOGGER.info("Registered LAB-11 mods-unified Balm recipe sync listeners for {}.",
                     CookingPotBridgeCatalog.describeTargets(activeCookingPotTargets));

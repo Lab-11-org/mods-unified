@@ -32,13 +32,20 @@ final class MinersDelightCupConversion {
         try {
             final Object value = cupVariantMethod.invoke(null, output.copy());
             if (value instanceof Optional<?> optional && optional.isPresent() && optional.get() instanceof ItemStack cupVariant) {
-                return cupVariant.copy();
+                return applyCopperPotCupOutputCount(cupVariant);
             }
         } catch (ReflectiveOperationException ignored) {
             // fall through to original output
         }
 
         return output.copy();
+    }
+
+    private static ItemStack applyCopperPotCupOutputCount(final ItemStack cupVariant) {
+        final ItemStack converted = cupVariant.copy();
+        // Mirror MinersDelight CopperPotBlockEntity behavior: cup variant output gets +1 serving.
+        converted.grow(1);
+        return converted;
     }
 
     static boolean isCopperPotActive(final CraftingContext context) {
