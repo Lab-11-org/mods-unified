@@ -482,6 +482,10 @@ public final class CookingPotProcessorCapability {
         return created;
     }
 
+    static boolean isStockpotCookingOperation(final Object operation) {
+        return operation != null && operation == potStockpotCookingOperation();
+    }
+
     private static boolean isRecipeAcceptedForTarget(final Recipe<?> recipe, final String targetKey) {
         return recipe instanceof CookingPotIndexedRecipe indexedRecipe
                 && targetKey.equals(indexedRecipe.targetKey());

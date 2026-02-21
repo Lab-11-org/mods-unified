@@ -91,6 +91,7 @@ public final class CookingPotKitchenHandler implements CfbhRuntime.KitchenRecipe
         appendTargetStartupRequirementTokens(context, recipe, processingTokens);
 
         int matchingProcessors = 0;
+        Object deferredStockpotCookingOperation = null;
         for (final Object itemProcessor : CfbhRuntime.contextItemProcessors(context)) {
             if (!CfbhRuntime.processorCanProcess(itemProcessor, recipe.getType())) {
                 continue;
@@ -99,9 +100,20 @@ public final class CookingPotKitchenHandler implements CfbhRuntime.KitchenRecipe
 
             final Object operation = CfbhRuntime.processorProcessRecipe(itemProcessor, recipe, processingTokens);
             if (!CfbhRuntime.isEmptyKitchenOperation(operation)) {
+                if (CookingPotProcessorCapability.isStockpotCookingOperation(operation)) {
+                    if (deferredStockpotCookingOperation == null) {
+                        deferredStockpotCookingOperation = operation;
+                    }
+                    continue;
+                }
                 CfbhRuntime.contextNotify(context, operation);
                 return ItemStack.EMPTY;
             }
+        }
+
+        if (deferredStockpotCookingOperation != null) {
+            CfbhRuntime.contextNotify(context, deferredStockpotCookingOperation);
+            return ItemStack.EMPTY;
         }
 
         if (DEBUG_STOCKPOT_TRANSFER && BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_STOCKPOT.equals(recipe.targetKey())) {
