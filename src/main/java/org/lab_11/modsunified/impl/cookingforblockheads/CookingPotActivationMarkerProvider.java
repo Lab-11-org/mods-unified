@@ -94,7 +94,9 @@ public final class CookingPotActivationMarkerProvider implements CfbhRuntime.Kit
     private static boolean isPotTargetMarker(final String markerKey) {
         return BridgeKeys.TARGET_FARMERS_DELIGHT_COOKING_POT.equals(markerKey)
                 || BridgeKeys.TARGET_DUNGEONS_DELIGHT_MONSTER_POT.equals(markerKey)
-                || BridgeKeys.TARGET_MINERS_DELIGHT_COPPER_POT.equals(markerKey);
+                || BridgeKeys.TARGET_MINERS_DELIGHT_COPPER_POT.equals(markerKey)
+                || BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_POT.equals(markerKey)
+                || BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_STOCKPOT.equals(markerKey);
     }
 
     private static MarkerEntry markerForKey(final String markerKey) {

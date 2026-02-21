@@ -373,6 +373,24 @@ final class CfbhRuntime {
         return result;
     }
 
+    static Object findItemToken(final Object itemProvider,
+                                final ItemStack itemStack,
+                                final Collection<?> allocatedTokens) {
+        final Class<?> hintClass = resolveCacheHintClass();
+        final Object hintNone = cacheHintNone();
+        if (hintClass == null || hintNone == null || itemProvider == null || itemStack == null || itemStack.isEmpty()) {
+            return null;
+        }
+
+        final Object result = invoke(itemProvider, "findIngredient",
+                new Class<?>[]{ItemStack.class, Collection.class, hintClass},
+                itemStack, allocatedTokens, hintNone);
+        if (isEmptyIngredientToken(result)) {
+            return null;
+        }
+        return result;
+    }
+
     static List<?> tryGetCombinedProviders(final Object itemProvider) {
         if (itemProvider == null || !CFBH_COMBINED_ITEM_PROVIDER_CLASS.equals(itemProvider.getClass().getName())) {
             return List.of();

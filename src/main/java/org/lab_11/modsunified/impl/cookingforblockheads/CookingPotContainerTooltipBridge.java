@@ -392,6 +392,10 @@ public final class CookingPotContainerTooltipBridge {
                     MinecraftApiCompat.resourceLocation(BridgeKeys.MOD_DUNGEONS_DELIGHT, "monster_pot");
             case BridgeKeys.TARGET_MINERS_DELIGHT_COPPER_POT ->
                     MinecraftApiCompat.resourceLocation(BridgeKeys.MOD_MINERS_DELIGHT, "copper_pot");
+            case BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_POT ->
+                    MinecraftApiCompat.resourceLocation(BridgeKeys.MOD_KALEIDOSCOPE_COOKERY, "pot");
+            case BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_STOCKPOT ->
+                    MinecraftApiCompat.resourceLocation(BridgeKeys.MOD_KALEIDOSCOPE_COOKERY, "stockpot");
             default -> null;
         };
         if (blockId == null) {
@@ -410,6 +414,8 @@ public final class CookingPotContainerTooltipBridge {
             case BridgeKeys.TARGET_FARMERS_DELIGHT_COOKING_POT -> BridgeKeys.MOD_FARMERS_DELIGHT;
             case BridgeKeys.TARGET_DUNGEONS_DELIGHT_MONSTER_POT -> BridgeKeys.MOD_DUNGEONS_DELIGHT;
             case BridgeKeys.TARGET_MINERS_DELIGHT_COPPER_POT -> BridgeKeys.MOD_MINERS_DELIGHT;
+            case BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_POT -> BridgeKeys.MOD_KALEIDOSCOPE_COOKERY;
+            case BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_STOCKPOT -> BridgeKeys.MOD_KALEIDOSCOPE_COOKERY;
             default -> null;
         };
         if (modId == null) {

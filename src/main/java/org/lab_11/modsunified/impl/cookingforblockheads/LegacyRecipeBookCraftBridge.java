@@ -3,6 +3,7 @@ package org.lab_11.modsunified.impl.cookingforblockheads;
 import com.mojang.logging.LogUtils;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -155,6 +156,16 @@ public final class LegacyRecipeBookCraftBridge {
             }
         }
 
+        final List<ItemStack> startupCosts = resolveStartupCostsForLegacyCraft(indexedRecipe);
+        final List<SourceConsumption> startupSources = new ArrayList<>();
+        for (final ItemStack startupCost : startupCosts) {
+            final SourceConsumption source = findSourceForStack(startupCost, providers, false, true);
+            if (source == null) {
+                return false;
+            }
+            startupSources.add(source);
+        }
+
         final List<ItemStack> ingredientUnits = new ArrayList<>(ingredientSources.size());
         for (final SourceConsumption source : ingredientSources) {
             ingredientUnits.add(source.sourceStack().copyWithCount(1));
@@ -170,8 +181,29 @@ public final class LegacyRecipeBookCraftBridge {
         for (final SourceConsumption source : containerSources) {
             consumeSourceItem(source.provider(), source.sourceItem(), providers, false);
         }
+        for (final SourceConsumption source : startupSources) {
+            consumeSourceItem(source.provider(), source.sourceItem(), providers, false);
+        }
 
         return CookingPotProcessorCapability.transferResolvedStacksToPot(targetPot, indexedRecipe, ingredientUnits, containerCost);
+    }
+
+    private static List<ItemStack> resolveStartupCostsForLegacyCraft(final CookingPotIndexedRecipe indexedRecipe) {
+        if (!BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_STOCKPOT.equals(indexedRecipe.targetKey())) {
+            return List.of();
+        }
+
+        final var lidItem = BuiltInRegistries.ITEM.getOptional(
+                MinecraftApiCompat.resourceLocation(
+                        BridgeKeys.MOD_KALEIDOSCOPE_COOKERY,
+                        BridgeKeys.ITEM_KALEIDOSCOPE_STOCKPOT_LID
+                )
+        ).orElse(null);
+        if (lidItem == null) {
+            return List.of();
+        }
+
+        return List.of(new ItemStack(lidItem));
     }
 
     private static List<ItemStack> resolveIngredientStacksForLegacyTransfer(final CookingPotIndexedRecipe indexedRecipe,

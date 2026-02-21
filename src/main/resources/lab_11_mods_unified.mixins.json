@@ -19,7 +19,8 @@
   ],
   "client": [
     "KitchenScreenMixin",
-    "OvenRendererMixin"
+    "OvenRendererMixin",
+    "StockpotBlockEntityRenderMixin"
   ],
   "injectors": {
     "defaultRequire": 1

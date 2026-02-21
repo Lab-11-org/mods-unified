@@ -10,6 +10,8 @@ public final class BridgeMarkerRegistry {
     private static final Map<String, Item> MARKER_ITEMS = Map.of(
             BridgeKeys.TARGET_DUNGEONS_DELIGHT_MONSTER_POT, Items.STRUCTURE_BLOCK,
             BridgeKeys.TARGET_MINERS_DELIGHT_COPPER_POT, Items.JIGSAW,
+            BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_POT, Items.CAULDRON,
+            BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_STOCKPOT, Items.WATER_BUCKET,
             BridgeKeys.MARKER_DUNGEON_OVEN, Items.SMOKER
     );
 

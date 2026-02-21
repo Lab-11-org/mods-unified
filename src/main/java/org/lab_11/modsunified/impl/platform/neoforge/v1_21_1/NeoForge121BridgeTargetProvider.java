@@ -42,6 +42,28 @@ public final class NeoForge121BridgeTargetProvider implements BridgeTargetProvid
                         "com.sammy.minersdelight.content.block.copper_pot.CopperPotBlockEntity",
                         "com.sammy.minersdelight.setup.MDBlockEntities",
                         "COPPER_POT"
+                ),
+                new CookingPotBridgeTarget(
+                        BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_POT,
+                        "KaleidoscopeCookery Pot",
+                        List.of(BridgeKeys.MOD_KALEIDOSCOPE_COOKERY),
+                        "com.github.ysbbbbbb.kaleidoscopecookery.crafting.recipe.PotRecipe",
+                        "com.github.ysbbbbbb.kaleidoscopecookery.init.ModRecipes",
+                        "POT_RECIPE",
+                        "com.github.ysbbbbbb.kaleidoscopecookery.blockentity.kitchen.PotBlockEntity",
+                        "com.github.ysbbbbbb.kaleidoscopecookery.init.ModBlocks",
+                        "POT_BE"
+                ),
+                new CookingPotBridgeTarget(
+                        BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_STOCKPOT,
+                        "KaleidoscopeCookery Stockpot",
+                        List.of(BridgeKeys.MOD_KALEIDOSCOPE_COOKERY),
+                        "com.github.ysbbbbbb.kaleidoscopecookery.crafting.recipe.StockpotRecipe",
+                        "com.github.ysbbbbbb.kaleidoscopecookery.init.ModRecipes",
+                        "STOCKPOT_RECIPE",
+                        "com.github.ysbbbbbb.kaleidoscopecookery.blockentity.kitchen.StockpotBlockEntity",
+                        "com.github.ysbbbbbb.kaleidoscopecookery.init.ModBlocks",
+                        "STOCKPOT_BE"
                 )
         );
     }

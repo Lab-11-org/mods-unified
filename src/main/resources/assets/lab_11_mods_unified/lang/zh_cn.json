@@ -4,6 +4,8 @@
   "lab_11_mods_unified.marker.farmersdelight_cooking_pot": "农夫乐事烹饪锅标记",
   "lab_11_mods_unified.marker.dungeonsdelight_monster_pot": "地牢乐事怪物锅标记",
   "lab_11_mods_unified.marker.minersdelight_copper_pot": "矿工乐事铜锅标记",
+  "lab_11_mods_unified.marker.kaleidoscope_cookery_pot": "万花筒厨艺炒锅标记",
+  "lab_11_mods_unified.marker.kaleidoscope_cookery_stockpot": "万花筒厨艺汤锅标记",
   "lab_11_mods_unified.marker.dungeon_oven": "地牢烤炉标记",
   "lab_11_mods_unified.tooltip.cooking_table.missing_dungeon_oven": "怪物锅下方需要地牢烤炉",
   "lab_11_mods_unified.tooltip.cooking_table.container_not_enough": "数量不足！",
@@ -15,5 +17,8 @@
   "lab_11_mods_unified.feedback.cooking_table.pot_not_connected": "当前工作台未连接可用锅具",
   "lab_11_mods_unified.feedback.cooking_table.pot_input_blocked": "锅内食材槽被占用或不兼容",
   "lab_11_mods_unified.feedback.cooking_table.pot_container_blocked": "锅内容器槽已被占用",
-  "lab_11_mods_unified.feedback.cooking_table.pot_transfer_failed": "食材移入锅中失败"
+  "lab_11_mods_unified.feedback.cooking_table.pot_transfer_failed": "食材移入锅中失败",
+  "lab_11_mods_unified.feedback.cooking_table.stockpot_missing_lid": "汤锅开始烹饪前需要消耗一个汤锅盖",
+  "lab_11_mods_unified.feedback.cooking_table.stockpot_missing_soup_base": "汤锅开始烹饪前需要可用的汤底（水源）",
+  "lab_11_mods_unified.feedback.cooking_table.stockpot_no_target_processor": "未找到可处理该配方的汤锅处理器"
 }
