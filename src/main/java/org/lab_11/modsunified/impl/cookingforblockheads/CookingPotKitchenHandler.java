@@ -10,6 +10,13 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.Recipe;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
+import net.neoforged.neoforge.capabilities.Capabilities;
+import net.neoforged.neoforge.items.IItemHandler;
 import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
 import org.slf4j.Logger;
 
@@ -193,6 +200,11 @@ public final class CookingPotKitchenHandler implements CfbhRuntime.KitchenRecipe
     private static void appendTargetStartupRequirementTokens(final Object context,
                                                              final CookingPotIndexedRecipe recipe,
                                                              final List<Object> processingTokens) {
+        if (BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_POT.equals(recipe.targetKey())) {
+            appendKaleidoscopePotOilToken(context, processingTokens);
+            return;
+        }
+
         if (!BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_STOCKPOT.equals(recipe.targetKey())) {
             return;
         }
@@ -224,6 +236,61 @@ public final class CookingPotKitchenHandler implements CfbhRuntime.KitchenRecipe
         );
         if (lidItemToken != null) {
             processingTokens.add(lidItemToken);
+        }
+    }
+
+    private static void appendKaleidoscopePotOilToken(final Object context, final List<Object> processingTokens) {
+        final List<?> itemProviders = CfbhRuntime.contextItemProviders(context);
+        final List<Object> allocated = new ArrayList<>(processingTokens);
+
+        final var oilItem = BuiltInRegistries.ITEM.getOptional(
+                MinecraftApiCompat.resourceLocation(
+                        BridgeKeys.MOD_KALEIDOSCOPE_COOKERY,
+                        BridgeKeys.ITEM_KALEIDOSCOPE_OIL
+                )
+        ).orElse(null);
+        if (oilItem != null) {
+            final Object oilToken = findTokenForAnyCandidate(
+                    itemProviders,
+                    List.of(new ItemStack(oilItem)),
+                    allocated
+            );
+            if (oilToken != null) {
+                processingTokens.add(oilToken);
+                return;
+            }
+        }
+
+        final var oilPotItem = BuiltInRegistries.ITEM.getOptional(
+                MinecraftApiCompat.resourceLocation(
+                        BridgeKeys.MOD_KALEIDOSCOPE_COOKERY,
+                        BridgeKeys.ITEM_KALEIDOSCOPE_OIL_POT
+                )
+        ).orElse(null);
+        if (oilPotItem == null) {
+            return;
+        }
+
+        final List<Object> rejectedOilPotTokens = new ArrayList<>();
+        while (true) {
+            final List<Object> allocatedWithRejected = new ArrayList<>(allocated.size() + rejectedOilPotTokens.size());
+            allocatedWithRejected.addAll(allocated);
+            allocatedWithRejected.addAll(rejectedOilPotTokens);
+            final Object oilPotToken = findTokenForAnyCandidate(
+                    itemProviders,
+                    List.of(new ItemStack(oilPotItem)),
+                    allocatedWithRejected
+            );
+            if (oilPotToken == null) {
+                return;
+            }
+
+            final ItemStack oilPotStack = CfbhRuntime.peekIngredientToken(oilPotToken);
+            if (KaleidoscopeOilBridge.isKaleidoscopeOilPotWithOil(oilPotStack)) {
+                processingTokens.add(oilPotToken);
+                return;
+            }
+            rejectedOilPotTokens.add(oilPotToken);
         }
     }
 

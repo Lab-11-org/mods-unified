@@ -63,6 +63,12 @@ public final class CookingPotProcessorCapability {
             "lab_11_mods_unified.feedback.cooking_table.stockpot_missing_soup_base";
     private static final String FEEDBACK_STOCKPOT_COOKING_KEY =
             "lab_11_mods_unified.feedback.cooking_table.stockpot_cooking";
+    private static final String FEEDBACK_POT_CONTENT_CONFLICT_KEY =
+            "lab_11_mods_unified.feedback.cooking_table.pot_content_conflict";
+    private static final String FEEDBACK_POT_FULL_MATCH_KEY =
+            "lab_11_mods_unified.feedback.cooking_table.pot_full_match";
+    private static final String FEEDBACK_POT_MISSING_OIL_KEY =
+            "lab_11_mods_unified.feedback.cooking_table.pot_missing_oil";
     private static final String POT_COOK_TIME_FIELD = "cookTime";
     private static final String POT_COOK_TIME_TOTAL_FIELD = "cookTimeTotal";
     private static final String KALEIDOSCOPE_POT_BLOCK_ENTITY_CLASS =
@@ -98,6 +104,9 @@ public final class CookingPotProcessorCapability {
     private static volatile Object potStockpotMissingLidOperation;
     private static volatile Object potStockpotMissingSoupBaseOperation;
     private static volatile Object potStockpotCookingOperation;
+    private static volatile Object potContentConflictOperation;
+    private static volatile Object potFullMatchOperation;
+    private static volatile Object potMissingOilOperation;
 
     private enum TransferFailure {
         NONE,
@@ -108,10 +117,16 @@ public final class CookingPotProcessorCapability {
         CONTAINER_TRANSFER_FAILED,
         STOCKPOT_MISSING_LID,
         STOCKPOT_MISSING_SOUP_BASE,
-        STOCKPOT_COOKING
+        STOCKPOT_COOKING,
+        POT_CONTENT_CONFLICT,
+        POT_FULL_MATCH,
+        POT_MISSING_OIL
     }
 
     private record TokenConsumption(Object token, ItemStack stack) {
+    }
+
+    private record PendingTokenRestore(Object token, ItemStack stack) {
     }
 
     private CookingPotProcessorCapability() {
@@ -482,6 +497,36 @@ public final class CookingPotProcessorCapability {
         return created;
     }
 
+    private static Object potContentConflictOperation() {
+        final Object cached = potContentConflictOperation;
+        if (cached != null) {
+            return cached;
+        }
+        final Object created = feedbackOperation(FEEDBACK_POT_CONTENT_CONFLICT_KEY, ChatFormatting.RED);
+        potContentConflictOperation = created;
+        return created;
+    }
+
+    private static Object potFullMatchOperation() {
+        final Object cached = potFullMatchOperation;
+        if (cached != null) {
+            return cached;
+        }
+        final Object created = feedbackOperation(FEEDBACK_POT_FULL_MATCH_KEY, ChatFormatting.YELLOW);
+        potFullMatchOperation = created;
+        return created;
+    }
+
+    private static Object potMissingOilOperation() {
+        final Object cached = potMissingOilOperation;
+        if (cached != null) {
+            return cached;
+        }
+        final Object created = feedbackOperation(FEEDBACK_POT_MISSING_OIL_KEY, ChatFormatting.RED);
+        potMissingOilOperation = created;
+        return created;
+    }
+
     static boolean isStockpotCookingOperation(final Object operation) {
         return operation != null && operation == potStockpotCookingOperation();
     }
@@ -556,11 +601,14 @@ public final class CookingPotProcessorCapability {
     private static TransferFailure transferRecipeTokensToKaleidoscopePot(final BlockEntity blockEntity,
                                                                          final Recipe<?> recipe,
                                                                          final List<?> ingredientTokens) {
+        final boolean potRecipe = isKaleidoscopePotTarget(recipe);
         final boolean stockpotRecipe = isKaleidoscopeStockpotTarget(recipe);
         final ResourceLocation requiredSoupBaseId = stockpotRecipe
                 ? StockpotSoupBridge.resolveRequiredSoupBaseId(recipe)
                 : null;
         final int initialStatus = readKaleidoscopePotStatus(blockEntity);
+        final boolean potNeedsOilStartup = potRecipe
+                && !hasBlockStateBooleanPropertyValue(blockEntity, KALEIDOSCOPE_PROPERTY_HAS_OIL, true);
         final boolean stockpotNeedsSoupBase =
                 stockpotRecipe && initialStatus == KALEIDOSCOPE_STOCKPOT_STATUS_PUT_SOUP_BASE;
         if (stockpotRecipe) {
@@ -583,7 +631,7 @@ public final class CookingPotProcessorCapability {
                 }
                 return TransferFailure.INPUT_SLOT_BLOCKED;
             }
-        } else if (!isKaleidoscopePotReadyForIngredientInsert(blockEntity, recipe)) {
+        } else if (potRecipe && initialStatus != KALEIDOSCOPE_POT_STATUS_PUT_INGREDIENT) {
             if (DEBUG_STOCKPOT_TRANSFER && stockpotRecipe) {
                 LOGGER.info("Stockpot processor rejected recipe: pot not ready for ingredient insert.");
             }
@@ -600,6 +648,35 @@ public final class CookingPotProcessorCapability {
 
         final int tokenStartIndex = resolveKaleidoscopeIngredientTokenStartIndex(recipe, ingredientTokens);
         final List<Ingredient> requiredIngredients = resolveKaleidoscopeRequiredIngredients(recipe);
+        
+        final List<Ingredient> ingredientsToFind;
+        if (potRecipe) {
+            final List<Ingredient> pending = new ArrayList<>(requiredIngredients);
+            for (final ItemStack existingStack : inputSlots) {
+                if (existingStack == null || existingStack.isEmpty()) {
+                    continue;
+                }
+                final int matchIndex = findMatchingIngredientIndex(pending, existingStack);
+                if (matchIndex != -1) {
+                    pending.remove(matchIndex);
+                } else {
+                    if (DEBUG_STOCKPOT_TRANSFER) {
+                        LOGGER.info("Pot processor rejected recipe: conflict with existing item {}.", existingStack);
+                    }
+                    return TransferFailure.POT_CONTENT_CONFLICT;
+                }
+            }
+            if (pending.isEmpty()) {
+                if (DEBUG_STOCKPOT_TRANSFER) {
+                    LOGGER.info("Pot processor rejected recipe: already full match.");
+                }
+                return TransferFailure.POT_FULL_MATCH;
+            }
+            ingredientsToFind = pending;
+        } else {
+            ingredientsToFind = requiredIngredients;
+        }
+
         final List<Object> nonEmptyTokens = new ArrayList<>();
         for (int tokenIndex = tokenStartIndex; tokenIndex < ingredientTokens.size(); tokenIndex++) {
             final Object token = ingredientTokens.get(tokenIndex);
@@ -609,12 +686,12 @@ public final class CookingPotProcessorCapability {
             nonEmptyTokens.add(token);
         }
 
-        if (nonEmptyTokens.size() < requiredIngredients.size()) {
+        if (nonEmptyTokens.size() < ingredientsToFind.size()) {
             if (DEBUG_STOCKPOT_TRANSFER && stockpotRecipe) {
                 LOGGER.info(
                         "Stockpot processor rejected recipe: nonEmptyTokens={} < requiredIngredients={}.",
                         nonEmptyTokens.size(),
-                        requiredIngredients.size()
+                        ingredientsToFind.size()
                 );
             }
             return TransferFailure.INPUT_TRANSFER_FAILED;
@@ -622,13 +699,15 @@ public final class CookingPotProcessorCapability {
 
         final List<TokenConsumption> consumed = new ArrayList<>();
         final List<ItemStack> ingredientUnits = new ArrayList<>();
-        final List<Ingredient> unmatchedIngredients = new ArrayList<>(requiredIngredients);
+        final List<Ingredient> unmatchedIngredients = new ArrayList<>(ingredientsToFind);
         ItemStack consumedStockpotLid = ItemStack.EMPTY;
         ItemStack consumedSoupBasePrimary = ItemStack.EMPTY;
         ItemStack consumedSoupBaseWaterSupport = ItemStack.EMPTY;
         ItemStack consumedFishSoupIngredient = ItemStack.EMPTY;
+        ItemStack consumedPotOilSource = ItemStack.EMPTY;
         boolean soupBaseProvidedByWaterSink = false;
         boolean soupBaseProvidedByLavaSink = false;
+        final List<PendingTokenRestore> pendingTokenRestores = new ArrayList<>();
         for (int tokenPosition = 0; tokenPosition < nonEmptyTokens.size(); tokenPosition++) {
             final Object token = nonEmptyTokens.get(tokenPosition);
             final ItemStack peekStack = CfbhRuntime.peekIngredientToken(token);
@@ -650,6 +729,33 @@ public final class CookingPotProcessorCapability {
                 consumed.add(new TokenConsumption(token, consumedStack));
                 ingredientUnits.add(consumedStack.copyWithCount(1));
                 continue;
+            }
+
+            if (potRecipe && potNeedsOilStartup && consumedPotOilSource.isEmpty()) {
+                if (KaleidoscopeOilBridge.isKaleidoscopeOil(peekStack)) {
+                    final ItemStack consumedStack = CfbhRuntime.consumeIngredientToken(token);
+                    if (consumedStack.isEmpty()) {
+                        restoreConsumedTokens(consumed);
+                        return TransferFailure.INPUT_TRANSFER_FAILED;
+                    }
+                    consumed.add(new TokenConsumption(token, consumedStack));
+                    consumedPotOilSource = consumedStack.copyWithCount(1);
+                    continue;
+                }
+                if (KaleidoscopeOilBridge.isKaleidoscopeOilPotWithOil(peekStack)) {
+                    final ItemStack consumedStack = CfbhRuntime.consumeIngredientToken(token);
+                    if (consumedStack.isEmpty()) {
+                        restoreConsumedTokens(consumed);
+                        return TransferFailure.INPUT_TRANSFER_FAILED;
+                    }
+                    consumed.add(new TokenConsumption(token, consumedStack));
+                    consumedPotOilSource = consumedStack.copyWithCount(1);
+                    pendingTokenRestores.add(new PendingTokenRestore(
+                            token,
+                            KaleidoscopeOilBridge.decrementOilPotCount(consumedStack.copyWithCount(1))
+                    ));
+                    continue;
+                }
             }
 
             if (!stockpotRecipe) {
@@ -839,6 +945,17 @@ public final class CookingPotProcessorCapability {
             }
         }
 
+        if (potNeedsOilStartup) {
+            if (consumedPotOilSource.isEmpty()) {
+                restoreConsumedTokens(consumed);
+                return TransferFailure.POT_MISSING_OIL;
+            }
+            if (!applyKaleidoscopePotOil(blockEntity, consumedPotOilSource)) {
+                restoreConsumedTokens(consumed);
+                return TransferFailure.INPUT_TRANSFER_FAILED;
+            }
+        }
+
         if (!isKaleidoscopePotReadyForIngredientInsert(blockEntity, recipe)) {
             restoreConsumedTokens(consumed);
             if (DEBUG_STOCKPOT_TRANSFER && stockpotRecipe) {
@@ -863,6 +980,7 @@ public final class CookingPotProcessorCapability {
             if (isKaleidoscopeStockpotTarget(recipe) && !consumedStockpotLid.isEmpty()) {
                 applyKaleidoscopeStockpotLid(blockEntity, consumedStockpotLid);
             }
+            applyPendingTokenRestores(blockEntity, pendingTokenRestores);
             synchronized (LAST_RECIPE_BY_POT) {
                 LAST_RECIPE_BY_POT.put(blockEntity, recipe);
             }
@@ -884,6 +1002,7 @@ public final class CookingPotProcessorCapability {
         if (isKaleidoscopeStockpotTarget(recipe) && !consumedStockpotLid.isEmpty()) {
             applyKaleidoscopeStockpotLid(blockEntity, consumedStockpotLid);
         }
+        applyPendingTokenRestores(blockEntity, pendingTokenRestores);
         synchronized (LAST_RECIPE_BY_POT) {
             LAST_RECIPE_BY_POT.put(blockEntity, recipe);
         }
@@ -915,6 +1034,9 @@ public final class CookingPotProcessorCapability {
             case STOCKPOT_MISSING_LID -> potStockpotMissingLidOperation();
             case STOCKPOT_MISSING_SOUP_BASE -> potStockpotMissingSoupBaseOperation();
             case STOCKPOT_COOKING -> potStockpotCookingOperation();
+            case POT_CONTENT_CONFLICT -> potContentConflictOperation();
+            case POT_FULL_MATCH -> potFullMatchOperation();
+            case POT_MISSING_OIL -> potMissingOilOperation();
             case NONE -> CfbhRuntime.kitchenOperationEmpty();
         };
     }
@@ -1403,6 +1525,77 @@ public final class CookingPotProcessorCapability {
             return false;
         }
         return MinecraftApiCompat.isSameItemSameData(stack, candidate) || ItemStack.isSameItem(stack, candidate);
+    }
+
+    private static boolean applyKaleidoscopePotOil(final BlockEntity blockEntity, final ItemStack oilSourceStack) {
+        if (blockEntity == null || blockEntity.getLevel() == null || oilSourceStack.isEmpty()) {
+            return false;
+        }
+
+        final Level level = blockEntity.getLevel();
+        final Player player = resolveInteractionPlayer(level, blockEntity.getBlockPos());
+        if (player == null) {
+            return false;
+        }
+
+        try {
+            final Method addOilMethod = blockEntity.getClass().getMethod(
+                    "onPlaceOil",
+                    Level.class,
+                    net.minecraft.world.entity.LivingEntity.class,
+                    ItemStack.class
+            );
+            final Object value = addOilMethod.invoke(blockEntity, level, player, oilSourceStack.copyWithCount(1));
+            if (value instanceof Boolean success && success) {
+                markKaleidoscopePotChanged(blockEntity);
+                return true;
+            }
+        } catch (ReflectiveOperationException ignored) {
+            // Fall back to simulated right-click interaction.
+        }
+
+        ItemStack offered = oilSourceStack.copyWithCount(1);
+        if (KaleidoscopeOilBridge.isKaleidoscopeOilPot(offered)) {
+            final var oilItem = BuiltInRegistries.ITEM.getOptional(
+                    MinecraftApiCompat.resourceLocation(
+                            BridgeKeys.MOD_KALEIDOSCOPE_COOKERY,
+                            BridgeKeys.ITEM_KALEIDOSCOPE_OIL
+                    )
+            ).orElse(null);
+            if (oilItem != null) {
+                offered = new ItemStack(oilItem);
+            }
+        }
+        final var useResult = InteractiveItemUseBridge.tryUseMainHandItemOnBlock(
+                blockEntity,
+                player,
+                offered
+        );
+        if (!useResult.success()) {
+            return false;
+        }
+        markKaleidoscopePotChanged(blockEntity);
+        return true;
+    }
+
+    private static void applyPendingTokenRestores(final BlockEntity blockEntity,
+                                                  final List<PendingTokenRestore> pendingTokenRestores) {
+        if (blockEntity == null || pendingTokenRestores.isEmpty()) {
+            return;
+        }
+
+        for (final PendingTokenRestore pendingTokenRestore : pendingTokenRestores) {
+            if (pendingTokenRestore == null || pendingTokenRestore.token() == null || pendingTokenRestore.stack() == null) {
+                continue;
+            }
+            final ItemStack remainder = CfbhRuntime.restoreIngredientToken(
+                    pendingTokenRestore.token(),
+                    pendingTokenRestore.stack().copy()
+            );
+            if (!remainder.isEmpty()) {
+                returnStackToPlayerOrWorld(blockEntity, remainder);
+            }
+        }
     }
 
     private static List<ItemStack> stockpotWaterSoupBaseCandidates() {
