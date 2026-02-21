@@ -61,6 +61,8 @@ public final class CookingPotProcessorCapability {
             "lab_11_mods_unified.feedback.cooking_table.stockpot_missing_lid";
     private static final String FEEDBACK_STOCKPOT_MISSING_SOUP_BASE_KEY =
             "lab_11_mods_unified.feedback.cooking_table.stockpot_missing_soup_base";
+    private static final String FEEDBACK_STOCKPOT_COOKING_KEY =
+            "lab_11_mods_unified.feedback.cooking_table.stockpot_cooking";
     private static final String POT_COOK_TIME_FIELD = "cookTime";
     private static final String POT_COOK_TIME_TOTAL_FIELD = "cookTimeTotal";
     private static final String KALEIDOSCOPE_POT_BLOCK_ENTITY_CLASS =
@@ -76,7 +78,8 @@ public final class CookingPotProcessorCapability {
     private static final int KALEIDOSCOPE_POT_STATUS_PUT_INGREDIENT = 0;
     private static final int KALEIDOSCOPE_STOCKPOT_STATUS_PUT_SOUP_BASE = 0;
     private static final int KALEIDOSCOPE_STOCKPOT_STATUS_PUT_INGREDIENT = 1;
-    private static final ResourceLocation KALEIDOSCOPE_STOCKPOT_WATER_SOUP_BASE_ID =
+    private static final int KALEIDOSCOPE_STOCKPOT_STATUS_COOKING = 2;
+    private static final ResourceLocation VANILLA_WATER_SOUP_BASE_ID =
             MinecraftApiCompat.resourceLocation("minecraft", "water");
 
     private static final Map<String, Predicate<BlockEntity>> REQUIRED_MARKER_CHECKS = Map.of(
@@ -84,6 +87,7 @@ public final class CookingPotProcessorCapability {
     );
 
     private static final Map<BlockEntity, Recipe<?>> LAST_RECIPE_BY_POT = new WeakHashMap<>();
+    private static volatile List<ItemStack> cachedWaterSoupBaseCandidates;
 
     private static volatile BlockCapability<Object, Void> kitchenItemProcessorCapability;
     private static volatile Object potTransferOperation;
@@ -93,6 +97,7 @@ public final class CookingPotProcessorCapability {
     private static volatile Object potTransferFailedOperation;
     private static volatile Object potStockpotMissingLidOperation;
     private static volatile Object potStockpotMissingSoupBaseOperation;
+    private static volatile Object potStockpotCookingOperation;
 
     private enum TransferFailure {
         NONE,
@@ -102,7 +107,8 @@ public final class CookingPotProcessorCapability {
         INPUT_TRANSFER_FAILED,
         CONTAINER_TRANSFER_FAILED,
         STOCKPOT_MISSING_LID,
-        STOCKPOT_MISSING_SOUP_BASE
+        STOCKPOT_MISSING_SOUP_BASE,
+        STOCKPOT_COOKING
     }
 
     private record TokenConsumption(Object token, ItemStack stack) {
@@ -466,6 +472,16 @@ public final class CookingPotProcessorCapability {
         return created;
     }
 
+    private static Object potStockpotCookingOperation() {
+        final Object cached = potStockpotCookingOperation;
+        if (cached != null) {
+            return cached;
+        }
+        final Object created = feedbackOperation(FEEDBACK_STOCKPOT_COOKING_KEY, ChatFormatting.YELLOW);
+        potStockpotCookingOperation = created;
+        return created;
+    }
+
     private static boolean isRecipeAcceptedForTarget(final Recipe<?> recipe, final String targetKey) {
         return recipe instanceof CookingPotIndexedRecipe indexedRecipe
                 && targetKey.equals(indexedRecipe.targetKey());
@@ -537,20 +553,29 @@ public final class CookingPotProcessorCapability {
                                                                          final Recipe<?> recipe,
                                                                          final List<?> ingredientTokens) {
         final boolean stockpotRecipe = isKaleidoscopeStockpotTarget(recipe);
+        final ResourceLocation requiredSoupBaseId = stockpotRecipe
+                ? StockpotSoupBridge.resolveRequiredSoupBaseId(recipe)
+                : null;
         final int initialStatus = readKaleidoscopePotStatus(blockEntity);
         final boolean stockpotNeedsSoupBase =
                 stockpotRecipe && initialStatus == KALEIDOSCOPE_STOCKPOT_STATUS_PUT_SOUP_BASE;
         if (stockpotRecipe) {
+            if (initialStatus == KALEIDOSCOPE_STOCKPOT_STATUS_COOKING) {
+                if (DEBUG_STOCKPOT_TRANSFER) {
+                    LOGGER.info("Stockpot processor rejected recipe: stockpot is already cooking.");
+                }
+                return TransferFailure.STOCKPOT_COOKING;
+            }
+            if (hasBlockStateBooleanPropertyValue(blockEntity, KALEIDOSCOPE_PROPERTY_HAS_LID, true)) {
+                if (DEBUG_STOCKPOT_TRANSFER) {
+                    LOGGER.info("Stockpot processor rejected recipe: stockpot already has lid and is busy.");
+                }
+                return TransferFailure.STOCKPOT_COOKING;
+            }
             if (initialStatus != KALEIDOSCOPE_STOCKPOT_STATUS_PUT_SOUP_BASE
                     && initialStatus != KALEIDOSCOPE_STOCKPOT_STATUS_PUT_INGREDIENT) {
                 if (DEBUG_STOCKPOT_TRANSFER) {
                     LOGGER.info("Stockpot processor rejected recipe: unsupported stockpot status={}.", initialStatus);
-                }
-                return TransferFailure.INPUT_SLOT_BLOCKED;
-            }
-            if (hasBlockStateBooleanPropertyValue(blockEntity, KALEIDOSCOPE_PROPERTY_HAS_LID, true)) {
-                if (DEBUG_STOCKPOT_TRANSFER) {
-                    LOGGER.info("Stockpot processor rejected recipe: pot already has lid.");
                 }
                 return TransferFailure.INPUT_SLOT_BLOCKED;
             }
@@ -594,9 +619,12 @@ public final class CookingPotProcessorCapability {
         final List<TokenConsumption> consumed = new ArrayList<>();
         final List<ItemStack> ingredientUnits = new ArrayList<>();
         final List<Ingredient> unmatchedIngredients = new ArrayList<>(requiredIngredients);
-        ItemStack consumedSoupBase = ItemStack.EMPTY;
         ItemStack consumedStockpotLid = ItemStack.EMPTY;
-        boolean soupBaseProvidedBySink = false;
+        ItemStack consumedSoupBasePrimary = ItemStack.EMPTY;
+        ItemStack consumedSoupBaseWaterSupport = ItemStack.EMPTY;
+        ItemStack consumedFishSoupIngredient = ItemStack.EMPTY;
+        boolean soupBaseProvidedByWaterSink = false;
+        boolean soupBaseProvidedByLavaSink = false;
         for (int tokenPosition = 0; tokenPosition < nonEmptyTokens.size(); tokenPosition++) {
             final Object token = nonEmptyTokens.get(tokenPosition);
             final ItemStack peekStack = CfbhRuntime.peekIngredientToken(token);
@@ -641,10 +669,50 @@ public final class CookingPotProcessorCapability {
                 continue;
             }
 
-            if (stockpotNeedsSoupBase
-                    && consumedSoupBase.isEmpty()
-                    && (isKaleidoscopeSoupBaseCandidate(peekStack)
-                    || StockpotSoupBridge.isSyntheticSinkSoupMarker(peekStack))) {
+            if (!stockpotNeedsSoupBase) {
+                continue;
+            }
+
+            if (StockpotSoupBridge.isSyntheticWaterSinkSoupMarker(peekStack)
+                    && !soupBaseProvidedByWaterSink
+                    && (StockpotSoupBridge.isWaterSoupBase(requiredSoupBaseId)
+                    || StockpotSoupBridge.isFishBucketSoupBase(requiredSoupBaseId))) {
+                final ItemStack consumedStack = CfbhRuntime.consumeIngredientToken(token);
+                if (consumedStack.isEmpty()) {
+                    restoreConsumedTokens(consumed);
+                    if (DEBUG_STOCKPOT_TRANSFER) {
+                        LOGGER.info(
+                                "Stockpot processor rejected recipe: unable to consume water sink token at tokenPosition={}.",
+                                tokenPosition
+                        );
+                    }
+                    return TransferFailure.CONTAINER_TRANSFER_FAILED;
+                }
+                consumed.add(new TokenConsumption(token, consumedStack));
+                soupBaseProvidedByWaterSink = true;
+                continue;
+            }
+
+            if (StockpotSoupBridge.isSyntheticLavaSinkSoupMarker(peekStack)
+                    && !soupBaseProvidedByLavaSink
+                    && StockpotSoupBridge.isLavaSoupBase(requiredSoupBaseId)) {
+                final ItemStack consumedStack = CfbhRuntime.consumeIngredientToken(token);
+                if (consumedStack.isEmpty()) {
+                    restoreConsumedTokens(consumed);
+                    if (DEBUG_STOCKPOT_TRANSFER) {
+                        LOGGER.info(
+                                "Stockpot processor rejected recipe: unable to consume lava sink token at tokenPosition={}.",
+                                tokenPosition
+                        );
+                    }
+                    return TransferFailure.CONTAINER_TRANSFER_FAILED;
+                }
+                consumed.add(new TokenConsumption(token, consumedStack));
+                soupBaseProvidedByLavaSink = true;
+                continue;
+            }
+
+            if (consumedSoupBasePrimary.isEmpty() && isKaleidoscopeSoupBaseCandidate(peekStack, requiredSoupBaseId)) {
                 final ItemStack consumedStack = CfbhRuntime.consumeIngredientToken(token);
                 if (consumedStack.isEmpty()) {
                     restoreConsumedTokens(consumed);
@@ -657,8 +725,45 @@ public final class CookingPotProcessorCapability {
                     return TransferFailure.CONTAINER_TRANSFER_FAILED;
                 }
                 consumed.add(new TokenConsumption(token, consumedStack));
-                consumedSoupBase = consumedStack.copyWithCount(1);
-                soupBaseProvidedBySink = StockpotSoupBridge.isSyntheticSinkSoupMarker(consumedSoupBase);
+                consumedSoupBasePrimary = consumedStack.copyWithCount(1);
+                continue;
+            }
+
+            if (StockpotSoupBridge.isFishBucketSoupBase(requiredSoupBaseId)
+                    && consumedFishSoupIngredient.isEmpty()
+                    && isFishSoupIngredientCandidate(peekStack, requiredSoupBaseId)) {
+                final ItemStack consumedStack = CfbhRuntime.consumeIngredientToken(token);
+                if (consumedStack.isEmpty()) {
+                    restoreConsumedTokens(consumed);
+                    if (DEBUG_STOCKPOT_TRANSFER) {
+                        LOGGER.info(
+                                "Stockpot processor rejected recipe: unable to consume fish soup-base token at tokenPosition={}.",
+                                tokenPosition
+                        );
+                    }
+                    return TransferFailure.CONTAINER_TRANSFER_FAILED;
+                }
+                consumed.add(new TokenConsumption(token, consumedStack));
+                consumedFishSoupIngredient = consumedStack.copyWithCount(1);
+                continue;
+            }
+
+            if (StockpotSoupBridge.isFishBucketSoupBase(requiredSoupBaseId)
+                    && consumedSoupBaseWaterSupport.isEmpty()
+                    && isKaleidoscopeSoupBaseCandidate(peekStack, VANILLA_WATER_SOUP_BASE_ID)) {
+                final ItemStack consumedStack = CfbhRuntime.consumeIngredientToken(token);
+                if (consumedStack.isEmpty()) {
+                    restoreConsumedTokens(consumed);
+                    if (DEBUG_STOCKPOT_TRANSFER) {
+                        LOGGER.info(
+                                "Stockpot processor rejected recipe: unable to consume fish soup-base water support token at tokenPosition={}.",
+                                tokenPosition
+                        );
+                    }
+                    return TransferFailure.CONTAINER_TRANSFER_FAILED;
+                }
+                consumed.add(new TokenConsumption(token, consumedStack));
+                consumedSoupBaseWaterSupport = consumedStack.copyWithCount(1);
             }
         }
 
@@ -674,32 +779,56 @@ public final class CookingPotProcessorCapability {
             return TransferFailure.INPUT_TRANSFER_FAILED;
         }
 
-        if (stockpotRecipe && consumedStockpotLid.isEmpty()) {
-            restoreConsumedTokens(consumed);
-            if (DEBUG_STOCKPOT_TRANSFER) {
-                LOGGER.info("Stockpot processor rejected recipe: startup lid token was not consumed.");
-            }
-            return TransferFailure.STOCKPOT_MISSING_LID;
+        final boolean missingStockpotLid = isStockpotLidMissingAfterTransfer(
+                blockEntity,
+                stockpotRecipe,
+                consumedStockpotLid
+        );
+        if (missingStockpotLid && DEBUG_STOCKPOT_TRANSFER) {
+            LOGGER.info("Stockpot processor continuing without startup lid; ingredients will be transferred.");
         }
 
         if (stockpotNeedsSoupBase) {
-            if (consumedSoupBase.isEmpty()) {
-                restoreConsumedTokens(consumed);
-                if (DEBUG_STOCKPOT_TRANSFER) {
-                    LOGGER.info("Stockpot processor rejected recipe: missing soup-base token.");
+            final boolean appliedSoupBase;
+            if (StockpotSoupBridge.isFishBucketSoupBase(requiredSoupBaseId)) {
+                if (!consumedSoupBasePrimary.isEmpty()) {
+                    appliedSoupBase = applyKaleidoscopeStockpotSoupBase(blockEntity, consumedSoupBasePrimary);
+                } else {
+                    final boolean hasWaterSupport = soupBaseProvidedByWaterSink || !consumedSoupBaseWaterSupport.isEmpty();
+                    if (consumedFishSoupIngredient.isEmpty() || !hasWaterSupport) {
+                        restoreConsumedTokens(consumed);
+                        if (DEBUG_STOCKPOT_TRANSFER) {
+                            LOGGER.info("Stockpot processor rejected recipe: missing fish soup-base resources.");
+                        }
+                        return TransferFailure.STOCKPOT_MISSING_SOUP_BASE;
+                    }
+
+                    if (!soupBaseProvidedByWaterSink
+                            && MinecraftApiCompat.isSameItemSameData(consumedSoupBaseWaterSupport, new ItemStack(Items.WATER_BUCKET))) {
+                        returnStackToPlayerOrWorld(blockEntity, new ItemStack(Items.BUCKET));
+                    }
+                    appliedSoupBase = applyKaleidoscopeStockpotSoupBaseFromSink(blockEntity, requiredSoupBaseId);
                 }
-                return TransferFailure.STOCKPOT_MISSING_SOUP_BASE;
+            } else if (soupBaseProvidedByLavaSink || soupBaseProvidedByWaterSink) {
+                appliedSoupBase = applyKaleidoscopeStockpotSoupBaseFromSink(blockEntity, requiredSoupBaseId);
+            } else {
+                if (consumedSoupBasePrimary.isEmpty()) {
+                    restoreConsumedTokens(consumed);
+                    if (DEBUG_STOCKPOT_TRANSFER) {
+                        LOGGER.info("Stockpot processor rejected recipe: missing soup-base token.");
+                    }
+                    return TransferFailure.STOCKPOT_MISSING_SOUP_BASE;
+                }
+                appliedSoupBase = applyKaleidoscopeStockpotSoupBase(blockEntity, consumedSoupBasePrimary);
             }
-            final boolean appliedSoupBase = soupBaseProvidedBySink
-                    ? applyKaleidoscopeStockpotSoupBaseFromSink(blockEntity)
-                    : applyKaleidoscopeStockpotSoupBase(blockEntity, consumedSoupBase);
             if (!appliedSoupBase) {
                 restoreConsumedTokens(consumed);
                 if (DEBUG_STOCKPOT_TRANSFER) {
                     LOGGER.info(
-                            "Stockpot processor rejected recipe: failed to apply soup-base token item={}, sinkProvided={}.",
-                            consumedSoupBase.getItem(),
-                            soupBaseProvidedBySink
+                            "Stockpot processor rejected recipe: failed to apply soup-base id={}, sinkWater={}, sinkLava={}.",
+                            requiredSoupBaseId,
+                            soupBaseProvidedByWaterSink,
+                            soupBaseProvidedByLavaSink
                     );
                 }
                 return TransferFailure.STOCKPOT_MISSING_SOUP_BASE;
@@ -742,7 +871,9 @@ public final class CookingPotProcessorCapability {
                         !consumedStockpotLid.isEmpty()
                 );
             }
-            return TransferFailure.NONE;
+            return isStockpotLidMissingAfterTransfer(blockEntity, stockpotRecipe, consumedStockpotLid)
+                    ? TransferFailure.STOCKPOT_MISSING_LID
+                    : TransferFailure.NONE;
         }
 
         applyKaleidoscopePotInputs(inputSlots, ingredientUnits);
@@ -761,7 +892,9 @@ public final class CookingPotProcessorCapability {
                     !consumedStockpotLid.isEmpty()
             );
         }
-        return TransferFailure.NONE;
+        return isStockpotLidMissingAfterTransfer(blockEntity, stockpotRecipe, consumedStockpotLid)
+                ? TransferFailure.STOCKPOT_MISSING_LID
+                : TransferFailure.NONE;
     }
 
     private static Object feedbackOperation(final String translationKey, final ChatFormatting style) {
@@ -777,6 +910,7 @@ public final class CookingPotProcessorCapability {
             case NO_INVENTORY, INPUT_TRANSFER_FAILED, CONTAINER_TRANSFER_FAILED -> potTransferFailedOperation();
             case STOCKPOT_MISSING_LID -> potStockpotMissingLidOperation();
             case STOCKPOT_MISSING_SOUP_BASE -> potStockpotMissingSoupBaseOperation();
+            case STOCKPOT_COOKING -> potStockpotCookingOperation();
             case NONE -> CfbhRuntime.kitchenOperationEmpty();
         };
     }
@@ -1233,20 +1367,46 @@ public final class CookingPotProcessorCapability {
         return -1;
     }
 
-    private static boolean isKaleidoscopeSoupBaseCandidate(final ItemStack stack) {
+    private static boolean isKaleidoscopeSoupBaseCandidate(final ItemStack stack,
+                                                           final ResourceLocation requiredSoupBaseId) {
         if (stack == null || stack.isEmpty()) {
             return false;
         }
-        for (final ItemStack candidate : stockpotSoupBaseCandidates()) {
-            if (MinecraftApiCompat.isSameItemSameData(stack, candidate)
-                    || ItemStack.isSameItem(stack, candidate)) {
-                return true;
+        if (StockpotSoupBridge.isWaterSoupBase(requiredSoupBaseId)) {
+            for (final ItemStack candidate : stockpotWaterSoupBaseCandidates()) {
+                if (MinecraftApiCompat.isSameItemSameData(stack, candidate)
+                        || ItemStack.isSameItem(stack, candidate)) {
+                    return true;
+                }
             }
+            return false;
         }
-        return false;
+
+        final ItemStack exactSoupBase = StockpotSoupBridge.soupBaseBucketStack(requiredSoupBaseId);
+        if (exactSoupBase.isEmpty()) {
+            return false;
+        }
+
+        return MinecraftApiCompat.isSameItemSameData(stack, exactSoupBase) || ItemStack.isSameItem(stack, exactSoupBase);
     }
 
-    private static List<ItemStack> stockpotSoupBaseCandidates() {
+    private static boolean isFishSoupIngredientCandidate(final ItemStack stack, final ResourceLocation requiredSoupBaseId) {
+        if (stack == null || stack.isEmpty()) {
+            return false;
+        }
+        final ItemStack candidate = StockpotSoupBridge.fishSoupBaseIngredientStack(requiredSoupBaseId);
+        if (candidate.isEmpty()) {
+            return false;
+        }
+        return MinecraftApiCompat.isSameItemSameData(stack, candidate) || ItemStack.isSameItem(stack, candidate);
+    }
+
+    private static List<ItemStack> stockpotWaterSoupBaseCandidates() {
+        final List<ItemStack> cached = cachedWaterSoupBaseCandidates;
+        if (cached != null) {
+            return cached;
+        }
+
         final List<ItemStack> candidates = new ArrayList<>();
         try {
             final Class<?> registryClass = Class.forName(CFBH_COOKING_REGISTRY_CLASS);
@@ -1263,16 +1423,32 @@ public final class CookingPotProcessorCapability {
             // Fall back to vanilla water bucket.
         }
         addUniqueSoupBaseCandidate(candidates, new ItemStack(Items.WATER_BUCKET));
-        return candidates;
+        final List<ItemStack> immutable = List.copyOf(candidates);
+        cachedWaterSoupBaseCandidates = immutable;
+        return immutable;
     }
 
     private static void addUniqueSoupBaseCandidate(final List<ItemStack> candidates, final ItemStack candidate) {
         for (final ItemStack existing : candidates) {
-            if (MinecraftApiCompat.isSameItemSameData(existing, candidate)) {
+            if (MinecraftApiCompat.isSameItemSameData(existing, candidate)
+                    || ItemStack.isSameItem(existing, candidate)) {
                 return;
             }
         }
         candidates.add(candidate);
+    }
+
+    private static boolean isStockpotLidMissingAfterTransfer(final BlockEntity blockEntity,
+                                                             final boolean stockpotRecipe,
+                                                             final ItemStack consumedStockpotLid) {
+        if (!stockpotRecipe) {
+            return false;
+        }
+
+        if (blockEntity == null || blockEntity.getLevel() == null) {
+            return consumedStockpotLid == null || consumedStockpotLid.isEmpty();
+        }
+        return !hasBlockStateBooleanPropertyValue(blockEntity, KALEIDOSCOPE_PROPERTY_HAS_LID, true);
     }
 
     private static boolean applyKaleidoscopeStockpotSoupBase(final BlockEntity blockEntity, final ItemStack soupBaseStack) {
@@ -1314,17 +1490,21 @@ public final class CookingPotProcessorCapability {
         return true;
     }
 
-    private static boolean applyKaleidoscopeStockpotSoupBaseFromSink(final BlockEntity blockEntity) {
+    private static boolean applyKaleidoscopeStockpotSoupBaseFromSink(final BlockEntity blockEntity,
+                                                                     final ResourceLocation requiredSoupBaseId) {
         if (blockEntity == null || blockEntity.getLevel() == null) {
             return false;
         }
+        final ResourceLocation effectiveSoupBaseId = requiredSoupBaseId == null
+                ? VANILLA_WATER_SOUP_BASE_ID
+                : requiredSoupBaseId;
 
         try {
             final Field soupBaseIdField = findField(blockEntity.getClass(), KALEIDOSCOPE_STOCKPOT_SOUP_BASE_ID_FIELD);
             final Field statusField = findField(blockEntity.getClass(), KALEIDOSCOPE_POT_STATUS_FIELD);
             if (soupBaseIdField != null) {
                 soupBaseIdField.setAccessible(true);
-                soupBaseIdField.set(blockEntity, KALEIDOSCOPE_STOCKPOT_WATER_SOUP_BASE_ID);
+                soupBaseIdField.set(blockEntity, effectiveSoupBaseId);
             }
             if (statusField != null) {
                 statusField.setAccessible(true);
@@ -1336,7 +1516,11 @@ public final class CookingPotProcessorCapability {
             // Fall back to direct soup-base interaction when fields are unavailable.
         }
 
-        return applyKaleidoscopeStockpotSoupBase(blockEntity, new ItemStack(Items.WATER_BUCKET));
+        final ItemStack fallbackStack = StockpotSoupBridge.soupBaseBucketStack(effectiveSoupBaseId);
+        if (fallbackStack.isEmpty()) {
+            return false;
+        }
+        return applyKaleidoscopeStockpotSoupBase(blockEntity, fallbackStack);
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
@@ -1538,7 +1722,7 @@ public final class CookingPotProcessorCapability {
             if (processorsObject instanceof Iterable<?> processors) {
                 for (final Object processor : processors) {
                     if (processor instanceof BlockEntity processorBlockEntity
-                            && DungeonOvenCompat.isDungeonOvenBlockEntity(processorBlockEntity)) {
+                            && CustomizeBlocks.isDungeonOvenBlockEntity(processorBlockEntity)) {
                         return true;
                     }
                 }
@@ -1549,7 +1733,7 @@ public final class CookingPotProcessorCapability {
 
         for (final var direction : net.minecraft.core.Direction.values()) {
             final BlockEntity nearbyBlockEntity = level.getBlockEntity(tablePos.relative(direction));
-            if (DungeonOvenCompat.isDungeonOvenBlockEntity(nearbyBlockEntity)) {
+            if (CustomizeBlocks.isDungeonOvenBlockEntity(nearbyBlockEntity)) {
                 return true;
             }
         }

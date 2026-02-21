@@ -48,7 +48,7 @@ public final class Unifiled {
                 RUNTIME.profile().loader(),
                 RUNTIME.profile().minecraftVersion(),
                 RUNTIME.profile().loaderVersion());
-        registerDungeonOvenCompat(modEventBus);
+        registerCompatBlocks(modEventBus);
         modEventBus.addListener(this::onCommonSetup);
         modEventBus.addListener(this::onRegisterCapabilities);
         NeoForge.EVENT_BUS.addListener(this::onServerStarted);
@@ -60,7 +60,7 @@ public final class Unifiled {
         }
     }
 
-    private void registerDungeonOvenCompat(final IEventBus modEventBus) {
+    private void registerCompatBlocks(final IEventBus modEventBus) {
         if (!ModList.get().isLoaded(BridgeKeys.MOD_COOKING_FOR_BLOCKHEADS)
                 || !ModList.get().isLoaded(BridgeKeys.MOD_DUNGEONS_DELIGHT)) {
             return;
@@ -69,9 +69,9 @@ public final class Unifiled {
         try {
             final Class<?> compatClass = Class.forName(RUNTIME.dungeonOvenCompatClassName());
             compatClass.getMethod("register", IEventBus.class).invoke(null, modEventBus);
-            LOGGER.info("Registered LAB-11 mods-unified dungeon oven compatibility.");
+            LOGGER.info("Registered LAB-11 mods-unified CFBH compat blocks.");
         } catch (ReflectiveOperationException e) {
-            LOGGER.error("Failed to register LAB-11 mods-unified dungeon oven compatibility.", e);
+            LOGGER.error("Failed to register LAB-11 mods-unified CFBH compat blocks.", e);
         }
     }
 

@@ -444,7 +444,8 @@ public final class CookingPotHeatBridge {
     private static boolean isDungeonOvenBlockId(final ResourceLocation blockId) {
         return blockId != null
                 && Unifiled.MOD_ID.equals(blockId.getNamespace())
-                && DUNGEON_OVEN_PATH.equals(blockId.getPath());
+                && (DUNGEON_OVEN_PATH.equals(blockId.getPath())
+                || blockId.getPath().endsWith("_" + DUNGEON_OVEN_PATH));
     }
 
     private static boolean isFarmersDelightCookingPot(final Level level, final BlockPos potPos) {

@@ -33,6 +33,9 @@ import java.util.stream.Stream;
 @Pseudo
 @Mixin(targets = "net.blay09.mods.cookingforblockheads.menu.KitchenMenu")
 abstract class KitchenMenuRecipeStatusMixin {
+    @Unique
+    private static final int MAX_VARIANT_COMBINATIONS = Integer.getInteger("lab11.max_recipe_variants", 64);
+
     private record VariantCandidate(String displayKey, Object status) {
     }
 
@@ -131,10 +134,11 @@ abstract class KitchenMenuRecipeStatusMixin {
                 ? emptyLocksForRecipe(recipe)
                 : prepareLocksForRecipe(lockedInputs(), recipe);
 
-        return Stream.concat(
-                        Stream.of(baseLocks),
-                        expandTagVariantLocks(recipe, baseLocks)
-                )
+        final Stream<NonNullList<ItemStack>> lockVariants = recipe instanceof CookingPotIndexedRecipe
+                ? Stream.of(baseLocks)
+                : Stream.concat(Stream.of(baseLocks), expandTagVariantLocks(recipe, baseLocks));
+
+        return lockVariants
                 .map(variantLocks -> buildVariantCandidate(context, recipeEntry, recipeResult, variantLocks))
                 .filter(java.util.Objects::nonNull);
     }
@@ -180,7 +184,7 @@ abstract class KitchenMenuRecipeStatusMixin {
 
         final List<NonNullList<ItemStack>> expanded = new ArrayList<>();
         final int[] cursor = new int[axes.size()];
-        while (advanceCursor(cursor, axes)) {
+        while (expanded.size() < MAX_VARIANT_COMBINATIONS && advanceCursor(cursor, axes)) {
             expanded.add(applyCursor(baseLocks, axes, cursor));
         }
 

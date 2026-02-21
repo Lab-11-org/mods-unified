@@ -1,0 +1,34 @@
+{
+  "variants": {
+    "active=false,facing=east": {
+      "model": "lab_11_mods_unified:blocks/brown_dungeon_oven_active",
+      "y": 90
+    },
+    "active=false,facing=north": {
+      "model": "lab_11_mods_unified:blocks/brown_dungeon_oven_active"
+    },
+    "active=false,facing=south": {
+      "model": "lab_11_mods_unified:blocks/brown_dungeon_oven_active",
+      "y": 180
+    },
+    "active=false,facing=west": {
+      "model": "lab_11_mods_unified:blocks/brown_dungeon_oven_active",
+      "y": 270
+    },
+    "active=true,facing=east": {
+      "model": "lab_11_mods_unified:blocks/brown_dungeon_oven",
+      "y": 90
+    },
+    "active=true,facing=north": {
+      "model": "lab_11_mods_unified:blocks/brown_dungeon_oven"
+    },
+    "active=true,facing=south": {
+      "model": "lab_11_mods_unified:blocks/brown_dungeon_oven",
+      "y": 180
+    },
+    "active=true,facing=west": {
+      "model": "lab_11_mods_unified:blocks/brown_dungeon_oven",
+      "y": 270
+    }
+  }
+}

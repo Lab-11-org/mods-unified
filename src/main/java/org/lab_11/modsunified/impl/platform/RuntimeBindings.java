@@ -21,7 +21,7 @@ public final class RuntimeBindings {
             "net.blay09.mods.cookingforblockheads.api.KitchenRecipeHandler",
             "org.lab_11.modsunified.impl.cookingforblockheads.BalmFallbackProviderBridge",
             "org.lab_11.modsunified.impl.cookingforblockheads.BalmRecipeSyncBridge",
-            "org.lab_11.modsunified.impl.cookingforblockheads.DungeonOvenCompat",
+            "org.lab_11.modsunified.impl.cookingforblockheads.CustomizeBlocks",
             new NeoForge1201BridgeTargetProvider()
     );
     private static final ModRuntimeBindings NEOFORGE_1211 = new ModRuntimeBindings(
@@ -30,7 +30,7 @@ public final class RuntimeBindings {
             "net.blay09.mods.cookingforblockheads.api.KitchenRecipeHandler",
             "org.lab_11.modsunified.impl.cookingforblockheads.BalmFallbackProviderBridge",
             "org.lab_11.modsunified.impl.cookingforblockheads.BalmRecipeSyncBridge",
-            "org.lab_11.modsunified.impl.cookingforblockheads.DungeonOvenCompat",
+            "org.lab_11.modsunified.impl.cookingforblockheads.CustomizeBlocks",
             new NeoForge121BridgeTargetProvider()
     );
     private static final ModRuntimeBindings ACTIVE = selectActiveProfile();

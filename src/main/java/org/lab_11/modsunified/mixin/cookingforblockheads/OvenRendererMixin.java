@@ -12,7 +12,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.block.state.BlockState;
-import org.lab_11.modsunified.impl.cookingforblockheads.DungeonOvenCompat;
+import org.lab_11.modsunified.impl.cookingforblockheads.CustomizeBlocks;
 import org.lab_11.modsunified.impl.cookingforblockheads.client.DungeonOvenClientHooks;
 import org.slf4j.Logger;
 import org.spongepowered.asm.mixin.Mixin;
@@ -102,7 +102,7 @@ abstract class OvenRendererMixin {
         }
 
         final ResourceLocation blockId = BuiltInRegistries.BLOCK.getKey(state.getBlock());
-        return DungeonOvenCompat.DUNGEON_OVEN_ID.equals(blockId);
+        return CustomizeBlocks.DUNGEON_OVEN_ID.equals(blockId);
     }
 
     private static boolean isDoorActiveForRender(final Object blockEntity, final float partialTicks) {

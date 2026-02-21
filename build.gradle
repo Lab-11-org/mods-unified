@@ -153,7 +153,7 @@ if (isForgeTarget) {
             '/src/main/java/org/lab_11/modsunified/Unifiled.java',
             '/src/main/java/org/lab_11/modsunified/impl/cookingforblockheads/CookingPotContainerTooltipBridge.java',
             '/src/main/java/org/lab_11/modsunified/impl/cookingforblockheads/CookingPotProcessorCapability.java',
-            '/src/main/java/org/lab_11/modsunified/impl/cookingforblockheads/DungeonOvenCompat.java',
+            '/src/main/java/org/lab_11/modsunified/impl/cookingforblockheads/CustomizeBlocks.java',
             '/src/main/java/org/lab_11/modsunified/impl/cookingforblockheads/client/DungeonOvenClientHooks.java',
             '/src/main/java/org/lab_11/modsunified/impl/cookingforblockheads/CookingPotIndexedRecipe.java'
     ]

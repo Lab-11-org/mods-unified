@@ -12,7 +12,8 @@ public final class BridgeMarkerRegistry {
             BridgeKeys.TARGET_MINERS_DELIGHT_COPPER_POT, Items.JIGSAW,
             BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_POT, Items.CAULDRON,
             BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_STOCKPOT, Items.WATER_BUCKET,
-            BridgeKeys.MARKER_DUNGEON_OVEN, Items.SMOKER
+            BridgeKeys.MARKER_DUNGEON_OVEN, Items.SMOKER,
+            BridgeKeys.MARKER_LAVA_SINK, Items.LAVA_BUCKET
     );
 
     private static final Map<String, String> MISSING_REQUIREMENT_TOOLTIPS = Map.of(

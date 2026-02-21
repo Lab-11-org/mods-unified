@@ -3,7 +3,9 @@ package org.lab_11.modsunified.mixin.cookingforblockheads;
 import net.minecraft.core.NonNullList;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.crafting.Recipe;
 import org.lab_11.modsunified.impl.cookingforblockheads.BridgeKeys;
+import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotRecipeIndexer;
 import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
@@ -49,7 +51,8 @@ abstract class KitchenMenuMixin {
             return incomingLockedInputs;
         }
 
-        final NonNullList<ItemStack> normalizedIncoming = normalizeLocks(incomingLockedInputs, incomingLockedInputs.size());
+        final int requiredLockSize = resolveRequiredLockSizeForCraft(selected, incomingLockedInputs.size());
+        final NonNullList<ItemStack> normalizedIncoming = normalizeLocks(incomingLockedInputs, requiredLockSize);
         copySelectedLocksToMenu(normalizedIncoming);
         return normalizedIncoming;
     }
@@ -129,9 +132,25 @@ abstract class KitchenMenuMixin {
     private void copySelectedLocksToMenu(final NonNullList<ItemStack> selectedLocks) {
         final NonNullList<ItemStack> lockedInputs = lockedInputs();
         final NonNullList<ItemStack> normalized = normalizeLocks(selectedLocks, lockedInputs.size());
+        if (lockedInputs.size() != selectedLocks.size()) {
+            writeFieldValue(this, "lockedInputs", normalizeLocks(selectedLocks, selectedLocks.size()));
+            return;
+        }
         for (int i = 0; i < lockedInputs.size(); i++) {
             lockedInputs.set(i, normalized.get(i));
         }
+    }
+
+    @Unique
+    private static int resolveRequiredLockSizeForCraft(final Object selectedRecipeStatus,
+                                                       final int defaultSize) {
+        final ResourceLocation recipeId = recipeIdOf(selectedRecipeStatus);
+        final Recipe<?> recipe = CookingPotRecipeIndexer.findIndexedRecipe(recipeId);
+        if (recipe == null) {
+            return defaultSize;
+        }
+
+        return Math.max(defaultSize, recipe.getIngredients().size());
     }
 
     @Unique

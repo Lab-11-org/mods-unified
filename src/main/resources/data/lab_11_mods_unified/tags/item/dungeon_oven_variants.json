@@ -1,0 +1,21 @@
+{
+  "replace": false,
+  "values": [
+    "lab_11_mods_unified:dungeon_oven",
+    "lab_11_mods_unified:white_dungeon_oven",
+    "lab_11_mods_unified:orange_dungeon_oven",
+    "lab_11_mods_unified:magenta_dungeon_oven",
+    "lab_11_mods_unified:light_blue_dungeon_oven",
+    "lab_11_mods_unified:yellow_dungeon_oven",
+    "lab_11_mods_unified:lime_dungeon_oven",
+    "lab_11_mods_unified:pink_dungeon_oven",
+    "lab_11_mods_unified:gray_dungeon_oven",
+    "lab_11_mods_unified:light_gray_dungeon_oven",
+    "lab_11_mods_unified:cyan_dungeon_oven",
+    "lab_11_mods_unified:purple_dungeon_oven",
+    "lab_11_mods_unified:blue_dungeon_oven",
+    "lab_11_mods_unified:brown_dungeon_oven",
+    "lab_11_mods_unified:green_dungeon_oven",
+    "lab_11_mods_unified:red_dungeon_oven"
+  ]
+}

@@ -5,6 +5,7 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.crafting.Ingredient;
@@ -25,6 +26,7 @@ public final class CookingPotKitchenHandler implements CfbhRuntime.KitchenRecipe
     private static final String FEEDBACK_POT_TRANSFER_FAILED_KEY = "lab_11_mods_unified.feedback.cooking_table.pot_transfer_failed";
     private static final String FEEDBACK_STOCKPOT_NO_TARGET_PROCESSOR_KEY =
             "lab_11_mods_unified.feedback.cooking_table.stockpot_no_target_processor";
+    private static volatile List<ItemStack> cachedWaterSoupBaseCandidates;
 
     private record TokenConsumption(Object token, ItemStack stack) {
     }
@@ -195,7 +197,8 @@ public final class CookingPotKitchenHandler implements CfbhRuntime.KitchenRecipe
 
         final Ingredient lidRequirement = Ingredient.of(lidItem);
         final List<Object> allocated = new ArrayList<>(processingTokens);
-        appendStockpotSoupBaseToken(context, processingTokens, allocated);
+        final ResourceLocation requiredSoupBaseId = StockpotSoupBridge.resolveRequiredSoupBaseId(recipe);
+        appendStockpotSoupBaseTokens(context, processingTokens, allocated, requiredSoupBaseId);
         final Object lidToken = findIngredientToken(CfbhRuntime.contextItemProviders(context), lidRequirement, allocated);
         if (lidToken != null) {
             processingTokens.add(lidToken);
@@ -212,53 +215,134 @@ public final class CookingPotKitchenHandler implements CfbhRuntime.KitchenRecipe
         }
     }
 
-    private static void appendStockpotSoupBaseToken(final Object context,
-                                                    final List<Object> processingTokens,
-                                                    final List<Object> allocated) {
-        final Object soupToken = findStockpotSoupBaseToken(CfbhRuntime.contextItemProviders(context), allocated);
-        if (soupToken == null) {
+    private static void appendStockpotSoupBaseTokens(final Object context,
+                                                     final List<Object> processingTokens,
+                                                     final List<Object> allocated,
+                                                     final ResourceLocation requiredSoupBaseId) {
+        final List<Object> soupTokens = findStockpotSoupBaseTokens(
+                CfbhRuntime.contextItemProviders(context),
+                allocated,
+                requiredSoupBaseId
+        );
+        if (soupTokens.isEmpty()) {
             return;
         }
 
-        processingTokens.add(soupToken);
-        allocated.add(soupToken);
+        for (final Object soupToken : soupTokens) {
+            processingTokens.add(soupToken);
+            allocated.add(soupToken);
+        }
     }
 
-    private static Object findStockpotSoupBaseToken(final List<?> itemProviders, final Collection<?> allocatedTokens) {
+    private static List<Object> findStockpotSoupBaseTokens(final List<?> itemProviders,
+                                                           final Collection<?> allocatedTokens,
+                                                           final ResourceLocation requiredSoupBaseId) {
         final List<Object> providersWithoutMarkers = new ArrayList<>();
-        boolean sinkProviderDetected = false;
+        boolean waterSinkProviderDetected = false;
+        boolean lavaSinkMarkerDetected = false;
         for (final Object itemProvider : itemProviders) {
-            if (itemProvider instanceof MarkerProviderView) {
+            if (itemProvider instanceof MarkerProviderView markerProvider) {
+                if (markerProvider.isMarkerKey(BridgeKeys.MARKER_LAVA_SINK)
+                        && markerProvider.isActiveForCurrentTableMarker()) {
+                    lavaSinkMarkerDetected = true;
+                }
                 continue;
             }
             if (StockpotSoupBridge.isSinkItemProvider(itemProvider)) {
-                sinkProviderDetected = true;
+                waterSinkProviderDetected = true;
                 continue;
             }
             providersWithoutMarkers.add(itemProvider);
         }
 
-        for (final ItemStack candidate : stockpotSoupBaseCandidates()) {
-            final Object exactItemToken = findItemToken(providersWithoutMarkers, candidate, allocatedTokens);
-            if (exactItemToken != null) {
-                return exactItemToken;
+        if (StockpotSoupBridge.isWaterSoupBase(requiredSoupBaseId)) {
+            if (waterSinkProviderDetected) {
+                return List.of(StockpotSoupBridge.syntheticWaterSinkSoupToken());
             }
-
-            final Object ingredientToken = findIngredientToken(
+            final Object token = findTokenForAnyCandidate(
                     providersWithoutMarkers,
-                    Ingredient.of(candidate),
+                    stockpotWaterSoupBaseCandidates(),
                     allocatedTokens
             );
-            if (ingredientToken != null) {
-                return ingredientToken;
+            if (token != null) {
+                return List.of(token);
+            }
+            return List.of();
+        }
+
+        if (StockpotSoupBridge.isLavaSoupBase(requiredSoupBaseId)) {
+            if (lavaSinkMarkerDetected) {
+                return List.of(StockpotSoupBridge.syntheticLavaSinkSoupToken());
+            }
+            final ItemStack lavaBucket = new ItemStack(Items.LAVA_BUCKET);
+            final Object bucketToken = findTokenForAnyCandidate(
+                    providersWithoutMarkers,
+                    List.of(lavaBucket),
+                    allocatedTokens
+            );
+            if (bucketToken != null) {
+                return List.of(bucketToken);
+            }
+            return List.of();
+        }
+
+        if (StockpotSoupBridge.isFishBucketSoupBase(requiredSoupBaseId)) {
+            final ItemStack fishBucket = StockpotSoupBridge.soupBaseBucketStack(requiredSoupBaseId);
+            if (!fishBucket.isEmpty()) {
+                final Object bucketToken = findTokenForAnyCandidate(
+                        providersWithoutMarkers,
+                        List.of(fishBucket),
+                        allocatedTokens
+                );
+                if (bucketToken != null) {
+                    return List.of(bucketToken);
+                }
+            }
+
+            final ItemStack fishIngredient = StockpotSoupBridge.fishSoupBaseIngredientStack(requiredSoupBaseId);
+            if (fishIngredient.isEmpty()) {
+                return List.of();
+            }
+
+            final List<Object> allocated = new ArrayList<>(allocatedTokens);
+            final Object fishToken = findTokenForAnyCandidate(
+                    providersWithoutMarkers,
+                    List.of(fishIngredient),
+                    allocated
+            );
+            if (fishToken == null) {
+                return List.of();
+            }
+            allocated.add(fishToken);
+
+            if (waterSinkProviderDetected) {
+                return List.of(fishToken, StockpotSoupBridge.syntheticWaterSinkSoupToken());
+            }
+
+            final Object waterToken = findTokenForAnyCandidate(
+                    providersWithoutMarkers,
+                    stockpotWaterSoupBaseCandidates(),
+                    allocated
+            );
+            if (waterToken != null) {
+                return List.of(fishToken, waterToken);
+            }
+            return List.of();
+        }
+
+        final ItemStack exactSoupBaseItem = StockpotSoupBridge.soupBaseBucketStack(requiredSoupBaseId);
+        if (!exactSoupBaseItem.isEmpty()) {
+            final Object soupToken = findTokenForAnyCandidate(
+                    providersWithoutMarkers,
+                    List.of(exactSoupBaseItem),
+                    allocatedTokens
+            );
+            if (soupToken != null) {
+                return List.of(soupToken);
             }
         }
 
-        if (sinkProviderDetected) {
-            return StockpotSoupBridge.syntheticSinkSoupToken();
-        }
-
-        return null;
+        return List.of();
     }
 
     private static boolean consumeRequiredContainers(final Object context,
@@ -311,7 +395,33 @@ public final class CookingPotKitchenHandler implements CfbhRuntime.KitchenRecipe
         return null;
     }
 
-    private static List<ItemStack> stockpotSoupBaseCandidates() {
+    private static Object findTokenForAnyCandidate(final List<?> itemProviders,
+                                                   final List<ItemStack> candidates,
+                                                   final Collection<?> allocatedTokens) {
+        for (final ItemStack candidate : candidates) {
+            final Object exactItemToken = findItemToken(itemProviders, candidate, allocatedTokens);
+            if (exactItemToken != null) {
+                return exactItemToken;
+            }
+
+            final Object ingredientToken = findIngredientToken(
+                    itemProviders,
+                    Ingredient.of(candidate),
+                    allocatedTokens
+            );
+            if (ingredientToken != null) {
+                return ingredientToken;
+            }
+        }
+        return null;
+    }
+
+    private static List<ItemStack> stockpotWaterSoupBaseCandidates() {
+        final List<ItemStack> cached = cachedWaterSoupBaseCandidates;
+        if (cached != null) {
+            return cached;
+        }
+
         final List<ItemStack> candidates = new ArrayList<>();
         try {
             final Class<?> registryClass = Class.forName(CFBH_COOKING_REGISTRY_CLASS);
@@ -328,7 +438,9 @@ public final class CookingPotKitchenHandler implements CfbhRuntime.KitchenRecipe
             // Fall back to vanilla water bucket.
         }
         addUniqueSoupBaseCandidate(candidates, new ItemStack(Items.WATER_BUCKET));
-        return candidates;
+        final List<ItemStack> immutable = List.copyOf(candidates);
+        cachedWaterSoupBaseCandidates = immutable;
+        return immutable;
     }
 
     private static void addUniqueSoupBaseCandidate(final List<ItemStack> candidates, final ItemStack candidate) {

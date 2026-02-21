@@ -7,8 +7,10 @@ import net.minecraft.client.resources.model.ModelManager;
 import net.minecraft.client.resources.model.ModelResourceLocation;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.bus.api.IEventBus;
+import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import net.neoforged.neoforge.client.event.ModelEvent;
 import org.lab_11.modsunified.Unifiled;
+import org.lab_11.modsunified.impl.cookingforblockheads.CustomizeBlocks;
 import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
 import org.slf4j.Logger;
 
@@ -49,6 +51,7 @@ public final class DungeonOvenClientHooks {
 
         registered = true;
         modEventBus.addListener(DungeonOvenClientHooks::onRegisterAdditional);
+        modEventBus.addListener(DungeonOvenClientHooks::onRegisterRenderers);
         LOGGER.info("Registered dungeon oven client hook listeners.");
     }
 
@@ -56,7 +59,12 @@ public final class DungeonOvenClientHooks {
         event.register(DOOR_MODEL);
         event.register(ACTIVE_DOOR_MODEL);
         event.register(HANDLE_MODEL);
+        event.register(LavaSinkRenderer.LAVA_LIQUID_MODEL);
         LOGGER.info("Registered additional dungeon oven door models.");
+    }
+
+    private static void onRegisterRenderers(final EntityRenderersEvent.RegisterRenderers event) {
+        event.registerBlockEntityRenderer(CustomizeBlocks.lavaSinkBlockEntityType(), LavaSinkRenderer::new);
     }
 
     public static BakedModel getDoorModel(final boolean active, final BakedModel fallback) {

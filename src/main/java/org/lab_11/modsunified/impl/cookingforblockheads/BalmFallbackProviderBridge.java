@@ -45,10 +45,17 @@ public final class BalmFallbackProviderBridge {
                     kitchenItemProviderClass,
                     (BiFunction<BlockEntity, Object, Object>) (blockEntity, direction) -> {
                         try {
-                            if (DungeonOvenCompat.isDungeonOvenBlockEntity(blockEntity)) {
+                            if (CustomizeBlocks.isDungeonOvenBlockEntity(blockEntity)) {
                                 return new CookingPotActivationMarkerProvider(
                                         blockEntity,
                                         BridgeKeys.MARKER_DUNGEON_OVEN,
+                                        false
+                                ).asKitchenItemProvider();
+                            }
+                            if (CustomizeBlocks.isLavaSinkBlockEntity(blockEntity)) {
+                                return new CookingPotActivationMarkerProvider(
+                                        blockEntity,
+                                        BridgeKeys.MARKER_LAVA_SINK,
                                         false
                                 ).asKitchenItemProvider();
                             }

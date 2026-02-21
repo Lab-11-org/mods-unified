@@ -15,8 +15,10 @@ public final class BridgeKeys {
     public static final String TARGET_KALEIDOSCOPE_COOKERY_POT = "kaleidoscope_cookery_pot";
     public static final String TARGET_KALEIDOSCOPE_COOKERY_STOCKPOT = "kaleidoscope_cookery_stockpot";
     public static final String ITEM_KALEIDOSCOPE_STOCKPOT_LID = "stockpot_lid";
+    public static final String BLOCK_LAVA_SINK = "lava_sink";
 
     public static final String MARKER_DUNGEON_OVEN = "dungeon_oven";
+    public static final String MARKER_LAVA_SINK = "lava_sink";
     public static final String INDEXED_CFBH_RECIPE_PATH_PREFIX = "cfbh_indexed/";
     public static final String MIRRORED_DD_CUP_RECIPE_PATH_PREFIX = "compat/dd_monster_to_fd/";
     public static final String MIRRORED_DD_CUP_RECIPE_ID_PREFIX =
