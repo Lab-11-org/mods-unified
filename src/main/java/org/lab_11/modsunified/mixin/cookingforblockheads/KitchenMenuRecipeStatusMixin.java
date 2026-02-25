@@ -1,6 +1,7 @@
 package org.lab_11.modsunified.mixin.cookingforblockheads;
 
 import net.minecraft.core.NonNullList;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Player;
@@ -8,6 +9,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.Recipe;
 import org.lab_11.modsunified.impl.cookingforblockheads.BridgeKeys;
+import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotContainerCost;
 import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotIndexedRecipe;
 import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
 import org.lab_11.modsunified.impl.platform.RecipeRuntimeCompat;
@@ -129,7 +131,8 @@ abstract class KitchenMenuRecipeStatusMixin {
         if (recipe == null) {
             return Stream.empty();
         }
-        final ItemStack recipeResult = recipe.getResultItem(player.level().registryAccess());
+        final RegistryAccess registryAccess = player.level().registryAccess();
+        final ItemStack recipeResult = recipe.getResultItem(registryAccess);
         final NonNullList<ItemStack> baseLocks = recipe instanceof CookingPotIndexedRecipe
                 ? emptyLocksForRecipe(recipe)
                 : prepareLocksForRecipe(lockedInputs(), recipe);
@@ -139,7 +142,7 @@ abstract class KitchenMenuRecipeStatusMixin {
                 : Stream.concat(Stream.of(baseLocks), expandTagVariantLocks(recipe, baseLocks));
 
         return lockVariants
-                .map(variantLocks -> buildVariantCandidate(context, recipeEntry, recipeResult, variantLocks))
+                .map(variantLocks -> buildVariantCandidate(context, recipeEntry, recipeResult, variantLocks, registryAccess))
                 .filter(java.util.Objects::nonNull);
     }
 
@@ -147,7 +150,8 @@ abstract class KitchenMenuRecipeStatusMixin {
     private static VariantCandidate buildVariantCandidate(final Object context,
                                                           final Object recipeEntry,
                                                           final ItemStack recipeResult,
-                                                          final List<ItemStack> locks) {
+                                                          final List<ItemStack> locks,
+                                                          final RegistryAccess registryAccess) {
         final Recipe<?> recipe = RecipeRuntimeCompat.recipeValue(recipeEntry);
         final ResourceLocation recipeId = RecipeRuntimeCompat.recipeId(recipeEntry);
         if (recipe == null || recipeId == null) {
@@ -164,11 +168,24 @@ abstract class KitchenMenuRecipeStatusMixin {
         final Object operation = invokeNoArg(operationWithLocks, "prepare");
 
         final NonNullList<ItemStack> displayLocks = copyLocks(lockedInputs(operation));
+        List<Ingredient> finalMissingIngredients = missingIngredients(operation);
+        final int finalMissingIngredientsMask = missingIngredientsMask(operation);
+        if (recipe instanceof CookingPotIndexedRecipe) {
+            final Ingredient missingContainer = CookingPotContainerCost.resolveMissingContainerForStatus(
+                    context,
+                    recipe,
+                    registryAccess
+            );
+            if (missingContainer != null) {
+                finalMissingIngredients = new ArrayList<>(finalMissingIngredients);
+                finalMissingIngredients.add(missingContainer);
+            }
+        }
         final Object status = newRecipeWithStatus(
                 recipeId,
                 recipeResult,
-                missingIngredients(operation),
-                missingIngredientsMask(operation),
+                finalMissingIngredients,
+                finalMissingIngredientsMask,
                 displayLocks
         );
         return new VariantCandidate(buildDisplayKey(recipe, recipeResult, displayLocks), status);
@@ -326,6 +343,9 @@ abstract class KitchenMenuRecipeStatusMixin {
                                           final ItemStack result,
                                           final List<ItemStack> lockedInputs) {
         final StringBuilder key = new StringBuilder(128);
+        if (recipe instanceof CookingPotIndexedRecipe indexedRecipe) {
+            key.append(indexedRecipe.targetKey()).append('/');
+        }
         key.append(BuiltInRegistries.ITEM.getKey(result.getItem()))
                 .append('#')
                 .append(result.getCount());

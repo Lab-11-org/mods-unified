@@ -69,6 +69,8 @@ public final class CookingPotProcessorCapability {
             "lab_11_mods_unified.feedback.cooking_table.pot_full_match";
     private static final String FEEDBACK_POT_MISSING_OIL_KEY =
             "lab_11_mods_unified.feedback.cooking_table.pot_missing_oil";
+    private static final String FEEDBACK_POT_MISSING_HEAT_KEY =
+            "lab_11_mods_unified.feedback.cooking_table.pot_missing_heat";
     private static final String POT_COOK_TIME_FIELD = "cookTime";
     private static final String POT_COOK_TIME_TOTAL_FIELD = "cookTimeTotal";
     private static final String KALEIDOSCOPE_POT_BLOCK_ENTITY_CLASS =
@@ -107,6 +109,7 @@ public final class CookingPotProcessorCapability {
     private static volatile Object potContentConflictOperation;
     private static volatile Object potFullMatchOperation;
     private static volatile Object potMissingOilOperation;
+    private static volatile Object potMissingHeatOperation;
 
     private enum TransferFailure {
         NONE,
@@ -120,7 +123,8 @@ public final class CookingPotProcessorCapability {
         STOCKPOT_COOKING,
         POT_CONTENT_CONFLICT,
         POT_FULL_MATCH,
-        POT_MISSING_OIL
+        POT_MISSING_OIL,
+        POT_MISSING_HEAT
     }
 
     private record TokenConsumption(Object token, ItemStack stack) {
@@ -158,6 +162,9 @@ public final class CookingPotProcessorCapability {
 
                 final TransferFailure transferFailure = transferRecipeToPot(blockEntity, recipe, ingredientTokens);
                 if (transferFailure != TransferFailure.NONE) {
+                    if (transferFailure == TransferFailure.STOCKPOT_MISSING_SOUP_BASE) {
+                        return missingSoupBaseOperation(recipe);
+                    }
                     return transferFailureOperation(transferFailure);
                 }
 
@@ -487,6 +494,18 @@ public final class CookingPotProcessorCapability {
         return created;
     }
 
+    private static Object missingSoupBaseOperation(final Recipe<?> recipe) {
+        final ResourceLocation soupBaseId = StockpotSoupBridge.resolveRequiredSoupBaseId(recipe);
+        final ItemStack soupBaseStack = StockpotSoupBridge.soupBaseBucketStack(soupBaseId);
+        final Component soupBaseName = soupBaseStack.isEmpty()
+                ? Component.literal(soupBaseId.toString())
+                : soupBaseStack.getHoverName();
+        return CfbhRuntime.newKitchenOperationWithFeedback(
+                Component.translatable(FEEDBACK_STOCKPOT_MISSING_SOUP_BASE_KEY, soupBaseName)
+                        .withStyle(ChatFormatting.RED)
+        );
+    }
+
     private static Object potStockpotCookingOperation() {
         final Object cached = potStockpotCookingOperation;
         if (cached != null) {
@@ -524,6 +543,16 @@ public final class CookingPotProcessorCapability {
         }
         final Object created = feedbackOperation(FEEDBACK_POT_MISSING_OIL_KEY, ChatFormatting.RED);
         potMissingOilOperation = created;
+        return created;
+    }
+
+    private static Object potMissingHeatOperation() {
+        final Object cached = potMissingHeatOperation;
+        if (cached != null) {
+            return cached;
+        }
+        final Object created = feedbackOperation(FEEDBACK_POT_MISSING_HEAT_KEY, ChatFormatting.RED);
+        potMissingHeatOperation = created;
         return created;
     }
 
@@ -594,6 +623,10 @@ public final class CookingPotProcessorCapability {
             LAST_RECIPE_BY_POT.put(blockEntity, recipe);
         }
 
+        // Trigger managed-oven ignition right after ingredients land in the pot.
+        // This keeps energy-backed ovens responsive for cooking-table transfers.
+        CookingPotHeatBridge.tryIgniteManagedOvenForPot(blockEntity);
+
         blockEntity.setChanged();
         return TransferFailure.NONE;
     }
@@ -611,6 +644,14 @@ public final class CookingPotProcessorCapability {
                 && !hasBlockStateBooleanPropertyValue(blockEntity, KALEIDOSCOPE_PROPERTY_HAS_OIL, true);
         final boolean stockpotNeedsSoupBase =
                 stockpotRecipe && initialStatus == KALEIDOSCOPE_STOCKPOT_STATUS_PUT_SOUP_BASE;
+
+        if (!CookingPotHeatBridge.tryIgniteManagedOvenForPot(blockEntity)) {
+            if (DEBUG_STOCKPOT_TRANSFER) {
+                LOGGER.info("Kaleidoscope processor rejected recipe: missing heat source or fuel.");
+            }
+            return TransferFailure.POT_MISSING_HEAT;
+        }
+
         if (stockpotRecipe) {
             if (initialStatus == KALEIDOSCOPE_STOCKPOT_STATUS_COOKING) {
                 if (DEBUG_STOCKPOT_TRANSFER) {
@@ -985,7 +1026,6 @@ public final class CookingPotProcessorCapability {
                 LAST_RECIPE_BY_POT.put(blockEntity, recipe);
             }
             markKaleidoscopePotChanged(blockEntity);
-            CookingPotHeatBridge.tryIgniteManagedOvenForPot(blockEntity);
             if (DEBUG_STOCKPOT_TRANSFER && stockpotRecipe) {
                 LOGGER.info(
                         "Stockpot processor applied recipe via interactive insert. ingredientUnits={}, appliedLid={}",
@@ -1007,7 +1047,6 @@ public final class CookingPotProcessorCapability {
             LAST_RECIPE_BY_POT.put(blockEntity, recipe);
         }
         markKaleidoscopePotChanged(blockEntity);
-        CookingPotHeatBridge.tryIgniteManagedOvenForPot(blockEntity);
         if (DEBUG_STOCKPOT_TRANSFER && stockpotRecipe) {
             LOGGER.info(
                     "Stockpot processor applied recipe via direct slot fallback. ingredientUnits={}, appliedLid={}",
@@ -1037,6 +1076,7 @@ public final class CookingPotProcessorCapability {
             case POT_CONTENT_CONFLICT -> potContentConflictOperation();
             case POT_FULL_MATCH -> potFullMatchOperation();
             case POT_MISSING_OIL -> potMissingOilOperation();
+            case POT_MISSING_HEAT -> potMissingHeatOperation();
             case NONE -> CfbhRuntime.kitchenOperationEmpty();
         };
     }
@@ -1192,6 +1232,10 @@ public final class CookingPotProcessorCapability {
                                                                    final Recipe<?> recipe,
                                                                    final List<ItemStack> ingredientStacks,
                                                                    final boolean simulate) {
+        if (!CookingPotHeatBridge.tryIgniteManagedOvenForPot(blockEntity)) {
+            return false;
+        }
+
         if (!isKaleidoscopePotReadyForIngredientInsert(blockEntity, recipe)) {
             return false;
         }
@@ -1214,7 +1258,6 @@ public final class CookingPotProcessorCapability {
             LAST_RECIPE_BY_POT.put(blockEntity, recipe);
         }
         markKaleidoscopePotChanged(blockEntity);
-        CookingPotHeatBridge.tryIgniteManagedOvenForPot(blockEntity);
         return true;
     }
 

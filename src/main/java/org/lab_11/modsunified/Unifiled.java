@@ -25,11 +25,13 @@ import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotKitchenHandler
 import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotProcessorCapability;
 import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotRecipeIndexer;
 import org.lab_11.modsunified.impl.cookingforblockheads.DungeonsDelightCupRecipeMirror;
+import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
 import org.lab_11.modsunified.impl.platform.ModRuntimeBindings;
 import org.lab_11.modsunified.impl.platform.RuntimeBindings;
 import org.slf4j.Logger;
 
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -245,6 +247,16 @@ public final class Unifiled {
 
         DungeonsDelightCupRecipeMirror.injectMirroredRecipes(recipeManager, registryAccess, source);
         CookingPotRecipeIndexer.injectRecipes(recipeManager, registryAccess, source, activeCookingPotTargets);
+        CookingPotRecipeIndexer.injectNonFoodCraftingRecipes(recipeManager, registryAccess, resolveNonFoodCraftingItems());
+    }
+
+    private static List<net.minecraft.resources.ResourceLocation> resolveNonFoodCraftingItems() {
+        final List<net.minecraft.resources.ResourceLocation> items = new ArrayList<>();
+        if (ModList.get().isLoaded(BridgeKeys.MOD_KALEIDOSCOPE_COOKERY)) {
+            items.add(MinecraftApiCompat.resourceLocation(BridgeKeys.MOD_KALEIDOSCOPE_COOKERY, "stuffed_dough_food"));
+            items.add(MinecraftApiCompat.resourceLocation(BridgeKeys.MOD_KALEIDOSCOPE_COOKERY, "raw_dough"));
+        }
+        return items;
     }
 
     private void refreshActiveCookingPotTargets() {

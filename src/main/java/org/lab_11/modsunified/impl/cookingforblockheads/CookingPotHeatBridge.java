@@ -3,18 +3,13 @@ package org.lab_11.modsunified.impl.cookingforblockheads;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.tags.TagKey;
-import net.minecraft.world.Container;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BooleanProperty;
 import net.minecraft.world.level.block.state.properties.Property;
-import org.lab_11.modsunified.Unifiled;
 import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
 import org.slf4j.Logger;
 
@@ -24,7 +19,6 @@ import java.util.Optional;
 
 public final class CookingPotHeatBridge {
     private static final Logger LOGGER = LogUtils.getLogger();
-    private static final String ACTIVE_PROPERTY = "active";
     private static final String FARMERS_DELIGHT_COOKING_POT_ID = "farmersdelight:cooking_pot";
     private static final String MINERS_DELIGHT_COPPER_POT_ID = "minersdelight:copper_pot";
     private static final String MINERS_DELIGHT_COPPER_POT_ID_ALT = "miners_delight:copper_pot";
@@ -32,36 +26,14 @@ public final class CookingPotHeatBridge {
     private static final String KALEIDOSCOPE_COOKERY_POT_ID = "kaleidoscope_cookery:pot";
     private static final String KALEIDOSCOPE_COOKERY_STOCKPOT_ID = "kaleidoscope_cookery:stockpot";
     private static final String KALEIDOSCOPE_PROPERTY_HAS_BASE = "has_base";
+    private static final String KALEIDOSCOPE_PROPERTY_HAS_OIL = "has_oil";
+    private static final String KALEIDOSCOPE_POT_INPUTS_FIELD = "inputs";
     private static final String KALEIDOSCOPE_STOCKPOT_SOUP_BASE_ID_FIELD = "soupBaseId";
     private static final String KALEIDOSCOPE_POT_REFRESH_METHOD = "refresh";
     private static final ResourceLocation KALEIDOSCOPE_STOCKPOT_SOUP_BASE_LEGACY_WATER_ID =
             MinecraftApiCompat.resourceLocation(BridgeKeys.MOD_KALEIDOSCOPE_COOKERY, "water");
     private static final ResourceLocation KALEIDOSCOPE_STOCKPOT_SOUP_BASE_VANILLA_WATER_ID =
             MinecraftApiCompat.resourceLocation("minecraft", "water");
-    private static final String DUNGEON_OVEN_PATH = "dungeon_oven";
-    private static final TagKey<Block> LAB11_CFBH_OVEN_BLOCK_TAG = TagKey.create(
-            Registries.BLOCK,
-            MinecraftApiCompat.resourceLocation(Unifiled.MOD_ID, "cfbh_ovens")
-    );
-
-    private static final String[] CFBH_OVEN_BLOCK_ENTITY_CLASS_CANDIDATES = {
-            "net.blay09.mods.cookingforblockheads.block.entity.OvenBlockEntity",
-            "net.blay09.mods.cookingforblockheads.tile.OvenBlockEntity"
-    };
-    private static final String CFBH_CONFIG_CLASS = "net.blay09.mods.cookingforblockheads.CookingForBlockheadsConfig";
-    private static final String CFBH_CONFIG_FUEL_MULTIPLIER_FIELD = "ovenFuelTimeMultiplier";
-    private static final String CFBH_GET_ACTIVE_CONFIG_METHOD = "getActive";
-    private static final String CFBH_IS_ITEM_FUEL_METHOD = "isItemFuel";
-
-    private static final String BALM_CLASS = "net.blay09.mods.balm.api.Balm";
-    private static final String BALM_GET_HOOKS_METHOD = "getHooks";
-    private static final String BALM_GET_REMAINING_ITEM_METHOD = "getCraftingRemainingItem";
-    private static final String BALM_GET_BURN_TIME_METHOD = "getBurnTime";
-
-    private static final String OVEN_GET_FUEL_CONTAINER_METHOD = "getFuelContainer";
-    private static final String OVEN_FIELD_FURNACE_BURN_TIME = "furnaceBurnTime";
-    private static final String OVEN_FIELD_CURRENT_ITEM_BURN_TIME = "currentItemBurnTime";
-    private static final String OVEN_FIELD_IS_DIRTY = "isDirty";
     private static final String POT_METHOD_HAS_INPUT = "hasInput";
     private static final String POT_METHOD_CREATE_FAKE_RECIPE_WRAPPER = "createFakeRecipeWrapper";
     private static final String POT_METHOD_GET_MATCHING_RECIPE = "getMatchingRecipe";
@@ -76,9 +48,6 @@ public final class CookingPotHeatBridge {
             "net.neoforged.neoforge.items.IItemHandler",
             "net.minecraftforge.items.IItemHandler"
     };
-
-    private static volatile Class<?> cachedCfbhOvenBlockEntityClass;
-    private static volatile boolean cfbhOvenBlockEntityLookupFailed;
 
     private CookingPotHeatBridge() {
     }
@@ -125,13 +94,13 @@ public final class CookingPotHeatBridge {
     }
 
     public static boolean isAnyOvenHeatedBelow(final Level level, final BlockPos potPos) {
-        return isOvenHeatedBelow(level, potPos, OvenPolicy.ANY_OVEN, null);
+        return isOvenHeatedBelow(level, potPos, OvenBridge.OvenPolicy.ANY_OVEN, null);
     }
 
     public static boolean isAnyOvenHeatedBelow(final Level level,
                                                final BlockPos potPos,
                                                final Object potBlockEntity) {
-        return isOvenHeatedBelow(level, potPos, OvenPolicy.ANY_OVEN, potBlockEntity);
+        return isOvenHeatedBelow(level, potPos, OvenBridge.OvenPolicy.ANY_OVEN, potBlockEntity);
     }
 
     public static boolean isAnyManagedOvenBelow(final Level level, final BlockPos potPos) {
@@ -141,7 +110,32 @@ public final class CookingPotHeatBridge {
 
         final BlockPos ovenPos = potPos.below();
         final BlockState belowState = level.getBlockState(ovenPos);
-        return matchesOvenPolicy(level, ovenPos, belowState, OvenPolicy.ANY_OVEN);
+        return OvenBridge.matchesPolicy(level, ovenPos, belowState, OvenBridge.OvenPolicy.ANY_OVEN);
+    }
+
+    /**
+     * Returns true if the pot/stockpot is NOT in a finished/burnt state.
+     * Used by block interaction injects to avoid re-igniting the oven when food is done.
+     * For Pot: FINISHED=2, BURNT=3 → skip ignition.
+     * For Stockpot: FINISHED=3 → skip ignition.
+     */
+    public static boolean shouldIgniteForInteraction(final BlockEntity potBlockEntity) {
+        if (potBlockEntity == null) {
+            return false;
+        }
+        final String className = potBlockEntity.getClass().getName();
+        if (!className.contains("com.github.ysbbbbbb.kaleidoscopecookery.blockentity.kitchen")) {
+            return true;
+        }
+        final int status = readIntField(potBlockEntity, "status");
+        final Level level = potBlockEntity.getLevel();
+        final BlockPos pos = potBlockEntity.getBlockPos();
+        if (level != null && isKaleidoscopeCookeryStockpot(level, pos)) {
+            // Stockpot: 0=PUT_SOUP_BASE, 1=PUT_INGREDIENT, 2=COOKING, 3=FINISHED
+            return status < 3;
+        }
+        // Pot: 0=PUT_INGREDIENT, 1=COOKING, 2=FINISHED, 3=BURNT
+        return status < 2;
     }
 
     public static boolean tryIgniteManagedOvenForPot(final BlockEntity potBlockEntity) {
@@ -159,28 +153,24 @@ public final class CookingPotHeatBridge {
             LOGGER.info("Skipping managed-oven ignition for pot at {} because no managed oven is detected below.", potPos);
             return false;
         }
-        normalizeKaleidoscopeStockpotBaseForManagedOven(level, potPos);
+        normalizeKaleidoscopePotBaseForManagedOven(level, potPos);
         normalizeKaleidoscopeStockpotSoupBaseForManagedOven(level, potPos);
 
         final BlockPos ovenPos = potPos.below();
         final BlockState ovenState = level.getBlockState(ovenPos);
-        if (!matchesOvenPolicy(level, ovenPos, ovenState, OvenPolicy.ANY_OVEN)) {
+        if (!OvenBridge.matchesPolicy(level, ovenPos, ovenState, OvenBridge.OvenPolicy.ANY_OVEN)) {
             LOGGER.info("Skipping managed-oven ignition for pot at {} because block below {} does not match managed oven policy.", potPos, ovenPos);
             return false;
         }
 
-        if (isOvenBurning(level, ovenPos)) {
-            syncOvenActiveVisual(level, ovenPos, ovenState);
-            LOGGER.info("Managed oven at {} is already burning for pot at {}.", ovenPos, potPos);
+        if (OvenBridge.isBurning(level, ovenPos)) {
+            OvenBridge.syncActiveVisual(level, ovenPos, ovenState);
             return true;
         }
 
-        final boolean ignited = igniteOvenFromFuel(level, ovenPos, ovenState);
+        final boolean ignited = OvenBridge.ignite(level, ovenPos, ovenState);
         if (ignited) {
-            syncOvenActiveVisual(level, ovenPos, level.getBlockState(ovenPos));
-            LOGGER.info("Ignited managed oven at {} for pot at {}.", ovenPos, potPos);
-        } else {
-            LOGGER.info("Failed to ignite managed oven at {} for pot at {} (no usable fuel found).", ovenPos, potPos);
+            OvenBridge.syncActiveVisual(level, ovenPos, level.getBlockState(ovenPos));
         }
         return ignited;
     }
@@ -192,14 +182,14 @@ public final class CookingPotHeatBridge {
             return;
         }
 
-        if (!matchesOvenPolicy(level, ovenPos, ovenState, OvenPolicy.ANY_OVEN)) {
+        if (!OvenBridge.matchesPolicy(level, ovenPos, ovenState, OvenBridge.OvenPolicy.ANY_OVEN)) {
             return;
         }
 
-        syncOvenActiveVisual(level, ovenPos, ovenState);
+        OvenBridge.syncActiveVisual(level, ovenPos, ovenState);
 
         final BlockPos potPos = ovenPos.above();
-        normalizeKaleidoscopeStockpotBaseForManagedOven(level, potPos);
+        normalizeKaleidoscopePotBaseForManagedOven(level, potPos);
         normalizeKaleidoscopeStockpotSoupBaseForManagedOven(level, potPos);
         final ResourceLocation potBlockId = BuiltInRegistries.BLOCK.getKey(level.getBlockState(potPos).getBlock());
         if (potBlockId == null) {
@@ -221,23 +211,23 @@ public final class CookingPotHeatBridge {
         }
 
         if (DUNGEONS_DELIGHT_MONSTER_POT_ID.equals(potId)
-                && !isDungeonOvenBlockId(BuiltInRegistries.BLOCK.getKey(ovenState.getBlock()))) {
+                && !OvenBridge.matchesPolicy(level, ovenPos, ovenState, OvenBridge.OvenPolicy.DUNGEON_OVEN_ONLY)) {
             return;
         }
 
-        if (igniteOvenFromFuel(level, ovenPos, ovenState)) {
-            syncOvenActiveVisual(level, ovenPos, level.getBlockState(ovenPos));
+        if (OvenBridge.ignite(level, ovenPos, ovenState)) {
+            OvenBridge.syncActiveVisual(level, ovenPos, level.getBlockState(ovenPos));
         }
     }
 
     public static boolean isDungeonOvenHeatedBelow(final Level level, final BlockPos potPos) {
-        return isOvenHeatedBelow(level, potPos, OvenPolicy.DUNGEON_OVEN_ONLY, null);
+        return isOvenHeatedBelow(level, potPos, OvenBridge.OvenPolicy.DUNGEON_OVEN_ONLY, null);
     }
 
     public static boolean isDungeonOvenHeatedBelow(final Level level,
                                                    final BlockPos potPos,
                                                    final Object potBlockEntity) {
-        return isOvenHeatedBelow(level, potPos, OvenPolicy.DUNGEON_OVEN_ONLY, potBlockEntity);
+        return isOvenHeatedBelow(level, potPos, OvenBridge.OvenPolicy.DUNGEON_OVEN_ONLY, potBlockEntity);
     }
 
     public static boolean isDungeonOvenBelow(final Level level, final BlockPos potPos) {
@@ -245,12 +235,12 @@ public final class CookingPotHeatBridge {
             return false;
         }
         final BlockPos ovenPos = potPos.below();
-        return matchesOvenPolicy(level, ovenPos, level.getBlockState(ovenPos), OvenPolicy.DUNGEON_OVEN_ONLY);
+        return OvenBridge.matchesPolicy(level, ovenPos, level.getBlockState(ovenPos), OvenBridge.OvenPolicy.DUNGEON_OVEN_ONLY);
     }
 
     private static boolean isOvenHeatedBelow(final Level level,
                                              final BlockPos potPos,
-                                             final OvenPolicy ovenPolicy,
+                                             final OvenBridge.OvenPolicy ovenPolicy,
                                              final Object potBlockEntity) {
         if (level == null || potPos == null) {
             return false;
@@ -258,11 +248,11 @@ public final class CookingPotHeatBridge {
 
         final BlockPos ovenPos = potPos.below();
         final BlockState belowState = level.getBlockState(ovenPos);
-        if (!matchesOvenPolicy(level, ovenPos, belowState, ovenPolicy)) {
+        if (!OvenBridge.matchesPolicy(level, ovenPos, belowState, ovenPolicy)) {
             return false;
         }
 
-        if (isOvenBurning(level, ovenPos)) {
+        if (OvenBridge.isBurning(level, ovenPos)) {
             return true;
         }
 
@@ -274,12 +264,44 @@ public final class CookingPotHeatBridge {
             return false;
         }
 
-        return igniteOvenFromFuel(level, ovenPos, belowState);
+        return OvenBridge.ignite(level, ovenPos, belowState);
     }
 
     private static boolean shouldIgniteForCookingAttempt(final Object potBlockEntity) {
         if (potBlockEntity == null) {
             return false;
+        }
+
+        final String className = potBlockEntity.getClass().getName();
+        if (className.contains("com.github.ysbbbbbb.kaleidoscopecookery.blockentity.kitchen")) {
+            final int status = readIntField(potBlockEntity, "status");
+            // For Pot: 0 = PUT_INGREDIENT, 1 = COOKING, 2 = FINISHED, 3 = BURNT
+            // For Stockpot: 0 = PUT_SOUP_BASE, 1 = PUT_INGREDIENT, 2 = COOKING, 3 = FINISHED
+            // We want to ignite if it's in a state where it can progress cooking.
+            final Level level = ((BlockEntity) potBlockEntity).getLevel();
+            final BlockPos pos = ((BlockEntity) potBlockEntity).getBlockPos();
+            final boolean isStockpot = level != null && isKaleidoscopeCookeryStockpot(level, pos);
+
+            // For stockpot, check status 0-2; for pot, check status 0-1
+            if (status == 0 || status == 1 || (isStockpot && status == 2)) {
+                if (hasAnyInputInPotInventory(potBlockEntity)) {
+                    return true;
+                }
+                // Check if it's a regular Pot and has oil
+                if (level != null && isKaleidoscopeCookeryPot(level, pos)) {
+                    final BlockState state = level.getBlockState(pos);
+                    final Property<?> hasOilProp = state.getBlock().getStateDefinition().getProperty(KALEIDOSCOPE_PROPERTY_HAS_OIL);
+                    if (hasOilProp instanceof BooleanProperty boolProp && state.getValue(boolProp)) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        // For non-kaleidoscope pots, any real input means we should attempt heating.
+        // Relying only on reflective recipe-wrapper checks can miss valid runtime states.
+        if (hasAnyInputInPotInventory(potBlockEntity)) {
+            return true;
         }
 
         try {
@@ -327,8 +349,21 @@ public final class CookingPotHeatBridge {
 
     private static boolean hasAnyInputInPotInventory(final Object potBlockEntity) {
         final Object inventoryObject = invokeNoArg(potBlockEntity, POT_METHOD_GET_INVENTORY);
-        final Object inventory = inventoryObject != null ? inventoryObject : readFieldValue(potBlockEntity, POT_FIELD_INVENTORY);
+        Object inventory = inventoryObject != null ? inventoryObject : readFieldValue(potBlockEntity, POT_FIELD_INVENTORY);
         if (inventory == null) {
+            inventory = readFieldValue(potBlockEntity, KALEIDOSCOPE_POT_INPUTS_FIELD);
+        }
+
+        if (inventory == null) {
+            return false;
+        }
+
+        if (inventory instanceof java.util.List<?> list) {
+            for (final Object entry : list) {
+                if (entry instanceof ItemStack stack && !stack.isEmpty()) {
+                    return true;
+                }
+            }
             return false;
         }
 
@@ -425,29 +460,6 @@ public final class CookingPotHeatBridge {
         return value instanceof Boolean b && b;
     }
 
-    private static boolean matchesOvenPolicy(final Level level,
-                                             final BlockPos ovenPos,
-                                             final BlockState ovenState,
-                                             final OvenPolicy ovenPolicy) {
-        final ResourceLocation blockId = BuiltInRegistries.BLOCK.getKey(ovenState.getBlock());
-        if (ovenPolicy == OvenPolicy.DUNGEON_OVEN_ONLY) {
-            return isDungeonOvenBlockId(blockId);
-        }
-        if (isDungeonOvenBlockId(blockId) || isTaggedAsCfbhOven(ovenState)) {
-            return true;
-        }
-
-        // Fallback for setups where datapack tags are missing or third-party ovens are not tagged.
-        return level != null && ovenPos != null && isCfbhOvenBlockEntity(level.getBlockEntity(ovenPos));
-    }
-
-    private static boolean isDungeonOvenBlockId(final ResourceLocation blockId) {
-        return blockId != null
-                && Unifiled.MOD_ID.equals(blockId.getNamespace())
-                && (DUNGEON_OVEN_PATH.equals(blockId.getPath())
-                || blockId.getPath().endsWith("_" + DUNGEON_OVEN_PATH));
-    }
-
     private static boolean isFarmersDelightCookingPot(final Level level, final BlockPos potPos) {
         return isPotBlockId(level, potPos, FARMERS_DELIGHT_COOKING_POT_ID);
     }
@@ -469,14 +481,15 @@ public final class CookingPotHeatBridge {
         return isPotBlockId(level, potPos, KALEIDOSCOPE_COOKERY_STOCKPOT_ID);
     }
 
-    private static void normalizeKaleidoscopeStockpotBaseForManagedOven(final Level level, final BlockPos potPos) {
-        if (level == null || potPos == null || !isKaleidoscopeCookeryStockpot(level, potPos)) {
+    private static void normalizeKaleidoscopePotBaseForManagedOven(final Level level, final BlockPos potPos) {
+        if (level == null || potPos == null
+                || (!isKaleidoscopeCookeryPot(level, potPos) && !isKaleidoscopeCookeryStockpot(level, potPos))) {
             return;
         }
 
         final BlockPos ovenPos = potPos.below();
         final BlockState ovenState = level.getBlockState(ovenPos);
-        if (!matchesOvenPolicy(level, ovenPos, ovenState, OvenPolicy.ANY_OVEN)) {
+        if (!OvenBridge.matchesPolicy(level, ovenPos, ovenState, OvenBridge.OvenPolicy.ANY_OVEN)) {
             return;
         }
 
@@ -499,7 +512,7 @@ public final class CookingPotHeatBridge {
 
         final BlockPos ovenPos = potPos.below();
         final BlockState ovenState = level.getBlockState(ovenPos);
-        if (!matchesOvenPolicy(level, ovenPos, ovenState, OvenPolicy.ANY_OVEN)) {
+        if (!OvenBridge.matchesPolicy(level, ovenPos, ovenState, OvenBridge.OvenPolicy.ANY_OVEN)) {
             return;
         }
 
@@ -535,202 +548,6 @@ public final class CookingPotHeatBridge {
                 || MINERS_DELIGHT_COPPER_POT_ID_ALT.equals(blockId);
     }
 
-    private static boolean isTaggedAsCfbhOven(final BlockState ovenState) {
-        return ovenState.is(LAB11_CFBH_OVEN_BLOCK_TAG);
-    }
-
-    private static boolean isOvenBurning(final Level level, final BlockPos ovenPos) {
-        final BlockEntity ovenBlockEntity = level.getBlockEntity(ovenPos);
-        if (!isCfbhOvenBlockEntity(ovenBlockEntity)) {
-            return false;
-        }
-
-        if (readIntField(ovenBlockEntity, OVEN_FIELD_FURNACE_BURN_TIME) > 0) {
-            return true;
-        }
-
-        // Client-side animation checks can run before reflective burn-time fields are visible.
-        return level.isClientSide && isActive(level.getBlockState(ovenPos));
-    }
-
-    private static void syncOvenActiveVisual(final Level level,
-                                             final BlockPos ovenPos,
-                                             final BlockState ovenState) {
-        if (level == null || ovenPos == null || ovenState == null) {
-            return;
-        }
-
-        final boolean burning = isOvenBurning(level, ovenPos);
-        setActiveProperty(level, ovenPos, ovenState, burning);
-    }
-
-    private static boolean igniteOvenFromFuel(final Level level,
-                                              final BlockPos ovenPos,
-                                              final BlockState ovenState) {
-        final BlockEntity ovenBlockEntity = level.getBlockEntity(ovenPos);
-        if (!isCfbhOvenBlockEntity(ovenBlockEntity)) {
-            return false;
-        }
-
-        if (readIntField(ovenBlockEntity, OVEN_FIELD_FURNACE_BURN_TIME) > 0) {
-            return true;
-        }
-
-        final Object fuelContainerCandidate = invokeNoArg(ovenBlockEntity, OVEN_GET_FUEL_CONTAINER_METHOD);
-        if (!(fuelContainerCandidate instanceof Container fuelContainer)) {
-            return false;
-        }
-
-        for (int slot = 0; slot < fuelContainer.getContainerSize(); slot++) {
-            final ItemStack fuelStack = fuelContainer.getItem(slot);
-            if (fuelStack.isEmpty()) {
-                continue;
-            }
-
-            final int baseBurnTime = readOvenBurnTime(fuelStack);
-            if (baseBurnTime <= 0) {
-                continue;
-            }
-
-            final int burnTime = scaleBurnTime(baseBurnTime);
-            setIntField(ovenBlockEntity, OVEN_FIELD_CURRENT_ITEM_BURN_TIME, burnTime);
-            setIntField(ovenBlockEntity, OVEN_FIELD_FURNACE_BURN_TIME, burnTime);
-
-            final ItemStack remainingItem = getCraftingRemainingItem(fuelStack);
-            fuelStack.shrink(1);
-            if (fuelStack.isEmpty()) {
-                fuelContainer.setItem(slot, remainingItem);
-            }
-
-            // Keep CFBH sync behavior consistent with its own slot-change flow.
-            setBooleanField(ovenBlockEntity, OVEN_FIELD_IS_DIRTY, true);
-            ovenBlockEntity.setChanged();
-            setActiveProperty(level, ovenPos, ovenState, true);
-            return true;
-        }
-
-        return false;
-    }
-
-    private static int readOvenBurnTime(final ItemStack fuelStack) {
-        if (!isValidOvenFuel(fuelStack)) {
-            return 0;
-        }
-
-        final int burnTime = readBurnTimeFromBalmHooks(fuelStack);
-        if (burnTime > 0) {
-            return burnTime;
-        }
-
-        // CFBH accepts cooking oil even when generic burn-time lookups return 0.
-        return 800;
-    }
-
-    private static boolean isValidOvenFuel(final ItemStack fuelStack) {
-        try {
-            final Class<?> ovenClass = resolveCfbhOvenBlockEntityClass();
-            if (ovenClass == null) {
-                return false;
-            }
-            final Method isItemFuelMethod = ovenClass.getMethod(CFBH_IS_ITEM_FUEL_METHOD, ItemStack.class);
-            final Object value = isItemFuelMethod.invoke(null, fuelStack);
-            return value instanceof Boolean result && result;
-        } catch (ReflectiveOperationException ignored) {
-            return false;
-        }
-    }
-
-    private static int readBurnTimeFromBalmHooks(final ItemStack fuelStack) {
-        try {
-            final Class<?> balmClass = Class.forName(BALM_CLASS);
-            final Method getHooksMethod = balmClass.getMethod(BALM_GET_HOOKS_METHOD);
-            final Object balmHooks = getHooksMethod.invoke(null);
-            if (balmHooks == null) {
-                return 0;
-            }
-
-            final Method getBurnTimeMethod = balmHooks.getClass().getMethod(BALM_GET_BURN_TIME_METHOD, ItemStack.class);
-            final Object value = getBurnTimeMethod.invoke(balmHooks, fuelStack);
-            return value instanceof Number number ? number.intValue() : 0;
-        } catch (ReflectiveOperationException ignored) {
-            return 0;
-        }
-    }
-
-    private static int scaleBurnTime(final int baseBurnTime) {
-        try {
-            final Class<?> configClass = Class.forName(CFBH_CONFIG_CLASS);
-            final Method getActiveConfigMethod = configClass.getMethod(CFBH_GET_ACTIVE_CONFIG_METHOD);
-            final Object activeConfig = getActiveConfigMethod.invoke(null);
-            if (activeConfig == null) {
-                return Math.max(1, baseBurnTime);
-            }
-
-            final Field multiplierField = activeConfig.getClass().getField(CFBH_CONFIG_FUEL_MULTIPLIER_FIELD);
-            final double multiplier = multiplierField.getDouble(activeConfig);
-            return (int) Math.max(1d, baseBurnTime * multiplier);
-        } catch (ReflectiveOperationException ignored) {
-            return Math.max(1, baseBurnTime);
-        }
-    }
-
-    private static ItemStack getCraftingRemainingItem(final ItemStack fuelStack) {
-        try {
-            final Class<?> balmClass = Class.forName(BALM_CLASS);
-            final Method getHooksMethod = balmClass.getMethod(BALM_GET_HOOKS_METHOD);
-            final Object balmHooks = getHooksMethod.invoke(null);
-            if (balmHooks == null) {
-                return ItemStack.EMPTY;
-            }
-
-            final Method getRemainingItemMethod =
-                    balmHooks.getClass().getMethod(BALM_GET_REMAINING_ITEM_METHOD, ItemStack.class);
-            final Object value = getRemainingItemMethod.invoke(balmHooks, fuelStack);
-            return value instanceof ItemStack itemStack ? itemStack : ItemStack.EMPTY;
-        } catch (ReflectiveOperationException ignored) {
-            return ItemStack.EMPTY;
-        }
-    }
-
-    private static boolean isCfbhOvenBlockEntity(final BlockEntity blockEntity) {
-        if (blockEntity == null) {
-            return false;
-        }
-
-        final Class<?> cfbhOvenBlockEntityClass = resolveCfbhOvenBlockEntityClass();
-        return cfbhOvenBlockEntityClass != null && cfbhOvenBlockEntityClass.isInstance(blockEntity);
-    }
-
-    private static Class<?> resolveCfbhOvenBlockEntityClass() {
-        final Class<?> cached = cachedCfbhOvenBlockEntityClass;
-        if (cached != null) {
-            return cached;
-        }
-        if (cfbhOvenBlockEntityLookupFailed) {
-            return null;
-        }
-
-        synchronized (CookingPotHeatBridge.class) {
-            if (cachedCfbhOvenBlockEntityClass != null) {
-                return cachedCfbhOvenBlockEntityClass;
-            }
-            if (cfbhOvenBlockEntityLookupFailed) {
-                return null;
-            }
-
-            for (final String candidateClassName : CFBH_OVEN_BLOCK_ENTITY_CLASS_CANDIDATES) {
-                try {
-                    cachedCfbhOvenBlockEntityClass = Class.forName(candidateClassName);
-                    return cachedCfbhOvenBlockEntityClass;
-                } catch (ClassNotFoundException ignored) {
-                    // Try next CFBH class layout.
-                }
-            }
-            cfbhOvenBlockEntityLookupFailed = true;
-            return null;
-        }
-    }
-
     private static int readIntField(final Object target, final String fieldName) {
         final Field field = findField(target, fieldName);
         if (field == null) {
@@ -761,32 +578,6 @@ public final class CookingPotHeatBridge {
             }
         }
         return fallback;
-    }
-
-    private static void setIntField(final Object target, final String fieldName, final int value) {
-        final Field field = findField(target, fieldName);
-        if (field == null) {
-            return;
-        }
-
-        try {
-            field.setAccessible(true);
-            field.setInt(target, value);
-        } catch (ReflectiveOperationException ignored) {
-        }
-    }
-
-    private static void setBooleanField(final Object target, final String fieldName, final boolean value) {
-        final Field field = findField(target, fieldName);
-        if (field == null) {
-            return;
-        }
-
-        try {
-            field.setAccessible(true);
-            field.setBoolean(target, value);
-        } catch (ReflectiveOperationException ignored) {
-        }
     }
 
     private static Field findField(final Object target, final String fieldName) {
@@ -916,35 +707,5 @@ public final class CookingPotHeatBridge {
             return Character.class;
         }
         return type;
-    }
-
-    private static boolean isActive(final BlockState state) {
-        final Property<?> property = state.getBlock().getStateDefinition().getProperty(ACTIVE_PROPERTY);
-        if (!(property instanceof BooleanProperty booleanProperty) || !state.hasProperty(booleanProperty)) {
-            return false;
-        }
-        return state.getValue(booleanProperty);
-    }
-
-    private static void setActiveProperty(final Level level,
-                                          final BlockPos ovenPos,
-                                          final BlockState ovenState,
-                                          final boolean active) {
-        final Property<?> property = ovenState.getBlock().getStateDefinition().getProperty(ACTIVE_PROPERTY);
-        if (!(property instanceof BooleanProperty booleanProperty) || !ovenState.hasProperty(booleanProperty)) {
-            return;
-        }
-
-        if (ovenState.getValue(booleanProperty) == active) {
-            return;
-        }
-
-        // Toggle model state immediately after ignition so players get instant feedback.
-        level.setBlock(ovenPos, ovenState.setValue(booleanProperty, active), 3);
-    }
-
-    private enum OvenPolicy {
-        ANY_OVEN,
-        DUNGEON_OVEN_ONLY
     }
 }

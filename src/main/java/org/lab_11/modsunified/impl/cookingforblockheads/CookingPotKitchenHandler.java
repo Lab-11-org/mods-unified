@@ -123,9 +123,6 @@ public final class CookingPotKitchenHandler implements CfbhRuntime.KitchenRecipe
             return ItemStack.EMPTY;
         }
 
-        if (DEBUG_STOCKPOT_TRANSFER && BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_STOCKPOT.equals(recipe.targetKey())) {
-            LOGGER.info("Stockpot route completed with no processor operation. matchingProcessors={}", matchingProcessors);
-        }
         notifyFailure(context, FEEDBACK_STOCKPOT_NO_TARGET_PROCESSOR_KEY);
         return ItemStack.EMPTY;
     }
@@ -182,9 +179,10 @@ public final class CookingPotKitchenHandler implements CfbhRuntime.KitchenRecipe
         final Ingredient containerIngredient = Ingredient.of(containerUnit);
 
         final List<Object> allocated = new ArrayList<>(processingTokens);
+        final List<?> itemProviders = CfbhRuntime.contextItemProviders(context);
         int remaining = containerCost.getCount();
         while (remaining > 0) {
-            final Object token = findIngredientToken(CfbhRuntime.contextItemProviders(context), containerIngredient, allocated);
+            final Object token = findIngredientToken(itemProviders, containerIngredient, allocated);
             if (token == null) {
                 return false;
             }

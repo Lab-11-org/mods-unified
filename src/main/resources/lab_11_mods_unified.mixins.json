@@ -16,7 +16,8 @@
     "MonsterPotBlockEntityMixin",
     "OvenBlockEntity120Mixin",
     "OvenBlockEntityMixin",
-    "KaleidoscopePotBlockMixin"
+    "KaleidoscopePotBlockMixin",
+    "KaleidoscopePotBlockEntityMixin"
   ],
   "client": [
     "KitchenScreenMixin",

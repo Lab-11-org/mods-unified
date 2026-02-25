@@ -92,6 +92,12 @@ abstract class KitchenMenuMixin {
             }
             return;
         }
+
+        // Old selection not found in new list — clamp index to avoid AIOOBE.
+        if (recipesForSelectionIndex() >= recipesForSelection.size()) {
+            setRecipesForSelectionIndex(0);
+            invokeNoArg(this, "updateMatrixSlots");
+        }
     }
 
     @Unique

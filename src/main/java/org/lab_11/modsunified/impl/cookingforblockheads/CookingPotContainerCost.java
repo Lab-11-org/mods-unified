@@ -2,13 +2,17 @@ package org.lab_11.modsunified.impl.cookingforblockheads;
 
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.Recipe;
 import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
 
-final class CookingPotContainerCost {
+public final class CookingPotContainerCost {
     private CookingPotContainerCost() {
     }
 
@@ -28,6 +32,57 @@ final class CookingPotContainerCost {
     static ItemStack resolveForTooltip(final Recipe<?> recipe,
                                        final RegistryAccess registryAccess) {
         return resolveInternal(recipe, registryAccess, false);
+    }
+
+    public static Ingredient resolveMissingContainerForStatus(final Object craftingContext,
+                                                              final Recipe<?> recipe,
+                                                              final RegistryAccess registryAccess) {
+        if (craftingContext == null || recipe == null || registryAccess == null) {
+            return null;
+        }
+
+        if (recipe instanceof CookingPotIndexedRecipe indexedRecipe
+                && BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_STOCKPOT.equals(indexedRecipe.targetKey())) {
+            return null;
+        }
+
+        final ItemStack containerCost = resolveForTooltip(recipe, registryAccess);
+        if (containerCost.isEmpty()) {
+            return null;
+        }
+
+        final ItemStack containerUnit = containerCost.copyWithCount(1);
+        final Ingredient containerIngredient = Ingredient.of(containerUnit);
+        final List<?> itemProviders = CfbhRuntime.contextItemProviders(craftingContext);
+        final List<Object> allocated = new ArrayList<>();
+        int remaining = containerCost.getCount();
+        while (remaining > 0) {
+            final Object token = findContainerToken(itemProviders, containerIngredient, containerUnit, allocated);
+            if (token == null) {
+                return containerIngredient;
+            }
+            allocated.add(token);
+            remaining--;
+        }
+
+        return null;
+    }
+
+    private static Object findContainerToken(final List<?> itemProviders,
+                                             final Ingredient containerIngredient,
+                                             final ItemStack containerUnit,
+                                             final Collection<?> allocatedTokens) {
+        for (final Object itemProvider : itemProviders) {
+            Object token = CfbhRuntime.findItemToken(itemProvider, containerUnit, allocatedTokens);
+            if (token != null) {
+                return token;
+            }
+            token = CfbhRuntime.findIngredientToken(itemProvider, containerIngredient, allocatedTokens);
+            if (token != null) {
+                return token;
+            }
+        }
+        return null;
     }
 
     private static ItemStack resolveInternal(final Recipe<?> recipe,

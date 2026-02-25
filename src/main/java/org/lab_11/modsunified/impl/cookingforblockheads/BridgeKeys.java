@@ -14,6 +14,8 @@ public final class BridgeKeys {
     public static final String TARGET_MINERS_DELIGHT_COPPER_POT = "minersdelight_copper_pot";
     public static final String TARGET_KALEIDOSCOPE_COOKERY_POT = "kaleidoscope_cookery_pot";
     public static final String TARGET_KALEIDOSCOPE_COOKERY_STOCKPOT = "kaleidoscope_cookery_stockpot";
+    public static final String ITEM_KALEIDOSCOPE_OIL = "oil";
+    public static final String ITEM_KALEIDOSCOPE_OIL_POT = "oil_pot";
     public static final String ITEM_KALEIDOSCOPE_STOCKPOT_LID = "stockpot_lid";
     public static final String BLOCK_LAVA_SINK = "lava_sink";
 

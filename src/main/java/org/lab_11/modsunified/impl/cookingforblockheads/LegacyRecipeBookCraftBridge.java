@@ -189,6 +189,19 @@ public final class LegacyRecipeBookCraftBridge {
     }
 
     private static List<ItemStack> resolveStartupCostsForLegacyCraft(final CookingPotIndexedRecipe indexedRecipe) {
+        if (BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_POT.equals(indexedRecipe.targetKey())) {
+            final var oilItem = BuiltInRegistries.ITEM.getOptional(
+                    MinecraftApiCompat.resourceLocation(
+                            BridgeKeys.MOD_KALEIDOSCOPE_COOKERY,
+                            BridgeKeys.ITEM_KALEIDOSCOPE_OIL
+                    )
+            ).orElse(null);
+            if (oilItem == null) {
+                return List.of();
+            }
+            return List.of(new ItemStack(oilItem));
+        }
+
         if (!BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_STOCKPOT.equals(indexedRecipe.targetKey())) {
             return List.of();
         }

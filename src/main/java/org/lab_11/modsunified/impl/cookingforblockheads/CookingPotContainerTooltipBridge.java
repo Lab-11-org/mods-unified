@@ -46,6 +46,7 @@ public final class CookingPotContainerTooltipBridge {
     private static final String TOOLTIP_CONTAINER_NOT_ENOUGH_KEY = "lab_11_mods_unified.tooltip.cooking_table.container_not_enough";
     private static final String TOOLTIP_COOKS_IN_FROM_KEY = "lab_11_mods_unified.tooltip.cooking_table.cooks_in_from";
     private static final String TOOLTIP_POT_NOT_CONNECTED_KEY = "lab_11_mods_unified.tooltip.cooking_table.pot_not_connected";
+    private static final String TOOLTIP_STOCKPOT_SOUP_BASE_KEY = "lab_11_mods_unified.tooltip.cooking_table.stockpot_soup_base";
     private static final int CUSTOM_TOOLTIP_Y_OFFSET = 14;
 
     private CookingPotContainerTooltipBridge() {
@@ -102,6 +103,8 @@ public final class CookingPotContainerTooltipBridge {
             return;
         }
 
+        appendStockpotSoupBaseTooltip(event, recipe);
+
         final ItemStack containerCost = resolveContainerCost(recipe);
         if (containerCost.isEmpty()) {
             return;
@@ -119,7 +122,11 @@ public final class CookingPotContainerTooltipBridge {
         ).withStyle(ChatFormatting.GRAY);
         event.getToolTip().add(tooltipLine);
 
-        if (isContainerMissing(menu, containerCost, minecraft.player)) {
+        // Only show "Not Enough!" when the server-computed recipe status confirms
+        // the recipe cannot be crafted. Client-side provider queries are unreliable
+        // for block entity inventories (e.g. FD cabinets) that don't sync to client.
+        final boolean serverSaysCraftable = Boolean.TRUE.equals(invokeNoArg(selectedRecipeWithStatus, "canCraft"));
+        if (!serverSaysCraftable && isContainerMissing(menu, containerCost, minecraft.player)) {
             event.getToolTip().add(
                     Component.translatable(TOOLTIP_CONTAINER_NOT_ENOUGH_KEY)
                             .withStyle(ChatFormatting.RED, ChatFormatting.BOLD)
@@ -236,6 +243,24 @@ public final class CookingPotContainerTooltipBridge {
                 .withStyle(ChatFormatting.GRAY));
     }
 
+    private static void appendStockpotSoupBaseTooltip(final ItemTooltipEvent event, final Recipe<?> recipe) {
+        if (!(recipe instanceof CookingPotIndexedRecipe indexedRecipe)) {
+            return;
+        }
+        if (!BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_STOCKPOT.equals(indexedRecipe.targetKey())) {
+            return;
+        }
+        final ResourceLocation soupBaseId = StockpotSoupBridge.resolveRequiredSoupBaseId(recipe);
+        final ItemStack soupBaseStack = StockpotSoupBridge.soupBaseBucketStack(soupBaseId);
+        final Component soupBaseName = soupBaseStack.isEmpty()
+                ? Component.literal(soupBaseId.toString())
+                : soupBaseStack.getHoverName();
+        event.getToolTip().add(
+                Component.translatable(TOOLTIP_STOCKPOT_SOUP_BASE_KEY, soupBaseName.copy().withStyle(ChatFormatting.GOLD))
+                        .withStyle(ChatFormatting.GRAY)
+        );
+    }
+
     private static void removeIndexedRecipeLockHints(final ItemTooltipEvent event,
                                                      final Object screen,
                                                      final Object selectedRecipeWithStatus) {
@@ -311,7 +336,8 @@ public final class CookingPotContainerTooltipBridge {
         }
 
         return showsContainerLine(recipe)
-                || showsMissingRequirementsLine(menu, recipe, minecraft.player);
+                || showsMissingRequirementsLine(menu, recipe, minecraft.player)
+                || showsSoupBaseLine(recipe);
     }
 
     private static Recipe<?> resolveSelectedRecipe(final Minecraft minecraft,
@@ -339,6 +365,11 @@ public final class CookingPotContainerTooltipBridge {
 
     private static boolean showsContainerLine(final Recipe<?> recipe) {
         return !resolveContainerCost(recipe).isEmpty();
+    }
+
+    private static boolean showsSoupBaseLine(final Recipe<?> recipe) {
+        return recipe instanceof CookingPotIndexedRecipe indexedRecipe
+                && BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_STOCKPOT.equals(indexedRecipe.targetKey());
     }
 
     private static boolean showsMissingRequirementsLine(final Object menu,
@@ -460,22 +491,21 @@ public final class CookingPotContainerTooltipBridge {
             return false;
         }
 
-        final ItemStack containerUnit = containerCost.copy();
-        containerUnit.setCount(1);
-        final Ingredient expectedContainer = Ingredient.of(containerUnit);
+        // Use item-only matching to avoid strict component comparison issues
+        final Ingredient expectedContainer = Ingredient.of(containerCost.getItem());
         final Collection<Object> allocatedTokens = new ArrayList<>();
 
         int remaining = containerCost.getCount();
         while (remaining > 0) {
             final Object token = findIngredientToken(itemProviders, expectedContainer, allocatedTokens, cacheHintClass, cacheHintNone);
             if (token == null) {
-                return true;
+                break;
             }
             allocatedTokens.add(token);
             remaining -= peekTokenStackCount(token);
         }
 
-        return false;
+        return remaining > 0;
     }
 
     private static List<?> resolveItemProviders(final Object kitchen, final Player player) {
