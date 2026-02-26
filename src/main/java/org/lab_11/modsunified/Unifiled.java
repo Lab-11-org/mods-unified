@@ -63,8 +63,7 @@ public final class Unifiled {
     }
 
     private void registerCompatBlocks(final IEventBus modEventBus) {
-        if (!ModList.get().isLoaded(BridgeKeys.MOD_COOKING_FOR_BLOCKHEADS)
-                || !ModList.get().isLoaded(BridgeKeys.MOD_DUNGEONS_DELIGHT)) {
+        if (!ModList.get().isLoaded(BridgeKeys.MOD_COOKING_FOR_BLOCKHEADS)) {
             return;
         }
 
