@@ -235,49 +235,18 @@ public final class DungeonsDelightCupRecipeMirror {
     }
 
     private static Class<?> resolveMonsterRecipeClass() {
-        final Class<?> cached = cachedMonsterPotRecipeClass;
-        if (cached != null) {
-            return cached;
-        }
-        if (reflectionLookupFailed) {
-            return null;
-        }
-
-        synchronized (DungeonsDelightCupRecipeMirror.class) {
-            if (cachedMonsterPotRecipeClass != null) {
-                return cachedMonsterPotRecipeClass;
-            }
-            if (reflectionLookupFailed) {
-                return null;
-            }
-
+        if (cachedMonsterPotRecipeClass == null && !reflectionLookupFailed) {
             try {
                 cachedMonsterPotRecipeClass = Class.forName(MONSTER_POT_RECIPE_CLASS);
-                return cachedMonsterPotRecipeClass;
             } catch (ClassNotFoundException ignored) {
                 reflectionLookupFailed = true;
-                return null;
             }
         }
+        return cachedMonsterPotRecipeClass;
     }
 
     private static Constructor<?> resolveFdRecipeConstructor() {
-        final Constructor<?> cached = cachedFdRecipeConstructor;
-        if (cached != null) {
-            return cached;
-        }
-        if (reflectionLookupFailed) {
-            return null;
-        }
-
-        synchronized (DungeonsDelightCupRecipeMirror.class) {
-            if (cachedFdRecipeConstructor != null) {
-                return cachedFdRecipeConstructor;
-            }
-            if (reflectionLookupFailed) {
-                return null;
-            }
-
+        if (cachedFdRecipeConstructor == null && !reflectionLookupFailed) {
             try {
                 final Class<?> recipeClass = Class.forName(FD_COOKING_POT_RECIPE_CLASS);
                 final Class<?> recipeTabClass = Class.forName(FD_COOKING_POT_RECIPE_TAB_CLASS);
@@ -290,40 +259,23 @@ public final class DungeonsDelightCupRecipeMirror {
                         float.class,
                         int.class
                 );
-                return cachedFdRecipeConstructor;
             } catch (ReflectiveOperationException ignored) {
                 reflectionLookupFailed = true;
-                return null;
             }
         }
+        return cachedFdRecipeConstructor;
     }
 
     private static Method resolveFdRecipeTabFindByNameMethod() {
-        final Method cached = cachedFdRecipeTabFindByNameMethod;
-        if (cached != null) {
-            return cached;
-        }
-        if (reflectionLookupFailed) {
-            return null;
-        }
-
-        synchronized (DungeonsDelightCupRecipeMirror.class) {
-            if (cachedFdRecipeTabFindByNameMethod != null) {
-                return cachedFdRecipeTabFindByNameMethod;
-            }
-            if (reflectionLookupFailed) {
-                return null;
-            }
-
+        if (cachedFdRecipeTabFindByNameMethod == null && !reflectionLookupFailed) {
             try {
                 final Class<?> recipeTabClass = Class.forName(FD_COOKING_POT_RECIPE_TAB_CLASS);
                 cachedFdRecipeTabFindByNameMethod = recipeTabClass.getMethod(TAB_FIND_BY_NAME_METHOD, String.class);
-                return cachedFdRecipeTabFindByNameMethod;
             } catch (ReflectiveOperationException ignored) {
                 reflectionLookupFailed = true;
-                return null;
             }
         }
+        return cachedFdRecipeTabFindByNameMethod;
     }
 
     private static Object invokeNoArg(final Object target, final String methodName) {

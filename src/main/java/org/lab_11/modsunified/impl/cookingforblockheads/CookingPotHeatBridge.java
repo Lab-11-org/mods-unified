@@ -94,6 +94,22 @@ public final class CookingPotHeatBridge {
         return FARMERS_DELIGHT_COOKING_POT_ID.equals(id) || MINERS_DELIGHT_COPPER_POT_ID.equals(id);
     }
 
+    public static boolean callNativeIsHeated(final Object potBlockEntity,
+                                             final Level level,
+                                             final BlockPos potPos) {
+        if (potBlockEntity == null) {
+            return false;
+        }
+
+        try {
+            final Method method = potBlockEntity.getClass().getMethod("isHeated", Level.class, BlockPos.class);
+            final Object value = method.invoke(potBlockEntity, level, potPos);
+            return value instanceof Boolean result && result;
+        } catch (ReflectiveOperationException ignored) {
+            return false;
+        }
+    }
+
     public static boolean isAnyOvenHeatedBelow(final Level level, final BlockPos potPos) {
         return isOvenHeatedBelow(level, potPos, OvenPolicy.ANY_OVEN, null);
     }
@@ -462,30 +478,14 @@ public final class CookingPotHeatBridge {
     }
 
     private static Class<?> resolveCfbhOvenBlockEntityClass() {
-        final Class<?> cached = cachedCfbhOvenBlockEntityClass;
-        if (cached != null) {
-            return cached;
-        }
-        if (cfbhOvenBlockEntityLookupFailed) {
-            return null;
-        }
-
-        synchronized (CookingPotHeatBridge.class) {
-            if (cachedCfbhOvenBlockEntityClass != null) {
-                return cachedCfbhOvenBlockEntityClass;
-            }
-            if (cfbhOvenBlockEntityLookupFailed) {
-                return null;
-            }
-
+        if (cachedCfbhOvenBlockEntityClass == null && !cfbhOvenBlockEntityLookupFailed) {
             try {
                 cachedCfbhOvenBlockEntityClass = Class.forName(CFBH_OVEN_BLOCK_ENTITY_CLASS);
-                return cachedCfbhOvenBlockEntityClass;
             } catch (ClassNotFoundException ignored) {
                 cfbhOvenBlockEntityLookupFailed = true;
-                return null;
             }
         }
+        return cachedCfbhOvenBlockEntityClass;
     }
 
     private static int readIntField(final Object target, final String fieldName) {
@@ -594,14 +594,6 @@ public final class CookingPotHeatBridge {
             currentClass = currentClass.getSuperclass();
         }
         return null;
-    }
-
-    private static boolean isActive(final BlockState state) {
-        final Property<?> property = state.getBlock().getStateDefinition().getProperty(ACTIVE_PROPERTY);
-        if (!(property instanceof BooleanProperty booleanProperty) || !state.hasProperty(booleanProperty)) {
-            return false;
-        }
-        return state.getValue(booleanProperty);
     }
 
     private static void setActiveProperty(final Level level,

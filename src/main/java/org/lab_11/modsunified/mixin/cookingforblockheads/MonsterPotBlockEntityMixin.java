@@ -32,7 +32,7 @@ abstract class MonsterPotBlockEntityMixin {
             return CookingPotHeatBridge.isDungeonOvenHeatedBelow(level, worldPosition, self);
         }
 
-        return callNativeIsHeated(self, level, worldPosition);
+        return CookingPotHeatBridge.callNativeIsHeated(self, level, worldPosition);
     }
 
     @Inject(method = "isHeated", at = @At("HEAD"), cancellable = true)
@@ -49,19 +49,5 @@ abstract class MonsterPotBlockEntityMixin {
         }
 
         cir.setReturnValue(CookingPotHeatBridge.isDungeonOvenHeatedBelow(level, worldPosition, this));
-    }
-
-    private static boolean callNativeIsHeated(final Object self, final Level level, final BlockPos worldPosition) {
-        if (self == null) {
-            return false;
-        }
-
-        try {
-            final var method = self.getClass().getMethod("isHeated", Level.class, BlockPos.class);
-            final Object value = method.invoke(self, level, worldPosition);
-            return value instanceof Boolean result && result;
-        } catch (ReflectiveOperationException ignored) {
-            return false;
-        }
     }
 }

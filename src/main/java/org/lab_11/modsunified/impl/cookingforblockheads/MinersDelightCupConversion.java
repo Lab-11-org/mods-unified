@@ -65,31 +65,14 @@ final class MinersDelightCupConversion {
     }
 
     private static Method resolveCupVariantMethod() {
-        final Method cached = cachedCupVariantMethod;
-        if (cached != null) {
-            return cached;
-        }
-        if (cupVariantLookupFailed) {
-            return null;
-        }
-
-        synchronized (MinersDelightCupConversion.class) {
-            if (cachedCupVariantMethod != null) {
-                return cachedCupVariantMethod;
-            }
-            if (cupVariantLookupFailed) {
-                return null;
-            }
-
+        if (cachedCupVariantMethod == null && !cupVariantLookupFailed) {
             try {
                 final Class<?> cupConversionClass = Class.forName(CUP_CONVERSION_CLASS);
-                final Method cupVariantMethod = cupConversionClass.getMethod(CUP_CONVERSION_METHOD, ItemStack.class);
-                cachedCupVariantMethod = cupVariantMethod;
-                return cupVariantMethod;
+                cachedCupVariantMethod = cupConversionClass.getMethod(CUP_CONVERSION_METHOD, ItemStack.class);
             } catch (ReflectiveOperationException ignored) {
                 cupVariantLookupFailed = true;
-                return null;
             }
         }
+        return cachedCupVariantMethod;
     }
 }

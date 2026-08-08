@@ -45,7 +45,6 @@ public final class CookingPotProcessorCapability {
     private static final String FEEDBACK_MOVED_TO_POT_KEY = "lab_11_mods_unified.feedback.cooking_table.moved_to_pot";
     private static final String FEEDBACK_POT_NOT_CONNECTED_KEY = "lab_11_mods_unified.feedback.cooking_table.pot_not_connected";
     private static final String FEEDBACK_POT_INPUT_BLOCKED_KEY = "lab_11_mods_unified.feedback.cooking_table.pot_input_blocked";
-    private static final String FEEDBACK_POT_CONTAINER_BLOCKED_KEY = "lab_11_mods_unified.feedback.cooking_table.pot_container_blocked";
     private static final String FEEDBACK_POT_TRANSFER_FAILED_KEY = "lab_11_mods_unified.feedback.cooking_table.pot_transfer_failed";
     private static final String POT_COOK_TIME_FIELD = "cookTime";
     private static final String POT_COOK_TIME_TOTAL_FIELD = "cookTimeTotal";
@@ -68,10 +67,6 @@ public final class CookingPotProcessorCapability {
             FEEDBACK_POT_INPUT_BLOCKED_KEY,
             ChatFormatting.RED
     );
-    private static final KitchenOperation POT_CONTAINER_BLOCKED_OPERATION = feedbackOperation(
-            FEEDBACK_POT_CONTAINER_BLOCKED_KEY,
-            ChatFormatting.RED
-    );
     private static final KitchenOperation POT_TRANSFER_FAILED_OPERATION = feedbackOperation(
             FEEDBACK_POT_TRANSFER_FAILED_KEY,
             ChatFormatting.RED
@@ -82,7 +77,6 @@ public final class CookingPotProcessorCapability {
         NONE,
         NO_INVENTORY,
         INPUT_SLOT_BLOCKED,
-        CONTAINER_SLOT_BLOCKED,
         INPUT_TRANSFER_FAILED,
         CONTAINER_TRANSFER_FAILED
     }
@@ -237,7 +231,6 @@ public final class CookingPotProcessorCapability {
     private static KitchenOperation transferFailureOperation(final TransferFailure failure) {
         return switch (failure) {
             case INPUT_SLOT_BLOCKED -> POT_INPUT_BLOCKED_OPERATION;
-            case CONTAINER_SLOT_BLOCKED -> POT_CONTAINER_BLOCKED_OPERATION;
             case NO_INVENTORY, INPUT_TRANSFER_FAILED, CONTAINER_TRANSFER_FAILED -> POT_TRANSFER_FAILED_OPERATION;
             case NONE -> KitchenOperation.EMPTY;
         };
