@@ -16,11 +16,9 @@ repositories {
     mavenCentral()
     maven { url = 'https://maven.neoforged.net/releases' }
     maven {
-        name = 'Twelve Iterations'
-        url = 'https://maven.twelveiterations.com/releases'
-        content {
-            includeGroup 'net.blay09.mods'
-        }
+        name = 'Modrinth'
+        url = 'https://api.modrinth.com/maven'
+        content { includeGroup 'maven.modrinth' }
     }
 }
 
@@ -80,13 +78,17 @@ configurations {
 }
 
 dependencies {
-    compileOnly files("libs/balm-neoforge-1.21.1-${balm_version}.jar")
-    compileOnly files('libs/cookingforblockheads-neoforge-1.21.1-21.1.17.jar')
-    compileOnly files('libs/FarmersDelight-1.21.1-1.2.9.jar')
+    def balmCompileVersion = providers.gradleProperty('balm_compile_version').getOrElse(balm_version)
+    def cookingForBlockheadsCompileVersion = providers.gradleProperty('cooking_for_blockheads_compile_version').getOrElse(cooking_for_blockheads_version)
+    def farmersDelightCompileVersion = providers.gradleProperty('farmers_delight_compile_version').getOrElse(farmers_delight_version)
 
-    localRuntime files("libs/balm-neoforge-1.21.1-${balm_version}.jar")
-    localRuntime files('libs/cookingforblockheads-neoforge-1.21.1-21.1.17.jar')
-    localRuntime files('libs/FarmersDelight-1.21.1-1.2.9.jar')
+    compileOnly "maven.modrinth:balm:${balmCompileVersion}+neoforge-${minecraft_version}"
+    compileOnly "maven.modrinth:cooking-for-blockheads:${cookingForBlockheadsCompileVersion}+neoforge-${minecraft_version}"
+    compileOnly "maven.modrinth:farmers-delight:${minecraft_version}-${farmersDelightCompileVersion}"
+
+    localRuntime "maven.modrinth:balm:${balmCompileVersion}+neoforge-${minecraft_version}"
+    localRuntime "maven.modrinth:cooking-for-blockheads:${cookingForBlockheadsCompileVersion}+neoforge-${minecraft_version}"
+    localRuntime "maven.modrinth:farmers-delight:${minecraft_version}-${farmersDelightCompileVersion}"
 }
 
 var generateModMetadata = tasks.register('generateModMetadata', ProcessResources) {
@@ -103,7 +105,10 @@ var generateModMetadata = tasks.register('generateModMetadata', ProcessResources
             mod_description        : mod_description,
             mod_homepage           : mod_homepage,
             mod_issues             : mod_issues,
-            mod_logo_file          : mod_logo_file
+            mod_logo_file          : mod_logo_file,
+            cooking_for_blockheads_version: cooking_for_blockheads_version,
+            farmers_delight_version: farmers_delight_version,
+            balm_version           : balm_version
     ]
     inputs.properties replaceProperties
     expand replaceProperties

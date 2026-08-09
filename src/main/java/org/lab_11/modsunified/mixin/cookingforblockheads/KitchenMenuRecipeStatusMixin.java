@@ -14,6 +14,7 @@ import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeHolder;
 import org.lab_11.modsunified.impl.cookingforblockheads.BridgeKeys;
 import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotIndexedRecipe;
+import org.lab_11.modsunified.impl.cookingforblockheads.RecipeWithStatusCompat;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.Shadow;
@@ -138,12 +139,13 @@ abstract class KitchenMenuRecipeStatusMixin {
         final NonNullList<ItemStack> operationLocks = prepareLocksForRecipe(locks, recipe);
         final var operation = context.createOperation(recipeHolder).withLockedInputs(operationLocks).prepare();
         final NonNullList<ItemStack> displayLocks = copyLocks(operation.getLockedInputs());
-        final RecipeWithStatus status = new RecipeWithStatus(
+        final RecipeWithStatus status = RecipeWithStatusCompat.create(
                 recipeHolder.id(),
                 recipeResult,
                 operation.getMissingIngredients(),
                 operation.getMissingIngredientsMask(),
-                displayLocks
+                displayLocks,
+                recipe.getIngredients().stream().map(KitchenMenuRecipeStatusMixin::collectIngredientOptions).toList()
         );
         return new VariantCandidate(buildDisplayKey(recipe, recipeResult, displayLocks), status);
     }

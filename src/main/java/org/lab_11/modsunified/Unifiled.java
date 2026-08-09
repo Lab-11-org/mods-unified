@@ -17,6 +17,7 @@ import net.neoforged.neoforge.event.entity.player.ItemTooltipEvent;
 import net.neoforged.neoforge.event.OnDatapackSyncEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import org.lab_11.modsunified.impl.cookingforblockheads.BridgeKeys;
+import org.lab_11.modsunified.impl.OptionalModApis;
 import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotBridgeTarget;
 import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotBridgeCatalog;
 import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotContainerTooltipBridge;
@@ -45,6 +46,11 @@ public final class Unifiled {
     private List<CookingPotBridgeTarget> activeCookingPotTargets = List.of();
 
     public Unifiled(IEventBus modEventBus) {
+        if (!isCookingForBlockheadsLoaded()) {
+            LOGGER.info("Cooking for Blockheads integration is inactive: the mod or a supported API shape is unavailable.");
+            return;
+        }
+
         registerDungeonOvenCompat(modEventBus);
         modEventBus.addListener(this::onCommonSetup);
         modEventBus.addListener(this::onRegisterCapabilities);
@@ -215,6 +221,7 @@ public final class Unifiled {
     }
 
     private static boolean isCookingForBlockheadsLoaded() {
-        return ModList.get().isLoaded(BridgeKeys.MOD_COOKING_FOR_BLOCKHEADS);
+        return ModList.get().isLoaded(BridgeKeys.MOD_COOKING_FOR_BLOCKHEADS)
+                && OptionalModApis.supportsCookingForBlockheads();
     }
 }

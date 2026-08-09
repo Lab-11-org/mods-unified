@@ -30,21 +30,21 @@ side="BOTH"
 [[dependencies.${mod_id}]]
 modId="cookingforblockheads"
 type="optional"
-versionRange="[21.1.17,)"
+versionRange="[${cooking_for_blockheads_version},)"
 ordering="AFTER"
 side="BOTH"
 
 [[dependencies.${mod_id}]]
 modId="farmersdelight"
 type="optional"
-versionRange="[1.2.9,)"
+versionRange="[${farmers_delight_version},)"
 ordering="AFTER"
 side="BOTH"
 
 [[dependencies.${mod_id}]]
 modId="balm"
 type="optional"
-versionRange="[21.0.56,)"
+versionRange="[${balm_version},)"
 ordering="AFTER"
 side="BOTH"
 

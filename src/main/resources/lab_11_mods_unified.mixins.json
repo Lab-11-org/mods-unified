@@ -1,5 +1,6 @@
 {
   "required": false,
+  "plugin": "org.lab_11.modsunified.mixin.OptionalModMixinPlugin",
   "package": "org.lab_11.modsunified.mixin.cookingforblockheads",
   "compatibilityLevel": "JAVA_21",
   "mixins": [

@@ -24,6 +24,21 @@ Current targets:
 ./gradlew build -x test
 ```
 
+Dependency versions live in `gradle.properties`; Gradle downloads them from
+Modrinth. Override them without editing files when checking another supported
+combination:
+
+```bash
+./gradlew compileJava \
+  -Pcooking_for_blockheads_compile_version=21.1.24 \
+  -Pbalm_compile_version=21.0.64 \
+  -Pfarmers_delight_compile_version=1.3.2
+```
+
+The build workflow checks both the baseline versions below and the newer
+21.1.24 / 21.0.64 / 1.3.2 combination. Add a matrix row when supporting a new
+breaking combination; add compatibility code only when that row fails.
+
 ## Extend A New Pot Bridge
 1. Add ids/keys in `src/main/java/org/lab_11/modsunified/impl/cookingforblockheads/BridgeKeys.java`.
 2. Add target definition in `src/main/java/org/lab_11/modsunified/impl/cookingforblockheads/CookingPotBridgeCatalog.java`.

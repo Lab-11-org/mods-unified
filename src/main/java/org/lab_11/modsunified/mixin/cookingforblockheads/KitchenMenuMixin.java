@@ -5,6 +5,7 @@ import net.minecraft.core.NonNullList;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import org.lab_11.modsunified.impl.cookingforblockheads.BridgeKeys;
+import org.lab_11.modsunified.impl.cookingforblockheads.RecipeWithStatusCompat;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.Shadow;
@@ -48,7 +49,7 @@ abstract class KitchenMenuMixin {
             return;
         }
 
-        copySelectedLocksToMenu(selected.lockedInputs());
+        copySelectedLocksToMenu(RecipeWithStatusCompat.lockedInputs(selected));
     }
 
     @ModifyVariable(
@@ -105,14 +106,14 @@ abstract class KitchenMenuMixin {
         }
     }
 
-    private void copySelectedLocksToMenu(final NonNullList<ItemStack> selectedLocks) {
+    private void copySelectedLocksToMenu(final List<ItemStack> selectedLocks) {
         final NonNullList<ItemStack> normalized = normalizeLocks(selectedLocks, lockedInputs.size());
         for (int i = 0; i < lockedInputs.size(); i++) {
             lockedInputs.set(i, normalized.get(i));
         }
     }
 
-    private static NonNullList<ItemStack> normalizeLocks(final NonNullList<ItemStack> selectedLocks, final int targetSize) {
+    private static NonNullList<ItemStack> normalizeLocks(final List<ItemStack> selectedLocks, final int targetSize) {
         final NonNullList<ItemStack> normalized = NonNullList.withSize(targetSize, ItemStack.EMPTY);
         if (selectedLocks == null || selectedLocks.isEmpty()) {
             return normalized;
@@ -140,7 +141,7 @@ abstract class KitchenMenuMixin {
     private static String signatureOf(final RecipeWithStatus status) {
         final ResourceLocation recipeId = status.recipeId();
         final StringBuilder signature = new StringBuilder(recipeId.toString());
-        final NonNullList<ItemStack> locks = status.lockedInputs();
+        final List<ItemStack> locks = RecipeWithStatusCompat.lockedInputs(status);
         if (locks == null || locks.isEmpty()) {
             return signature.toString();
         }
