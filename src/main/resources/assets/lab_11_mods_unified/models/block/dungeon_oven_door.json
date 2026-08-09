@@ -1,0 +1,12 @@
+{
+  "parent": "cookingforblockheads:block/oven_door",
+  "textures": {
+    "backsplash": "lab_11_mods_unified:block/dungeon_oven_side",
+    "ovenbottom": "lab_11_mods_unified:block/dungeon_oven_bottom",
+    "ovenfront": "lab_11_mods_unified:block/dungeon_oven_front",
+    "ovenfront_active": "lab_11_mods_unified:block/dungeon_oven_front_active",
+    "oventop": "lab_11_mods_unified:block/dungeon_oven_top",
+    "particle": "lab_11_mods_unified:block/dungeon_oven_side",
+    "texture": "lab_11_mods_unified:block/dungeon_oven_side"
+  }
+}

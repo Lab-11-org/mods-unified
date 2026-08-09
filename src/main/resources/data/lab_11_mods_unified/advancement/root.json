@@ -1,0 +1,24 @@
+{
+  "display": {
+    "icon": {
+      "id": "lab_11_mods_unified:lava_sink",
+      "count": 1
+    },
+    "title": {
+      "translate": "advancement.lab_11_mods_unified.root.title"
+    },
+    "description": {
+      "translate": "advancement.lab_11_mods_unified.root.description"
+    },
+    "background": "minecraft:textures/block/lava_still.png",
+    "frame": "task",
+    "show_toast": false,
+    "announce_to_chat": false,
+    "hidden": true
+  },
+  "criteria": {
+    "bootstrap": {
+      "trigger": "minecraft:impossible"
+    }
+  }
+}

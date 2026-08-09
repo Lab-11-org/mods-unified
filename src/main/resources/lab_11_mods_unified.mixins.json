@@ -1,19 +1,28 @@
 {
   "required": false,
-  "plugin": "org.lab_11.modsunified.mixin.OptionalModMixinPlugin",
   "package": "org.lab_11.modsunified.mixin.cookingforblockheads",
-  "compatibilityLevel": "JAVA_21",
+  "compatibilityLevel": "JAVA_17",
   "mixins": [
+    "CookingPotBlockMixin",
     "CookingPotBlockEntityMixin",
+    "CopperPotBlockMixin",
     "CopperPotBlockEntityMixin",
     "KitchenMenuMixin",
     "KitchenMenuRecipeStatusMixin",
+    "RecipeBookMenuLegacyMixin",
+    "MonsterPotBlock120Mixin",
+    "MonsterPotBlockEntity120Mixin",
+    "MonsterPotBlockMixin",
     "MonsterPotBlockEntityMixin",
-    "OvenBlockEntityMixin"
+    "OvenBlockEntity120Mixin",
+    "OvenBlockEntityMixin",
+    "KaleidoscopePotBlockMixin",
+    "KaleidoscopePotBlockEntityMixin"
   ],
   "client": [
     "KitchenScreenMixin",
-    "OvenRendererMixin"
+    "OvenRendererMixin",
+    "StockpotBlockEntityRenderMixin"
   ],
   "injectors": {
     "defaultRequire": 1

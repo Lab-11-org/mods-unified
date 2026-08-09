@@ -1,60 +1,24 @@
 package org.lab_11.modsunified.impl.cookingforblockheads;
 
+import org.lab_11.modsunified.impl.platform.RuntimeBindings;
 import org.slf4j.Logger;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public final class CookingPotBridgeCatalog {
-    private static final List<CookingPotBridgeTarget> ALL_TARGETS = List.of(
-            new CookingPotBridgeTarget(
-                    BridgeKeys.TARGET_FARMERS_DELIGHT_COOKING_POT,
-                    "FarmersDelight Cooking Pot",
-                    List.of(BridgeKeys.MOD_FARMERS_DELIGHT),
-                    "vectorwing.farmersdelight.common.crafting.CookingPotRecipe",
-                    "vectorwing.farmersdelight.common.registry.ModRecipeTypes",
-                    "COOKING",
-                    "vectorwing.farmersdelight.common.block.entity.CookingPotBlockEntity",
-                    "vectorwing.farmersdelight.common.registry.ModBlockEntityTypes",
-                    "COOKING_POT",
-                    List.of(BridgeKeys.MIRRORED_DD_CUP_RECIPE_ID_PREFIX),
-                    List.of()
-            ),
-            new CookingPotBridgeTarget(
-                    BridgeKeys.TARGET_DUNGEONS_DELIGHT_MONSTER_POT,
-                    "DungeonsDelight Monster Pot",
-                    List.of(BridgeKeys.MOD_DUNGEONS_DELIGHT, BridgeKeys.MOD_FARMERS_DELIGHT),
-                    "net.yirmiri.dungeonsdelight.common.block.monster_pot.MonsterPotRecipe",
-                    "net.yirmiri.dungeonsdelight.core.registry.DDRecipeRegistries",
-                    "MONSTER_COOKING_RECIPE_TYPE",
-                    "net.yirmiri.dungeonsdelight.common.block.monster_pot.MonsterPotBlockEntity",
-                    "net.yirmiri.dungeonsdelight.core.registry.DDBlockEntities",
-                    "MONSTER_COOKING_POT",
-                    List.of(),
-                    List.of(BridgeKeys.MARKER_DUNGEON_OVEN)
-            ),
-            new CookingPotBridgeTarget(
-                    BridgeKeys.TARGET_MINERS_DELIGHT_COPPER_POT,
-                    "MinersDelight Copper Pot",
-                    List.of(BridgeKeys.MOD_MINERS_DELIGHT, BridgeKeys.MOD_FARMERS_DELIGHT),
-                    "vectorwing.farmersdelight.common.crafting.CookingPotRecipe",
-                    "vectorwing.farmersdelight.common.registry.ModRecipeTypes",
-                    "COOKING",
-                    "com.sammy.minersdelight.content.block.copper_pot.CopperPotBlockEntity",
-                    "com.sammy.minersdelight.setup.MDBlockEntities",
-                    "COPPER_POT",
-                    List.of(),
-                    List.of()
-            )
-    );
-
     private CookingPotBridgeCatalog() {
     }
 
     public static List<CookingPotBridgeTarget> resolveActiveTargets(final Logger logger) {
         final List<CookingPotBridgeTarget> activeTargets = new ArrayList<>();
-        for (final CookingPotBridgeTarget target : ALL_TARGETS) {
+        for (final CookingPotBridgeTarget target : allTargets()) {
             if (!target.isModSetLoaded()) {
+                logger.info(
+                        "Skipping cooking-pot bridge target '{}' because required mods are not loaded: {}.",
+                        target.displayName(),
+                        String.join(", ", target.missingRequiredModIds())
+                );
                 continue;
             }
 
@@ -68,12 +32,21 @@ public final class CookingPotBridgeCatalog {
             }
 
             activeTargets.add(target);
+            logger.info("Enabled cooking-pot bridge target '{}'.", target.displayName());
         }
 
         return List.copyOf(activeTargets);
     }
 
     public static String describeTargets(final List<CookingPotBridgeTarget> targets) {
-        return String.join(", ", targets.stream().map(CookingPotBridgeTarget::displayName).toList());
+        final List<String> names = new ArrayList<>(targets.size());
+        for (final CookingPotBridgeTarget target : targets) {
+            names.add(target.displayName());
+        }
+        return String.join(", ", names);
+    }
+
+    private static List<CookingPotBridgeTarget> allTargets() {
+        return RuntimeBindings.active().bridgeTargetProvider().allTargets();
     }
 }

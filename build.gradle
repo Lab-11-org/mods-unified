@@ -1,6 +1,8 @@
 plugins {
     id 'java-library'
-    id 'net.neoforged.moddev' version '2.0.140'
+    id 'maven-publish'
+    id 'net.neoforged.moddev' version '2.0.91' apply false
+    id 'net.neoforged.moddev.legacyforge' version '2.0.91' apply false
     id 'idea'
 }
 
@@ -10,6 +12,22 @@ tasks.named('wrapper', Wrapper).configure {
 
 version = mod_version
 group = mod_group_id
+
+def targetId = providers.gradleProperty('target_id')
+        .orElse("neoforge-${minecraft_version}")
+        .get()
+def javaVersion = providers.gradleProperty('java_version').orElse('21').get().toInteger()
+def useParchment = providers.gradleProperty('use_parchment').orElse('true').get().toBoolean()
+def isForgeTarget = targetId.startsWith('forge-')
+def isNeoForgeTarget = targetId.startsWith('neoforge-')
+
+if (isForgeTarget) {
+    apply plugin: 'net.neoforged.moddev.legacyforge'
+} else if (isNeoForgeTarget) {
+    apply plugin: 'net.neoforged.moddev'
+} else {
+    throw new GradleException("Unsupported target_id '${targetId}'. Expected prefix 'forge-' or 'neoforge-'.")
+}
 
 repositories {
     mavenLocal()
@@ -23,104 +41,290 @@ repositories {
 }
 
 base {
-    archivesName = mod_id
+    archivesName = "${mod_id}-${targetId}"
 }
 
-java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+java.toolchain.languageVersion = JavaLanguageVersion.of(javaVersion)
 
-neoForge {
-    version = project.neo_version
+if (isNeoForgeTarget) {
+    neoForge {
+        version = project.neo_version
 
-    parchment {
-        mappingsVersion = project.parchment_mappings_version
-        minecraftVersion = project.parchment_minecraft_version
+        if (useParchment) {
+            parchment {
+                mappingsVersion = project.parchment_mappings_version
+                minecraftVersion = project.parchment_minecraft_version
+            }
+        }
+
+        runs {
+            client {
+                client()
+                systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+            }
+
+            server {
+                server()
+                programArgument '--nogui'
+                systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+            }
+
+            gameTestServer {
+                type = 'gameTestServer'
+                systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+            }
+
+            data {
+                data()
+                programArguments.addAll '--mod', project.mod_id, '--all', '--output', file('src/generated/resources/').getAbsolutePath(), '--existing', file('src/main/resources/').getAbsolutePath()
+            }
+
+            configureEach {
+                systemProperty 'forge.logging.markers', 'REGISTRIES'
+                logLevel = org.slf4j.event.Level.DEBUG
+            }
+        }
+
+        mods {
+            "${mod_id}" {
+                sourceSet(sourceSets.main)
+            }
+        }
     }
+}
 
-    runs {
-        client {
-            client()
-            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+if (isForgeTarget) {
+    legacyForge {
+        version = project.minecraft_version + '-' + project.forge_version
+
+        if (useParchment) {
+            parchment {
+                mappingsVersion = project.parchment_mappings_version
+                minecraftVersion = project.parchment_minecraft_version
+            }
         }
 
-        server {
-            server()
-            programArgument '--nogui'
-            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+        runs {
+            client {
+                client()
+                systemProperty 'forge.enabledGameTestNamespaces', project.mod_id
+            }
+
+            server {
+                server()
+                programArgument '--nogui'
+                systemProperty 'forge.enabledGameTestNamespaces', project.mod_id
+            }
+
+            gameTestServer {
+                type = 'gameTestServer'
+                systemProperty 'forge.enabledGameTestNamespaces', project.mod_id
+            }
+
+            data {
+                data()
+                programArguments.addAll '--mod', project.mod_id, '--all', '--output', file('src/generated/resources/').getAbsolutePath(), '--existing', file('src/main/resources/').getAbsolutePath()
+            }
+
+            configureEach {
+                systemProperty 'forge.logging.markers', 'REGISTRIES'
+                logLevel = org.slf4j.event.Level.DEBUG
+            }
         }
 
-        gameTestServer {
-            type = 'gameTestServer'
-            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
-        }
-
-        data {
-            data()
-            programArguments.addAll '--mod', project.mod_id, '--all', '--output', file('src/generated/resources/').getAbsolutePath(), '--existing', file('src/main/resources/').getAbsolutePath()
-        }
-
-        configureEach {
-            systemProperty 'forge.logging.markers', 'REGISTRIES'
-            logLevel = org.slf4j.event.Level.DEBUG
-        }
-    }
-
-    mods {
-        "${mod_id}" {
-            sourceSet(sourceSets.main)
+        mods {
+            "${mod_id}" {
+                sourceSet(sourceSets.main)
+            }
         }
     }
 }
 
 sourceSets.main.resources { srcDir 'src/generated/resources' }
+def targetSpecificJavaDir = "src/impl/${targetId}/java"
+if (file(targetSpecificJavaDir).exists()) {
+    sourceSets.main.java.srcDir targetSpecificJavaDir
+}
+
+if (isForgeTarget) {
+    final List<String> mainOverridePaths = [
+            '/src/main/java/org/lab_11/modsunified/Unifiled.java',
+            '/src/main/java/org/lab_11/modsunified/impl/cookingforblockheads/CookingPotContainerTooltipBridge.java',
+            '/src/main/java/org/lab_11/modsunified/impl/cookingforblockheads/CookingPotProcessorCapability.java',
+            '/src/main/java/org/lab_11/modsunified/impl/cookingforblockheads/CustomizeBlocks.java',
+            '/src/main/java/org/lab_11/modsunified/impl/cookingforblockheads/client/DungeonOvenClientHooks.java',
+            '/src/main/java/org/lab_11/modsunified/impl/cookingforblockheads/CookingPotIndexedRecipe.java'
+    ]
+    sourceSets.main.java.exclude { details ->
+        final String normalizedPath = details.file.absolutePath.replace('\\', '/')
+        return mainOverridePaths.any { normalizedPath.endsWith(it) }
+    }
+}
 
 configurations {
     runtimeClasspath.extendsFrom localRuntime
 }
 
-dependencies {
+if (isForgeTarget) {
+    obfuscation {
+        createRemappingConfiguration(configurations.localRuntime)
+    }
+}
+
+if (targetId == 'neoforge-1.21.1') {
     def balmCompileVersion = providers.gradleProperty('balm_compile_version').getOrElse(balm_version)
-    def cookingForBlockheadsCompileVersion = providers.gradleProperty('cooking_for_blockheads_compile_version').getOrElse(cooking_for_blockheads_version)
-    def farmersDelightCompileVersion = providers.gradleProperty('farmers_delight_compile_version').getOrElse(farmers_delight_version)
+    def cfbhCompileVersion = providers.gradleProperty('cfbh_compile_version').getOrElse(cfbh_version)
+    def farmersDelightCompileVersion = providers.gradleProperty('farmers_delight_compile_version').getOrElse(farmersdelight_version)
 
-    compileOnly "maven.modrinth:balm:${balmCompileVersion}+neoforge-${minecraft_version}"
-    compileOnly "maven.modrinth:cooking-for-blockheads:${cookingForBlockheadsCompileVersion}+neoforge-${minecraft_version}"
-    compileOnly "maven.modrinth:farmers-delight:${minecraft_version}-${farmersDelightCompileVersion}"
-
-    localRuntime "maven.modrinth:balm:${balmCompileVersion}+neoforge-${minecraft_version}"
-    localRuntime "maven.modrinth:cooking-for-blockheads:${cookingForBlockheadsCompileVersion}+neoforge-${minecraft_version}"
-    localRuntime "maven.modrinth:farmers-delight:${minecraft_version}-${farmersDelightCompileVersion}"
+    dependencies {
+        localRuntime "maven.modrinth:balm:${balmCompileVersion}+neoforge-${minecraft_version}"
+        localRuntime "maven.modrinth:cooking-for-blockheads:${cfbhCompileVersion}+neoforge-${minecraft_version}"
+        localRuntime "maven.modrinth:farmers-delight:${minecraft_version}-${farmersDelightCompileVersion}"
+    }
 }
 
 var generateModMetadata = tasks.register('generateModMetadata', ProcessResources) {
+    def defaultPackFormat = '34'
+    if (targetId == 'forge-1.20.1') {
+        defaultPackFormat = '15'
+    } else if (targetId == 'neoforge-20.x') {
+        defaultPackFormat = '22'
+    }
+
     var replaceProperties = [
-            minecraft_version      : minecraft_version,
-            minecraft_version_range: minecraft_version_range,
-            neo_version            : neo_version,
-            loader_version_range   : loader_version_range,
-            mod_id                 : mod_id,
-            mod_name               : mod_name,
-            mod_license            : mod_license,
-            mod_version            : mod_version,
-            mod_authors            : mod_authors,
-            mod_description        : mod_description,
-            mod_homepage           : mod_homepage,
-            mod_issues             : mod_issues,
-            mod_logo_file          : mod_logo_file,
-            cooking_for_blockheads_version: cooking_for_blockheads_version,
-            farmers_delight_version: farmers_delight_version,
-            balm_version           : balm_version
+            minecraft_version       : minecraft_version,
+            minecraft_version_range : minecraft_version_range,
+            loader_version_range    : loader_version_range,
+            mod_id                  : mod_id,
+            mod_name                : mod_name,
+            mod_license             : mod_license,
+            mod_version             : mod_version,
+            mod_authors             : mod_authors,
+            mod_description         : mod_description,
+            mod_homepage            : mod_homepage,
+            mod_issues              : mod_issues,
+            mod_logo_file           : mod_logo_file,
+            pack_format             : providers.gradleProperty('pack_format').orElse(defaultPackFormat).get()
     ]
+
+    from('src/main/templates/pack.mcmeta')
+
+    if (isNeoForgeTarget) {
+        replaceProperties.putAll([
+                neo_version: neo_version
+        ])
+        from('src/main/templates/META-INF/neoforge.mods.toml') {
+            into 'META-INF'
+        }
+    }
+
+    if (isForgeTarget) {
+        replaceProperties.putAll([
+                forge_version      : forge_version,
+                forge_version_range: forge_version_range
+        ])
+        from('src/main/templates/META-INF/mods.toml') {
+            into 'META-INF'
+        }
+    }
+
     inputs.properties replaceProperties
     expand replaceProperties
-    from 'src/main/templates'
     into 'build/generated/sources/modMetadata'
 }
 
 sourceSets.main.resources.srcDir generateModMetadata
-neoForge.ideSyncTask generateModMetadata
+if (isNeoForgeTarget) {
+    neoForge.ideSyncTask generateModMetadata
+}
+if (isForgeTarget) {
+    legacyForge.ideSyncTask generateModMetadata
+}
+
+if (isForgeTarget) {
+    tasks.named('jar', Jar).configure {
+        manifest {
+            attributes(
+                    'MixinConfigs': "${mod_id}.mixins.json"
+            )
+        }
+    }
+}
+
+publishing {
+    publications {
+        register('mavenJava', MavenPublication) {
+            from components.java
+        }
+    }
+    repositories {
+        maven {
+            url "file://${project.projectDir}/repo"
+        }
+    }
+}
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
+}
+
+def targetPropsNeoForge211 = [
+        target_id                  : 'neoforge-1.21.1',
+        minecraft_version          : providers.gradleProperty('minecraft_version').orElse('1.21.1').get(),
+        minecraft_version_range    : providers.gradleProperty('minecraft_version_range').orElse('[1.21.1,1.22)').get(),
+        neo_version                : providers.gradleProperty('neo_version').orElse('21.1.219').get(),
+        loader_version_range       : providers.gradleProperty('loader_version_range').orElse('[4,)').get(),
+        parchment_minecraft_version: providers.gradleProperty('parchment_minecraft_version').orElse('1.21').get(),
+        parchment_mappings_version : providers.gradleProperty('parchment_mappings_version').orElse('2024.07.28').get(),
+        java_version               : '21',
+        use_parchment              : 'true'
+]
+
+def targetPropsNeoForge20x = [
+        target_id                  : 'neoforge-20.x',
+        minecraft_version          : providers.gradleProperty('neo20_minecraft_version').orElse('1.20.4').get(),
+        minecraft_version_range    : providers.gradleProperty('neo20_minecraft_version_range').orElse('[1.20.4,1.21)').get(),
+        neo_version                : providers.gradleProperty('neo20_version').orElse('20.4.251').get(),
+        loader_version_range       : providers.gradleProperty('neo20_loader_version_range').orElse('[1,)').get(),
+        parchment_minecraft_version: providers.gradleProperty('neo20_parchment_minecraft_version').orElse('1.20.4').get(),
+        parchment_mappings_version : providers.gradleProperty('neo20_parchment_mappings_version').orElse('2024.04.14').get(),
+        java_version               : providers.gradleProperty('neo20_java_version').orElse('21').get(),
+        use_parchment              : providers.gradleProperty('neo20_use_parchment').orElse('false').get(),
+        optional_loader_platform   : 'neoforge'
+]
+
+def targetPropsForge1201 = [
+        target_id                  : 'forge-1.20.1',
+        minecraft_version          : providers.gradleProperty('forge1201_minecraft_version').orElse('1.20.1').get(),
+        minecraft_version_range    : providers.gradleProperty('forge1201_minecraft_version_range').orElse('[1.20.1,1.21)').get(),
+        forge_version              : providers.gradleProperty('forge1201_forge_version').orElse('47.4.0').get(),
+        forge_version_range        : providers.gradleProperty('forge1201_forge_version_range').orElse('[47,)').get(),
+        loader_version_range       : providers.gradleProperty('forge1201_loader_version_range').orElse('[47,)').get(),
+        parchment_minecraft_version: providers.gradleProperty('forge1201_parchment_minecraft_version').orElse('1.20.1').get(),
+        parchment_mappings_version : providers.gradleProperty('forge1201_parchment_mappings_version').orElse('2023.09.03').get(),
+        java_version               : providers.gradleProperty('forge1201_java_version').orElse('17').get(),
+        use_parchment              : providers.gradleProperty('forge1201_use_parchment').orElse('true').get(),
+        optional_loader_platform   : 'forge'
+]
+
+def registerNestedBuild = { String taskName, Map<String, String> props ->
+    tasks.register(taskName, GradleBuild) {
+        group = 'build'
+        description = "Build ${props.target_id} target artifact"
+        tasks = ['clean', 'build']
+        startParameter.excludedTaskNames = ['test'] as Set<String>
+        startParameter.projectProperties.putAll(props)
+    }
+}
+
+registerNestedBuild('buildNeoForge211', targetPropsNeoForge211)
+registerNestedBuild('buildNeoForge20x', targetPropsNeoForge20x)
+registerNestedBuild('buildForge1201', targetPropsForge1201)
+
+tasks.register('buildAllTargets') {
+    group = 'build'
+    description = 'Build all currently supported loader/version targets.'
+    dependsOn 'buildNeoForge211', 'buildNeoForge20x', 'buildForge1201'
 }
 
 idea {

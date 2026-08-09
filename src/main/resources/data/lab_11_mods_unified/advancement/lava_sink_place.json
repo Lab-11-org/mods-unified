@@ -1,0 +1,29 @@
+{
+  "parent": "lab_11_mods_unified:root",
+  "display": {
+    "icon": {
+      "id": "lab_11_mods_unified:lava_sink",
+      "count": 1
+    },
+    "title": {
+      "translate": "advancement.lab_11_mods_unified.lava_sink_place.title"
+    },
+    "description": {
+      "translate": "advancement.lab_11_mods_unified.lava_sink_place.description"
+    },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": false,
+    "hidden": false
+  },
+  "criteria": {
+    "placed": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "requirements": [
+    [
+      "placed"
+    ]
+  ]
+}

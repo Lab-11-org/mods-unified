@@ -1,0 +1,11 @@
+{
+  "parent": "cookingforblockheads:block/sink",
+  "textures": {
+    "all": "minecraft:block/brown_terracotta",
+    "particle": "minecraft:block/brown_terracotta",
+    "backsplash": "minecraft:block/brown_terracotta",
+    "metal": "cookingforblockheads:block/sink_metal",
+    "handle": "cookingforblockheads:block/handle",
+    "countertop": "minecraft:block/polished_andesite"
+  }
+}

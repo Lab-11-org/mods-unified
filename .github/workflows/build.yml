@@ -35,5 +35,5 @@ jobs:
         run: >-
           ./gradlew build
           -Pbalm_compile_version=${{ matrix.dependencies.balm }}
-          -Pcooking_for_blockheads_compile_version=${{ matrix.dependencies.cooking_for_blockheads }}
+          -Pcfbh_compile_version=${{ matrix.dependencies.cooking_for_blockheads }}
           -Pfarmers_delight_compile_version=${{ matrix.dependencies.farmers_delight }}

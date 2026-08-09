@@ -12,13 +12,13 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.block.state.BlockState;
-import net.blay09.mods.cookingforblockheads.block.entity.OvenBlockEntity;
-import org.lab_11.modsunified.impl.cookingforblockheads.DungeonOvenCompat;
+import org.lab_11.modsunified.impl.cookingforblockheads.CustomizeBlocks;
 import org.lab_11.modsunified.impl.cookingforblockheads.client.DungeonOvenClientHooks;
 import org.slf4j.Logger;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Coerce;
 import org.spongepowered.asm.mixin.injection.Redirect;
 
 @Pseudo
@@ -33,7 +33,8 @@ abstract class OvenRendererMixin {
                     value = "INVOKE",
                     target = "Lnet/minecraft/client/renderer/block/ModelBlockRenderer;tesselateBlock(Lnet/minecraft/world/level/BlockAndTintGetter;Lnet/minecraft/client/resources/model/BakedModel;Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/core/BlockPos;Lcom/mojang/blaze3d/vertex/PoseStack;Lcom/mojang/blaze3d/vertex/VertexConsumer;ZLnet/minecraft/util/RandomSource;JI)V",
                     ordinal = 0
-            )
+            ),
+            require = 0
     )
     private void lab11$renderDungeonDoor(final ModelBlockRenderer renderer,
                                          final BlockAndTintGetter level,
@@ -46,7 +47,7 @@ abstract class OvenRendererMixin {
                                          final RandomSource randomSource,
                                          final long seed,
                                          final int overlay,
-                                         final OvenBlockEntity blockEntity,
+                                         final @Coerce Object blockEntity,
                                          final float partialTicks,
                                          final PoseStack outerPoseStack,
                                          final MultiBufferSource buffer,
@@ -67,7 +68,8 @@ abstract class OvenRendererMixin {
                     value = "INVOKE",
                     target = "Lnet/minecraft/client/renderer/block/ModelBlockRenderer;tesselateBlock(Lnet/minecraft/world/level/BlockAndTintGetter;Lnet/minecraft/client/resources/model/BakedModel;Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/core/BlockPos;Lcom/mojang/blaze3d/vertex/PoseStack;Lcom/mojang/blaze3d/vertex/VertexConsumer;ZLnet/minecraft/util/RandomSource;JI)V",
                     ordinal = 1
-            )
+            ),
+            require = 0
     )
     private void lab11$renderDungeonDoorHandle(final ModelBlockRenderer renderer,
                                                final BlockAndTintGetter level,
@@ -80,7 +82,7 @@ abstract class OvenRendererMixin {
                                                final RandomSource randomSource,
                                                final long seed,
                                                final int overlay,
-                                               final OvenBlockEntity blockEntity,
+                                               final @Coerce Object blockEntity,
                                                final float partialTicks,
                                                final PoseStack outerPoseStack,
                                                final MultiBufferSource buffer,
@@ -100,16 +102,30 @@ abstract class OvenRendererMixin {
         }
 
         final ResourceLocation blockId = BuiltInRegistries.BLOCK.getKey(state.getBlock());
-        return DungeonOvenCompat.DUNGEON_OVEN_ID.equals(blockId);
+        return CustomizeBlocks.DUNGEON_OVEN_ID.equals(blockId);
     }
 
-    private static boolean isDoorActiveForRender(final OvenBlockEntity blockEntity, final float partialTicks) {
+    private static boolean isDoorActiveForRender(final Object blockEntity, final float partialTicks) {
         if (blockEntity == null) {
             return false;
         }
 
-        final double doorAngle = blockEntity.getDoorAnimator().getRenderAngle(partialTicks);
-        return doorAngle < 0.3f && blockEntity.isBurning();
+        try {
+            final Object doorAnimator = blockEntity.getClass().getMethod("getDoorAnimator").invoke(blockEntity);
+            if (doorAnimator == null) {
+                return false;
+            }
+
+            final Object angleValue = doorAnimator.getClass()
+                    .getMethod("getRenderAngle", float.class)
+                    .invoke(doorAnimator, partialTicks);
+            final Object burningValue = blockEntity.getClass().getMethod("isBurning").invoke(blockEntity);
+            final double doorAngle = angleValue instanceof Number number ? number.doubleValue() : 1.0D;
+            final boolean burning = burningValue instanceof Boolean value && value;
+            return doorAngle < 0.3F && burning;
+        } catch (ReflectiveOperationException ignored) {
+            return false;
+        }
     }
 
     private static void logFirstSwap() {

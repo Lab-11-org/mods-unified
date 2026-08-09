@@ -2,15 +2,18 @@ package org.lab_11.modsunified.impl.cookingforblockheads;
 
 import com.google.common.collect.Multimap;
 import com.mojang.logging.LogUtils;
-import net.blay09.mods.cookingforblockheads.registry.CookingForBlockheadsRegistry;
+import net.minecraft.core.NonNullList;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.Recipe;
-import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.item.crafting.RecipeManager;
 import net.minecraft.world.item.crafting.RecipeType;
+import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
+import org.lab_11.modsunified.impl.platform.RecipeRuntimeCompat;
+import org.lab_11.modsunified.impl.platform.RuntimeBindings;
 import org.slf4j.Logger;
 
 import java.util.Collections;
@@ -18,16 +21,24 @@ import java.util.Iterator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class CookingPotRecipeIndexer {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final String INDEXED_RECIPE_NAMESPACE = "lab_11_mods_unified";
     private static final String INDEXED_RECIPE_PATH_PREFIX = "cfbh_indexed/";
+    private static final String NON_FOOD_VARIANT_PATH_PREFIX = "cfbh_nonfood_variant/";
+    private static final int MAX_EXPANDED_VARIANTS = 48;
     private static final String RECIPE_MANAGER_BY_NAME_FIELD = "byName";
+    private static final String CFBH_REGISTRY_CLASS = "net.blay09.mods.cookingforblockheads.registry.CookingForBlockheadsRegistry";
+    private static final Map<ResourceLocation, Recipe<?>> INDEXED_RECIPES_BY_ID = new ConcurrentHashMap<>();
 
     private CookingPotRecipeIndexer() {
     }
@@ -43,22 +54,11 @@ public final class CookingPotRecipeIndexer {
         }
 
         if (indexedRecipeTypes.isEmpty()) {
+            INDEXED_RECIPES_BY_ID.clear();
             return;
         }
 
-        final Multimap<ResourceLocation, RecipeHolder<Recipe<?>>> recipesByItemId = CookingForBlockheadsRegistry.getRecipesByItemId();
-        final Map<ResourceLocation, RecipeHolder<?>> indexedRecipesById = new HashMap<>();
-
-        int removed = 0;
-        final var iterator = recipesByItemId.entries().iterator();
-        while (iterator.hasNext()) {
-            final Map.Entry<ResourceLocation, RecipeHolder<Recipe<?>>> entry = iterator.next();
-            if (indexedRecipeTypes.contains(entry.getValue().value().getType())) {
-                iterator.remove();
-                removed++;
-            }
-        }
-
+        final Map<ResourceLocation, Object> indexedRecipesById = new HashMap<>();
         int added = 0;
         final Set<String> addedRecipeKeys = new HashSet<>();
         for (final CookingPotBridgeTarget target : targets) {
@@ -67,83 +67,526 @@ public final class CookingPotRecipeIndexer {
                 continue;
             }
 
-            final Iterable<RecipeHolder<?>> recipesForType =
-                    (Iterable<RecipeHolder<?>>) (Iterable<?>) recipeManager.getAllRecipesFor((RecipeType) recipeType);
+            final List<Object> recipesForType = RecipeRuntimeCompat.getAllRecipesFor(recipeManager, recipeType);
 
-            for (final RecipeHolder<?> rawRecipeHolder : recipesForType) {
-                if (!target.acceptsRecipe(rawRecipeHolder)) {
+            for (final Object rawRecipeEntry : recipesForType) {
+                final ResourceLocation rawRecipeId = RecipeRuntimeCompat.recipeId(rawRecipeEntry);
+                final Recipe<?> rawRecipeValue = RecipeRuntimeCompat.recipeValue(rawRecipeEntry);
+                if (rawRecipeId == null || rawRecipeValue == null) {
+                    continue;
+                }
+                if (!target.acceptsRecipe(rawRecipeEntry)) {
                     continue;
                 }
                 if (BridgeKeys.TARGET_DUNGEONS_DELIGHT_MONSTER_POT.equals(target.targetKey())
-                        && DungeonsDelightCupRecipeMirror.shouldRouteToCopperPotOnly(rawRecipeHolder)) {
+                        && DungeonsDelightCupRecipeMirror.shouldRouteToCopperPotOnly(rawRecipeEntry)) {
                     continue;
                 }
 
-                final String recipeKey = target.targetKey() + "|" + rawRecipeHolder.id();
+                final String recipeKey = target.targetKey() + "|" + rawRecipeId;
                 if (!addedRecipeKeys.add(recipeKey)) {
                     continue;
                 }
 
-                final Recipe<?> recipe = rawRecipeHolder.value();
-                final ItemStack rawResult = recipe.getResultItem(registryAccess);
+                final ItemStack rawResult = rawRecipeValue.getResultItem(registryAccess);
                 if (rawResult.isEmpty()) {
                     continue;
                 }
 
-                final ResourceLocation indexedRecipeId = indexedRecipeId(rawRecipeHolder.id(), target.targetKey());
-                final RecipeHolder<Recipe<?>> indexedRecipeHolder =
+                final ResourceLocation indexedRecipeId = indexedRecipeId(rawRecipeId, target.targetKey());
+                final Object indexedRecipeEntry =
                         CookingPotIndexedRecipe.toIndexedRecipeHolder(
-                                rawRecipeHolder,
+                                rawRecipeEntry,
                                 indexedRecipeId,
                                 registryAccess,
                                 target.targetKey(),
                                 target.requiredMarkerKeys()
                         );
-                final ItemStack indexedResult = indexedRecipeHolder.value().getResultItem(registryAccess);
+                final Recipe<?> indexedRecipe = RecipeRuntimeCompat.recipeValue(indexedRecipeEntry);
+                if (indexedRecipe == null) {
+                    continue;
+                }
+                final ItemStack indexedResult = indexedRecipe.getResultItem(registryAccess);
                 if (indexedResult.isEmpty()) {
                     continue;
                 }
-                final ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(indexedResult.getItem());
-                recipesByItemId.put(itemId, indexedRecipeHolder);
-                indexedRecipesById.put(indexedRecipeId, indexedRecipeHolder);
+                indexedRecipesById.put(indexedRecipeId, indexedRecipeEntry);
                 added++;
             }
         }
 
-        installIndexedRecipesByName(recipeManager, indexedRecipesById);
-        LOGGER.info("Injected {} cooking-pot recipes into Cooking for Blockheads recipe index (removed {}) via {}.",
-                added, removed, source);
+        cacheIndexedRecipes(indexedRecipesById);
+
+        final Multimap<ResourceLocation, Object> recipesByItemId = resolveRecipesByItemId();
+        int removed = 0;
+        if (recipesByItemId != null) {
+            final var iterator = recipesByItemId.entries().iterator();
+            while (iterator.hasNext()) {
+                final Map.Entry<ResourceLocation, Object> entry = iterator.next();
+                final Recipe<?> recipe = RecipeRuntimeCompat.recipeValue(entry.getValue());
+                if (recipe != null && indexedRecipeTypes.contains(recipe.getType())) {
+                    iterator.remove();
+                    removed++;
+                }
+            }
+
+            for (final Object indexedRecipeEntry : indexedRecipesById.values()) {
+                final Recipe<?> indexedRecipe = RecipeRuntimeCompat.recipeValue(indexedRecipeEntry);
+                if (indexedRecipe == null) {
+                    continue;
+                }
+                final ItemStack indexedResult = indexedRecipe.getResultItem(registryAccess);
+                if (indexedResult.isEmpty()) {
+                    continue;
+                }
+                final ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(indexedResult.getItem());
+                recipesByItemId.put(itemId, indexedRecipeEntry);
+            }
+
+            final boolean installedByName = installIndexedRecipesByName(recipeManager, indexedRecipesById);
+            if (!installedByName) {
+                LOGGER.warn("Injected {} indexed recipes into Cooking for Blockheads index via {}, but failed to expose IDs in RecipeManager byName lookup.",
+                        added, source);
+            } else {
+                LOGGER.info("Injected {} cooking-pot recipes into Cooking for Blockheads recipe index (removed {}) and updated RecipeManager byName lookup via {}.",
+                        added, removed, source);
+            }
+            return;
+        }
+
+        installIndexedRecipes(recipeManager, indexedRecipesById);
+
+        final boolean refreshedLegacyRegistry = refreshLegacyCookingForBlockheadsRegistry(recipeManager, registryAccess);
+        if (!refreshedLegacyRegistry) {
+            LOGGER.warn("Injected {} cooking-pot recipes into RecipeManager, but could not refresh Cooking for Blockheads registry via {}.",
+                    added, source);
+            return;
+        }
+
+        final int legacyInjectedRecipes = LegacyCookingRegistryBridge.injectIndexedRecipes(indexedRecipesById, registryAccess);
+        final int indexedRecipesInManager = countIndexedRecipesInRecipeManager(recipeManager);
+        final int indexedRecipesInLegacyRegistry = countIndexedRecipesInLegacyRegistry();
+        if (!isLegacyVisibilitySynchronized(added, indexedRecipesInManager, indexedRecipesInLegacyRegistry)) {
+            LOGGER.warn(
+                    "Indexed recipe visibility is out of sync after legacy refresh via {} (expected={}, managerIndexed={}, legacyIndexed={}); forcing rebuild.",
+                    source,
+                    added,
+                    indexedRecipesInManager,
+                    indexedRecipesInLegacyRegistry
+            );
+            forceRebuildLegacyRegistry(recipeManager, registryAccess, indexedRecipesById);
+        }
+
+        final int finalIndexedRecipesInManager = countIndexedRecipesInRecipeManager(recipeManager);
+        final int finalIndexedRecipesInLegacyRegistry = countIndexedRecipesInLegacyRegistry();
+        if (!isLegacyVisibilitySynchronized(added, finalIndexedRecipesInManager, finalIndexedRecipesInLegacyRegistry)) {
+            LOGGER.warn(
+                    "Indexed recipe visibility remains out of sync via {} (expected={}, managerIndexed={}, legacyIndexed={}).",
+                    source,
+                    added,
+                    finalIndexedRecipesInManager,
+                    finalIndexedRecipesInLegacyRegistry
+            );
+        } else {
+            LOGGER.info(
+                    "Injected {} cooking-pot recipes into legacy Cooking for Blockheads registry via {} (legacyInjected={}, managerIndexed={}, legacyIndexed={}).",
+                    added,
+                    source,
+                    legacyInjectedRecipes,
+                    finalIndexedRecipesInManager,
+                    finalIndexedRecipesInLegacyRegistry
+            );
+        }
+    }
+
+    public static void injectNonFoodCraftingRecipes(final RecipeManager recipeManager,
+                                                     final RegistryAccess registryAccess,
+                                                     final List<ResourceLocation> itemIds) {
+        if (itemIds.isEmpty()) {
+            return;
+        }
+
+        final Set<ResourceLocation> targetItemIds = new HashSet<>(itemIds);
+
+        final Multimap<ResourceLocation, Object> recipesByItemId = resolveRecipesByItemId();
+        if (recipesByItemId == null) {
+            LOGGER.debug("Skipping non-food crafting recipe injection: modern CFBH recipe index unavailable.");
+            return;
+        }
+
+        // Remove previously injected non-food crafting entries for target items to ensure idempotency.
+        // This covers both original crafting recipes and our synthetic non-food variants.
+        for (final ResourceLocation itemId : targetItemIds) {
+            recipesByItemId.get(itemId).removeIf(entry -> {
+                final Recipe<?> recipe = RecipeRuntimeCompat.recipeValue(entry);
+                return recipe != null && recipe.getType() == RecipeType.CRAFTING;
+            });
+        }
+
+        // Find and inject crafting recipes whose output matches target item IDs,
+        // expanding tag ingredients into per-item variants so CFBH's variant arrows appear.
+        final Map<ResourceLocation, Object> allVariantsById = new HashMap<>();
+        int injected = 0;
+        for (final Object recipeEntry : RecipeRuntimeCompat.getAllRecipesFor(recipeManager, RecipeType.CRAFTING)) {
+            final Recipe<?> recipe = RecipeRuntimeCompat.recipeValue(recipeEntry);
+            if (recipe == null) {
+                continue;
+            }
+            final ItemStack result = recipe.getResultItem(registryAccess);
+            if (result.isEmpty()) {
+                continue;
+            }
+            final ResourceLocation resultItemId = BuiltInRegistries.ITEM.getKey(result.getItem());
+            if (!targetItemIds.contains(resultItemId)) {
+                continue;
+            }
+
+            final List<Map.Entry<ResourceLocation, Object>> variants = expandTagVariants(recipeEntry, registryAccess);
+            if (variants.isEmpty()) {
+                // No tag ingredients to expand; inject original recipe as-is.
+                recipesByItemId.put(resultItemId, recipeEntry);
+                injected++;
+            } else {
+                for (final Map.Entry<ResourceLocation, Object> variant : variants) {
+                    recipesByItemId.put(resultItemId, variant.getValue());
+                    allVariantsById.put(variant.getKey(), variant.getValue());
+                    injected++;
+                }
+            }
+        }
+
+        if (injected > 0) {
+            if (!allVariantsById.isEmpty()) {
+                final boolean installed = installNonFoodVariantsByName(recipeManager, allVariantsById);
+                if (!installed) {
+                    LOGGER.warn("Injected {} non-food crafting variants into CFBH index but failed to install in RecipeManager byName.",
+                            injected);
+                } else {
+                    LOGGER.info("Injected {} non-food crafting variants (including {} synthetic) into Cooking for Blockheads recipe index for {} item(s).",
+                            injected, allVariantsById.size(), targetItemIds.size());
+                }
+            } else {
+                LOGGER.info("Injected {} non-food crafting recipes into Cooking for Blockheads recipe index for {} item(s).",
+                        injected, targetItemIds.size());
+            }
+        }
+    }
+
+    private static List<Map.Entry<ResourceLocation, Object>> expandTagVariants(
+            final Object recipeEntry, final RegistryAccess registryAccess) {
+        final Recipe<?> recipe = RecipeRuntimeCompat.recipeValue(recipeEntry);
+        final ResourceLocation originalId = RecipeRuntimeCompat.recipeId(recipeEntry);
+        if (recipe == null || originalId == null) {
+            return List.of();
+        }
+
+        final NonNullList<Ingredient> ingredients = recipe.getIngredients();
+
+        // Find the first ingredient with multiple items (the "primary tag").
+        int expandSlot = -1;
+        ItemStack[] expandItems = null;
+        for (int i = 0; i < ingredients.size(); i++) {
+            final ItemStack[] items = ingredients.get(i).getItems();
+            if (items.length > 1) {
+                expandSlot = i;
+                expandItems = items;
+                break;
+            }
+        }
+
+        if (expandSlot < 0 || expandItems == null) {
+            return List.of();
+        }
+
+        final ItemStack result = recipe.getResultItem(registryAccess);
+        final String group = recipe.getGroup();
+        final Object category = resolveCraftingCategory(recipe);
+
+        if (category == null) {
+            LOGGER.debug("Cannot expand tag variants for {}: unable to resolve CraftingBookCategory.", originalId);
+            return List.of();
+        }
+
+        final int variantCount = Math.min(expandItems.length, MAX_EXPANDED_VARIANTS);
+        final List<Map.Entry<ResourceLocation, Object>> variants = new ArrayList<>(variantCount);
+
+        for (int v = 0; v < variantCount; v++) {
+            final NonNullList<Ingredient> variantIngredients = NonNullList.create();
+            for (int i = 0; i < ingredients.size(); i++) {
+                if (i == expandSlot) {
+                    variantIngredients.add(Ingredient.of(expandItems[v]));
+                } else {
+                    variantIngredients.add(ingredients.get(i));
+                }
+            }
+
+            final Recipe<?> variantRecipe = createShapelessRecipe(group, category, result.copy(), variantIngredients);
+            if (variantRecipe == null) {
+                LOGGER.debug("Cannot create ShapelessRecipe variant {} for {}.", v, originalId);
+                return List.of();
+            }
+
+            final ResourceLocation variantId = nonFoodVariantId(originalId, v);
+            final Object variantEntry = RecipeRuntimeCompat.recipeEntry(variantId, variantRecipe);
+            variants.add(Map.entry(variantId, variantEntry));
+        }
+
+        return variants;
     }
 
     @SuppressWarnings("unchecked")
-    private static void installIndexedRecipesByName(final RecipeManager recipeManager,
-                                                    final Map<ResourceLocation, RecipeHolder<?>> indexedRecipesById) {
+    private static Recipe<?> createShapelessRecipe(final String group, final Object category,
+                                                    final ItemStack result,
+                                                    final NonNullList<Ingredient> ingredients) {
+        try {
+            final Class<?> shapelessRecipeClass = Class.forName("net.minecraft.world.item.crafting.ShapelessRecipe");
+
+            // 1.21.1: ShapelessRecipe(String, CraftingBookCategory, ItemStack, NonNullList)
+            for (final Constructor<?> constructor : shapelessRecipeClass.getConstructors()) {
+                final Class<?>[] params = constructor.getParameterTypes();
+                if (params.length == 4
+                        && params[0] == String.class
+                        && params[1].isEnum()
+                        && params[2] == ItemStack.class
+                        && NonNullList.class.isAssignableFrom(params[3])) {
+                    return (Recipe<?>) constructor.newInstance(group, category, result, ingredients);
+                }
+            }
+        } catch (ReflectiveOperationException e) {
+            LOGGER.debug("Failed to create ShapelessRecipe via reflection.", e);
+        }
+        return null;
+    }
+
+    private static Object resolveCraftingCategory(final Recipe<?> recipe) {
+        try {
+            final Method categoryMethod = recipe.getClass().getMethod("category");
+            return categoryMethod.invoke(recipe);
+        } catch (ReflectiveOperationException ignored) {
+            // Fall back to structural match.
+        }
+
+        for (final Method method : recipe.getClass().getMethods()) {
+            if (method.getParameterCount() != 0) {
+                continue;
+            }
+            final Class<?> returnType = method.getReturnType();
+            if (returnType.isEnum() && returnType.getSimpleName().contains("CraftingBookCategory")) {
+                try {
+                    return method.invoke(recipe);
+                } catch (ReflectiveOperationException ignored) {
+                    // Continue.
+                }
+            }
+        }
+        return null;
+    }
+
+    private static ResourceLocation nonFoodVariantId(final ResourceLocation originalId, final int variantIndex) {
+        final String path = NON_FOOD_VARIANT_PATH_PREFIX
+                + originalId.getNamespace() + "/"
+                + originalId.getPath() + "/"
+                + variantIndex;
+        return MinecraftApiCompat.resourceLocation(INDEXED_RECIPE_NAMESPACE, path);
+    }
+
+    private static boolean isNonFoodVariantId(final ResourceLocation recipeId) {
+        return INDEXED_RECIPE_NAMESPACE.equals(recipeId.getNamespace())
+                && recipeId.getPath().startsWith(NON_FOOD_VARIANT_PATH_PREFIX);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static boolean installNonFoodVariantsByName(final RecipeManager recipeManager,
+                                                         final Map<ResourceLocation, Object> variantsById) {
+        try {
+            final Field byNameField = resolveRecipeByIdMapField(recipeManager);
+            if (byNameField == null) {
+                return false;
+            }
+
+            byNameField.setAccessible(true);
+            final Object fieldValue = byNameField.get(recipeManager);
+            if (!(fieldValue instanceof Map<?, ?> rawMap)) {
+                return false;
+            }
+
+            final Map<ResourceLocation, Object> byIdMap = new HashMap<>((Map<ResourceLocation, Object>) rawMap);
+            byIdMap.entrySet().removeIf(entry -> isNonFoodVariantId(entry.getKey()));
+            byIdMap.putAll(variantsById);
+            byNameField.set(recipeManager, byIdMap);
+            return true;
+        } catch (ReflectiveOperationException e) {
+            LOGGER.warn("Failed to install non-food variant recipes into RecipeManager byName map.", e);
+            return false;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Multimap<ResourceLocation, Object> resolveRecipesByItemId() {
+        try {
+            final Class<?> registryClass = Class.forName(CFBH_REGISTRY_CLASS);
+            final Method getRecipesByItemIdMethod = registryClass.getMethod("getRecipesByItemId");
+            final Object value = getRecipesByItemIdMethod.invoke(null);
+            if (value instanceof Multimap<?, ?> multimap) {
+                return (Multimap<ResourceLocation, Object>) multimap;
+            }
+        } catch (ReflectiveOperationException ignored) {
+            // no-op
+        }
+        return null;
+    }
+
+    public static Recipe<?> findIndexedRecipe(final ResourceLocation recipeId) {
+        if (recipeId == null) {
+            return null;
+        }
+        return INDEXED_RECIPES_BY_ID.get(recipeId);
+    }
+
+    private static void cacheIndexedRecipes(final Map<ResourceLocation, Object> indexedRecipesById) {
+        INDEXED_RECIPES_BY_ID.clear();
+        for (final Map.Entry<ResourceLocation, Object> entry : indexedRecipesById.entrySet()) {
+            final Recipe<?> recipe = RecipeRuntimeCompat.recipeValue(entry.getValue());
+            if (recipe != null) {
+                INDEXED_RECIPES_BY_ID.put(entry.getKey(), recipe);
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void installIndexedRecipesByNameAndType(final RecipeManager recipeManager,
+                                                           final Map<ResourceLocation, Object> indexedRecipesById) {
+        boolean installedByName = installIndexedRecipesByName(recipeManager, indexedRecipesById);
+        boolean installedByType = installIndexedRecipesByType(recipeManager, indexedRecipesById);
+        if (!installedByName && !installedByType) {
+            LOGGER.warn("Failed to install indexed cooking-pot recipes into RecipeManager fallback maps (byName/byType).");
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static boolean installIndexedRecipesByName(final RecipeManager recipeManager,
+                                                       final Map<ResourceLocation, Object> indexedRecipesById) {
         try {
             final Field byNameField = resolveRecipeByIdMapField(recipeManager);
             if (byNameField == null) {
                 LOGGER.warn("Failed to install indexed cooking-pot recipes into RecipeManager byName map: no compatible map field found.");
-                return;
+                return false;
             }
 
             byNameField.setAccessible(true);
             final Object fieldValue = byNameField.get(recipeManager);
             if (!(fieldValue instanceof Map<?, ?> rawMap)) {
                 LOGGER.warn("Failed to install indexed cooking-pot recipes into RecipeManager byName map: resolved field is not a map.");
-                return;
+                return false;
             }
 
-            final Map<ResourceLocation, RecipeHolder<?>> byIdMap = (Map<ResourceLocation, RecipeHolder<?>>) rawMap;
-            try {
-                byIdMap.entrySet().removeIf(entry -> isIndexedRecipeId(entry.getKey()));
-                byIdMap.putAll(indexedRecipesById);
-            } catch (UnsupportedOperationException ignored) {
-                final Map<ResourceLocation, RecipeHolder<?>> mutableByIdMap = new HashMap<>(byIdMap);
-                mutableByIdMap.entrySet().removeIf(entry -> isIndexedRecipeId(entry.getKey()));
-                mutableByIdMap.putAll(indexedRecipesById);
-                byNameField.set(recipeManager, mutableByIdMap);
-            }
+            final Map<ResourceLocation, Object> byIdMap = new HashMap<>((Map<ResourceLocation, Object>) rawMap);
+            byIdMap.entrySet().removeIf(entry -> isIndexedRecipeId(entry.getKey()));
+            byIdMap.putAll(indexedRecipesById);
+            byNameField.set(recipeManager, byIdMap);
+            return true;
         } catch (ReflectiveOperationException e) {
             LOGGER.warn("Failed to install indexed cooking-pot recipes into RecipeManager byName map.", e);
+            return false;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static boolean installIndexedRecipesByType(final RecipeManager recipeManager,
+                                                       final Map<ResourceLocation, Object> indexedRecipesById) {
+        try {
+            final Field byTypeField = resolveRecipeByTypeMapField(recipeManager);
+            if (byTypeField == null) {
+                return false;
+            }
+
+            byTypeField.setAccessible(true);
+            final Object fieldValue = byTypeField.get(recipeManager);
+            if (!(fieldValue instanceof Map<?, ?> rawMap)) {
+                return false;
+            }
+
+            final Map<Object, Object> byTypeMap = new HashMap<>();
+            for (final Map.Entry<?, ?> entry : rawMap.entrySet()) {
+                final Object key = entry.getKey();
+                final Object value = entry.getValue();
+                if (!(value instanceof Map<?, ?> nestedRawMap)) {
+                    byTypeMap.put(key, value);
+                    continue;
+                }
+
+                final Map<ResourceLocation, Object> nestedMap = new HashMap<>();
+                for (final Map.Entry<?, ?> nestedEntry : nestedRawMap.entrySet()) {
+                    if (!(nestedEntry.getKey() instanceof ResourceLocation nestedRecipeId)) {
+                        continue;
+                    }
+                    if (isIndexedRecipeId(nestedRecipeId)) {
+                        continue;
+                    }
+                    nestedMap.put(nestedRecipeId, nestedEntry.getValue());
+                }
+                byTypeMap.put(key, nestedMap);
+            }
+
+            for (final Map.Entry<ResourceLocation, Object> indexedEntry : indexedRecipesById.entrySet()) {
+                final Recipe<?> recipe = RecipeRuntimeCompat.recipeValue(indexedEntry.getValue());
+                if (recipe == null) {
+                    continue;
+                }
+                final Object typeKey = recipe.getType();
+                final Object existing = byTypeMap.get(typeKey);
+                final Map<ResourceLocation, Object> recipeMap;
+                if (existing instanceof Map<?, ?> existingMap) {
+                    recipeMap = new HashMap<>((Map<ResourceLocation, Object>) existingMap);
+                } else {
+                    recipeMap = new HashMap<>();
+                }
+                recipeMap.put(indexedEntry.getKey(), indexedEntry.getValue());
+                byTypeMap.put(typeKey, recipeMap);
+            }
+
+            byTypeField.set(recipeManager, byTypeMap);
+            return true;
+        } catch (ReflectiveOperationException e) {
+            LOGGER.warn("Failed to install indexed cooking-pot recipes into RecipeManager byType map.", e);
+            return false;
+        }
+    }
+
+    private static void installIndexedRecipes(final RecipeManager recipeManager,
+                                              final Map<ResourceLocation, Object> indexedRecipesById) {
+        if (shouldUseMapInjectionOnly()) {
+            installIndexedRecipesByNameAndType(recipeManager, indexedRecipesById);
+            return;
+        }
+
+        final List<Object> mergedRecipes = new ArrayList<>();
+        for (final Object recipeEntry : RecipeRuntimeCompat.getAllRecipes(recipeManager)) {
+            final ResourceLocation recipeId = RecipeRuntimeCompat.recipeId(recipeEntry);
+            if (recipeId != null && isIndexedRecipeId(recipeId)) {
+                continue;
+            }
+            mergedRecipes.add(recipeEntry);
+        }
+        mergedRecipes.addAll(indexedRecipesById.values());
+
+        try {
+            RecipeRuntimeCompat.replaceRecipes(recipeManager, mergedRecipes);
+        } catch (RuntimeException e) {
+            LOGGER.warn("Falling back to RecipeManager byName/byType injection because replaceRecipes failed.", e);
+            installIndexedRecipesByNameAndType(recipeManager, indexedRecipesById);
+        }
+    }
+
+    private static boolean refreshLegacyCookingForBlockheadsRegistry(final RecipeManager recipeManager,
+                                                                     final RegistryAccess registryAccess) {
+        try {
+            final Class<?> legacyRegistryClass = Class.forName("net.blay09.mods.cookingforblockheads.registry.CookingRegistry");
+            final Method initFoodRegistryMethod = legacyRegistryClass.getMethod("initFoodRegistry", RecipeManager.class, RegistryAccess.class);
+            initFoodRegistryMethod.invoke(null, recipeManager, registryAccess);
+            return true;
+        } catch (ReflectiveOperationException ignored) {
+            return false;
         }
     }
 
@@ -176,6 +619,32 @@ public final class CookingPotRecipeIndexer {
         return null;
     }
 
+    private static Field resolveRecipeByTypeMapField(final RecipeManager recipeManager) {
+        for (final Field field : RecipeManager.class.getDeclaredFields()) {
+            if (!Map.class.isAssignableFrom(field.getType())) {
+                continue;
+            }
+            final Field byNameField = resolveRecipeByIdMapField(recipeManager);
+            if (byNameField != null && byNameField.getName().equals(field.getName())) {
+                continue;
+            }
+
+            try {
+                field.setAccessible(true);
+                final Object value = field.get(recipeManager);
+                if (!(value instanceof Map<?, ?> map) || map.isEmpty()) {
+                    continue;
+                }
+                if (isRecipeByTypeMap(map)) {
+                    return field;
+                }
+            } catch (ReflectiveOperationException ignored) {
+                // Try the next field.
+            }
+        }
+        return null;
+    }
+
     private static boolean isRecipeByIdMap(final Map<?, ?> map) {
         if (map.isEmpty()) {
             return false;
@@ -187,7 +656,100 @@ public final class CookingPotRecipeIndexer {
         }
 
         final Map.Entry<?, ?> sample = iterator.next();
-        return sample.getKey() instanceof ResourceLocation && sample.getValue() instanceof RecipeHolder<?>;
+        return sample.getKey() instanceof ResourceLocation;
+    }
+
+    private static boolean isRecipeByTypeMap(final Map<?, ?> map) {
+        if (map.isEmpty()) {
+            return false;
+        }
+
+        final Iterator<? extends Map.Entry<?, ?>> iterator = map.entrySet().iterator();
+        if (!iterator.hasNext()) {
+            return false;
+        }
+
+        final Map.Entry<?, ?> sample = iterator.next();
+        if (!(sample.getKey() instanceof RecipeType<?>)) {
+            return false;
+        }
+        if (!(sample.getValue() instanceof Map<?, ?> nestedMap) || nestedMap.isEmpty()) {
+            return true;
+        }
+        final Iterator<? extends Map.Entry<?, ?>> nestedIterator = nestedMap.entrySet().iterator();
+        if (!nestedIterator.hasNext()) {
+            return true;
+        }
+        final Map.Entry<?, ?> nestedSample = nestedIterator.next();
+        return nestedSample.getKey() instanceof ResourceLocation;
+    }
+
+    private static boolean isLegacyVisibilitySynchronized(final int expectedIndexedRecipes,
+                                                          final int indexedRecipesInManager,
+                                                          final int indexedRecipesInLegacyRegistry) {
+        if (expectedIndexedRecipes <= 0) {
+            return true;
+        }
+        return indexedRecipesInManager >= expectedIndexedRecipes
+                && indexedRecipesInLegacyRegistry >= expectedIndexedRecipes;
+    }
+
+    private static void forceRebuildLegacyRegistry(final RecipeManager recipeManager,
+                                                   final RegistryAccess registryAccess,
+                                                   final Map<ResourceLocation, Object> indexedRecipesById) {
+        installIndexedRecipesByNameAndType(recipeManager, indexedRecipesById);
+        if (!refreshLegacyCookingForBlockheadsRegistry(recipeManager, registryAccess)) {
+            LOGGER.warn("Forced legacy Cooking for Blockheads registry rebuild failed.");
+            return;
+        }
+        LegacyCookingRegistryBridge.injectIndexedRecipes(indexedRecipesById, registryAccess);
+    }
+
+    private static int countIndexedRecipesInRecipeManager(final RecipeManager recipeManager) {
+        final Set<ResourceLocation> indexedRecipeIds = new HashSet<>();
+        for (final Object recipeEntry : RecipeRuntimeCompat.getAllRecipes(recipeManager)) {
+            final ResourceLocation recipeId = RecipeRuntimeCompat.recipeId(recipeEntry);
+            if (recipeId != null && isIndexedRecipeId(recipeId)) {
+                indexedRecipeIds.add(recipeId);
+            }
+        }
+        return indexedRecipeIds.size();
+    }
+
+    private static int countIndexedRecipesInLegacyRegistry() {
+        final int injectedCount = LegacyCookingRegistryBridge.countInjectedRecipes();
+        if (injectedCount > 0) {
+            return injectedCount;
+        }
+
+        try {
+            final Class<?> legacyRegistryClass = Class.forName("net.blay09.mods.cookingforblockheads.registry.CookingRegistry");
+            final Method getFoodRecipesMethod = legacyRegistryClass.getMethod("getFoodRecipes");
+            final Object rawRecipes = getFoodRecipesMethod.invoke(null);
+            if (!(rawRecipes instanceof Multimap<?, ?> multimap)) {
+                return 0;
+            }
+
+            final Set<ResourceLocation> indexedRecipeIds = new HashSet<>();
+            for (final Object foodRecipeObj : multimap.values()) {
+                if (foodRecipeObj == null) {
+                    continue;
+                }
+                final Method getRegistryNameMethod = foodRecipeObj.getClass().getMethod("getRegistryName");
+                final Object recipeIdValue = getRegistryNameMethod.invoke(foodRecipeObj);
+                if (recipeIdValue instanceof ResourceLocation recipeId && isIndexedRecipeId(recipeId)) {
+                    indexedRecipeIds.add(recipeId);
+                }
+            }
+            return indexedRecipeIds.size();
+        } catch (ReflectiveOperationException ignored) {
+            return 0;
+        }
+    }
+
+    private static boolean shouldUseMapInjectionOnly() {
+        final var profile = RuntimeBindings.active().profile();
+        return "forge".equals(profile.loader()) && profile.minecraftVersion().startsWith("1.20.1");
     }
 
     private static ResourceLocation indexedRecipeId(final ResourceLocation originalRecipeId, final String targetKey) {
@@ -195,7 +757,7 @@ public final class CookingPotRecipeIndexer {
                 + targetKey + "/"
                 + originalRecipeId.getNamespace() + "/"
                 + originalRecipeId.getPath();
-        return ResourceLocation.fromNamespaceAndPath(INDEXED_RECIPE_NAMESPACE, path);
+        return MinecraftApiCompat.resourceLocation(INDEXED_RECIPE_NAMESPACE, path);
     }
 
     private static boolean isIndexedRecipeId(final ResourceLocation recipeId) {

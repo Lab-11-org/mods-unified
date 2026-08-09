@@ -36,7 +36,28 @@ abstract class CookingPotBlockEntityMixin {
         return CookingPotHeatBridge.callNativeIsHeated(self, level, worldPosition);
     }
 
-    @Inject(method = "isHeated", at = @At("HEAD"), cancellable = true)
+    @Redirect(
+            method = "animationTick",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lvectorwing/farmersdelight/common/block/entity/CookingPotBlockEntity;isHeated(Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;)Z"
+            ),
+            remap = false
+    )
+    private static boolean lab11$redirectAnimationTickHeatCheck(final @Coerce Object self,
+                                                                final Level level,
+                                                                final BlockPos worldPosition) {
+        if (level != null
+                && worldPosition != null
+                && CookingPotHeatBridge.shouldUseOvenHeatForPot(level, worldPosition)
+                && CookingPotHeatBridge.isAnyManagedOvenBelow(level, worldPosition)) {
+            return CookingPotHeatBridge.isAnyOvenHeatedBelow(level, worldPosition, self);
+        }
+
+        return CookingPotHeatBridge.callNativeIsHeated(self, level, worldPosition);
+    }
+
+    @Inject(method = "isHeated()Z", at = @At("HEAD"), cancellable = true, remap = false)
     private void lab11$bridgeCfbhOvenHeat(final CallbackInfoReturnable<Boolean> cir) {
         final BlockEntity self = (BlockEntity) (Object) this;
         final Level level = self.getLevel();

@@ -17,7 +17,6 @@ import net.neoforged.neoforge.event.entity.player.ItemTooltipEvent;
 import net.neoforged.neoforge.event.OnDatapackSyncEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import org.lab_11.modsunified.impl.cookingforblockheads.BridgeKeys;
-import org.lab_11.modsunified.impl.OptionalModApis;
 import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotBridgeTarget;
 import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotBridgeCatalog;
 import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotContainerTooltipBridge;
@@ -26,8 +25,13 @@ import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotKitchenHandler
 import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotProcessorCapability;
 import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotRecipeIndexer;
 import org.lab_11.modsunified.impl.cookingforblockheads.DungeonsDelightCupRecipeMirror;
+import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
+import org.lab_11.modsunified.impl.platform.ModRuntimeBindings;
+import org.lab_11.modsunified.impl.platform.RuntimeBindings;
 import org.slf4j.Logger;
 
+import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -36,22 +40,17 @@ import java.util.Set;
 public final class Unifiled {
     public static final String MOD_ID = "lab_11_mods_unified";
     private static final Logger LOGGER = LogUtils.getLogger();
-
-    private static final String COOKING_FOR_BLOCKHEADS_API_CLASS = "net.blay09.mods.cookingforblockheads.api.CookingForBlockheadsAPI";
-    private static final String COOKING_FOR_BLOCKHEADS_HANDLER_CLASS = "net.blay09.mods.cookingforblockheads.api.KitchenRecipeHandler";
-    private static final String LOCAL_BALM_FALLBACK_PROVIDER_BRIDGE_CLASS = "org.lab_11.modsunified.impl.cookingforblockheads.BalmFallbackProviderBridge";
-    private static final String LOCAL_BALM_RECIPE_SYNC_BRIDGE_CLASS = "org.lab_11.modsunified.impl.cookingforblockheads.BalmRecipeSyncBridge";
-    private static final String LOCAL_DUNGEON_OVEN_COMPAT_CLASS = "org.lab_11.modsunified.impl.cookingforblockheads.DungeonOvenCompat";
+    private static final ModRuntimeBindings RUNTIME = RuntimeBindings.active();
 
     private List<CookingPotBridgeTarget> activeCookingPotTargets = List.of();
 
     public Unifiled(IEventBus modEventBus) {
-        if (!isCookingForBlockheadsLoaded()) {
-            LOGGER.info("Cooking for Blockheads integration is inactive: the mod or a supported API shape is unavailable.");
-            return;
-        }
-
-        registerDungeonOvenCompat(modEventBus);
+        LOGGER.info("Bootstrapping runtime profile {} (loader={}, minecraft={}, loaderVersion={}).",
+                RUNTIME.profile().id(),
+                RUNTIME.profile().loader(),
+                RUNTIME.profile().minecraftVersion(),
+                RUNTIME.profile().loaderVersion());
+        registerCompatBlocks(modEventBus);
         modEventBus.addListener(this::onCommonSetup);
         modEventBus.addListener(this::onRegisterCapabilities);
         NeoForge.EVENT_BUS.addListener(this::onServerStarted);
@@ -63,18 +62,17 @@ public final class Unifiled {
         }
     }
 
-    private void registerDungeonOvenCompat(final IEventBus modEventBus) {
-        if (!ModList.get().isLoaded(BridgeKeys.MOD_COOKING_FOR_BLOCKHEADS)
-                || !ModList.get().isLoaded(BridgeKeys.MOD_DUNGEONS_DELIGHT)) {
+    private void registerCompatBlocks(final IEventBus modEventBus) {
+        if (!ModList.get().isLoaded(BridgeKeys.MOD_COOKING_FOR_BLOCKHEADS)) {
             return;
         }
 
         try {
-            final Class<?> compatClass = Class.forName(LOCAL_DUNGEON_OVEN_COMPAT_CLASS);
+            final Class<?> compatClass = Class.forName(RUNTIME.dungeonOvenCompatClassName());
             compatClass.getMethod("register", IEventBus.class).invoke(null, modEventBus);
-            LOGGER.info("Registered LAB-11 mods-unified dungeon oven compatibility.");
+            LOGGER.info("Registered LAB-11 mods-unified CFBH compat blocks.");
         } catch (ReflectiveOperationException e) {
-            LOGGER.error("Failed to register LAB-11 mods-unified dungeon oven compatibility.", e);
+            LOGGER.error("Failed to register LAB-11 mods-unified CFBH compat blocks.", e);
         }
     }
 
@@ -83,14 +81,8 @@ public final class Unifiled {
             return;
         }
 
-        refreshActiveCookingPotTargets();
-        if (activeCookingPotTargets.isEmpty()) {
-            return;
-        }
-
         CookingPotProcessorCapability.register(event, activeCookingPotTargets);
-        LOGGER.info("Registered LAB-11 mods-unified KitchenItemProcessor capabilities for {}.",
-                CookingPotBridgeCatalog.describeTargets(activeCookingPotTargets));
+        LOGGER.info("Registered LAB-11 mods-unified KitchenItemProcessor capability hook.");
     }
 
     private void onCommonSetup(final FMLCommonSetupEvent event) {
@@ -109,37 +101,77 @@ public final class Unifiled {
             return;
         }
 
-        try {
-            final Class<?> apiClass = Class.forName(COOKING_FOR_BLOCKHEADS_API_CLASS);
-            final Class<?> handlerClass = Class.forName(COOKING_FOR_BLOCKHEADS_HANDLER_CLASS);
-            final Object handler = new CookingPotKitchenHandler();
-            final var registerKitchenRecipeHandler =
-                    apiClass.getMethod("registerKitchenRecipeHandler", Class.class, handlerClass);
+        registerKitchenRecipeHandlersIfSupported();
+        registerKitchenProcessorFallbackProvider();
+        registerBalmRecipeSyncListeners();
+    }
 
+    private void registerKitchenRecipeHandlersIfSupported() {
+        final Class<?> apiClass;
+        try {
+            apiClass = Class.forName(RUNTIME.cfbhApiClassName());
+        } catch (ClassNotFoundException ignored) {
+            LOGGER.info(
+                    "Skipping KitchenRecipeHandler registration because '{}' is unavailable on this runtime.",
+                    RUNTIME.cfbhApiClassName()
+            );
+            return;
+        }
+
+        final Object handler = CookingPotKitchenHandler.createRuntimeHandlerProxy();
+        if (handler == null) {
+            LOGGER.info("Skipping KitchenRecipeHandler registration because runtime handler interface is unavailable.");
+            return;
+        }
+
+        final Method registerKitchenRecipeHandler = resolveKitchenRecipeHandlerMethod(apiClass, handler.getClass());
+        if (registerKitchenRecipeHandler == null) {
+            LOGGER.info("Skipping KitchenRecipeHandler registration because no compatible API method exists on {}.",
+                    apiClass.getName());
+            return;
+        }
+
+        try {
+            final Set<Class<?>> registeredRecipeClasses = new HashSet<>();
+            registeredRecipeClasses.add(CookingPotIndexedRecipe.class);
             registerKitchenRecipeHandler.invoke(null, CookingPotIndexedRecipe.class, handler);
 
-            final Set<Class<?>> registeredRecipeClasses = new HashSet<>();
             for (final CookingPotBridgeTarget target : activeCookingPotTargets) {
                 final Class<?> recipeClass = target.resolveRecipeClass().orElse(null);
                 if (recipeClass == null || !registeredRecipeClasses.add(recipeClass)) {
                     continue;
                 }
-
                 registerKitchenRecipeHandler.invoke(null, recipeClass, handler);
             }
+
             LOGGER.info("Registered LAB-11 mods-unified Cooking for Blockheads bridge for {}.",
                     CookingPotBridgeCatalog.describeTargets(activeCookingPotTargets));
-
-            registerKitchenProcessorFallbackProvider();
-            registerBalmRecipeSyncListeners();
         } catch (ReflectiveOperationException e) {
-            LOGGER.error("Failed to register LAB-11 mods-unified cooking-pot bridge.", e);
+            LOGGER.error("Failed to register LAB-11 mods-unified cooking-pot bridge recipe handlers.", e);
         }
+    }
+
+    private static Method resolveKitchenRecipeHandlerMethod(final Class<?> apiClass, final Class<?> handlerProxyClass) {
+        for (final Method method : apiClass.getMethods()) {
+            if (!method.getName().equals("registerKitchenRecipeHandler")) {
+                continue;
+            }
+
+            final Class<?>[] parameterTypes = method.getParameterTypes();
+            if (parameterTypes.length != 2 || parameterTypes[0] != Class.class) {
+                continue;
+            }
+            if (!parameterTypes[1].isAssignableFrom(handlerProxyClass)) {
+                continue;
+            }
+            return method;
+        }
+        return null;
     }
 
     private void registerKitchenProcessorFallbackProvider() {
         try {
-            final Class<?> bridgeClass = Class.forName(LOCAL_BALM_FALLBACK_PROVIDER_BRIDGE_CLASS);
+            final Class<?> bridgeClass = Class.forName(RUNTIME.fallbackProviderBridgeClassName());
             final Object result = bridgeClass
                     .getMethod("registerFallbackKitchenProcessorProvider", List.class)
                     .invoke(null, activeCookingPotTargets);
@@ -156,7 +188,7 @@ public final class Unifiled {
 
     private void registerBalmRecipeSyncListeners() {
         try {
-            final Class<?> bridgeClass = Class.forName(LOCAL_BALM_RECIPE_SYNC_BRIDGE_CLASS);
+            final Class<?> bridgeClass = Class.forName(RUNTIME.recipeSyncBridgeClassName());
             bridgeClass.getMethod("registerListeners", List.class).invoke(null, activeCookingPotTargets);
             LOGGER.info("Registered LAB-11 mods-unified Balm recipe sync listeners for {}.",
                     CookingPotBridgeCatalog.describeTargets(activeCookingPotTargets));
@@ -214,6 +246,16 @@ public final class Unifiled {
 
         DungeonsDelightCupRecipeMirror.injectMirroredRecipes(recipeManager, registryAccess, source);
         CookingPotRecipeIndexer.injectRecipes(recipeManager, registryAccess, source, activeCookingPotTargets);
+        CookingPotRecipeIndexer.injectNonFoodCraftingRecipes(recipeManager, registryAccess, resolveNonFoodCraftingItems());
+    }
+
+    private static List<net.minecraft.resources.ResourceLocation> resolveNonFoodCraftingItems() {
+        final List<net.minecraft.resources.ResourceLocation> items = new ArrayList<>();
+        if (ModList.get().isLoaded(BridgeKeys.MOD_KALEIDOSCOPE_COOKERY)) {
+            items.add(MinecraftApiCompat.resourceLocation(BridgeKeys.MOD_KALEIDOSCOPE_COOKERY, "stuffed_dough_food"));
+            items.add(MinecraftApiCompat.resourceLocation(BridgeKeys.MOD_KALEIDOSCOPE_COOKERY, "raw_dough"));
+        }
+        return items;
     }
 
     private void refreshActiveCookingPotTargets() {
@@ -221,7 +263,6 @@ public final class Unifiled {
     }
 
     private static boolean isCookingForBlockheadsLoaded() {
-        return ModList.get().isLoaded(BridgeKeys.MOD_COOKING_FOR_BLOCKHEADS)
-                && OptionalModApis.supportsCookingForBlockheads();
+        return ModList.get().isLoaded(BridgeKeys.MOD_COOKING_FOR_BLOCKHEADS);
     }
 }

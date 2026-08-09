@@ -1,50 +1,85 @@
 package org.lab_11.modsunified.impl.cookingforblockheads;
 
-import net.blay09.mods.balm.api.Balm;
-import net.blay09.mods.balm.neoforge.provider.NeoForgeBalmProviders;
-import net.blay09.mods.cookingforblockheads.api.KitchenItemProvider;
-import net.blay09.mods.cookingforblockheads.api.KitchenItemProcessor;
+import com.mojang.logging.LogUtils;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import org.slf4j.Logger;
 
+import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Set;
+import java.util.function.BiFunction;
 
 public final class BalmFallbackProviderBridge {
+    private static final String BALM_CLASS = "net.blay09.mods.balm.api.Balm";
+    private static final String REGISTER_FALLBACK_BLOCK_PROVIDER_METHOD = "registerFallbackBlockProvider";
+    private static final Logger LOGGER = LogUtils.getLogger();
+
     private BalmFallbackProviderBridge() {
     }
 
     public static boolean registerFallbackKitchenProcessorProvider(final List<CookingPotBridgeTarget> targets) {
-        final var providers = Balm.getProviders();
-        if (!(providers instanceof NeoForgeBalmProviders neoForgeProviders)) {
+        final Class<?> kitchenItemProcessorClass = CfbhRuntime.kitchenItemProcessorClass();
+        final Class<?> kitchenItemProviderClass = CfbhRuntime.kitchenItemProviderClass();
+        if (kitchenItemProcessorClass == null || kitchenItemProviderClass == null) {
             return false;
         }
 
-        neoForgeProviders.registerFallbackBlockProvider(
-                KitchenItemProcessor.class,
-                (blockEntity, direction) -> createProcessorForTarget(blockEntity, targets)
-        );
+        try {
+            final Class<?> balmClass = Class.forName(BALM_CLASS);
+            final Object providers = balmClass.getMethod("getProviders").invoke(null);
+            final Method registerFallbackProvider = providers.getClass().getMethod(
+                    REGISTER_FALLBACK_BLOCK_PROVIDER_METHOD,
+                    Class.class,
+                    BiFunction.class
+            );
 
-        neoForgeProviders.registerFallbackBlockProvider(
-                KitchenItemProvider.class,
-                (blockEntity, direction) -> {
-                    if (DungeonOvenCompat.isDungeonOvenBlockEntity(blockEntity)) {
-                        return new CookingPotActivationMarkerProvider(
-                                blockEntity,
-                                BridgeKeys.MARKER_DUNGEON_OVEN,
-                                false
-                        );
+            registerFallbackProvider.invoke(
+                    providers,
+                    kitchenItemProcessorClass,
+                    (BiFunction<BlockEntity, Object, Object>) (blockEntity, direction) ->
+                            createProcessorForTarget(blockEntity, targets)
+            );
+
+            registerFallbackProvider.invoke(
+                    providers,
+                    kitchenItemProviderClass,
+                    (BiFunction<BlockEntity, Object, Object>) (blockEntity, direction) -> {
+                        try {
+                            if (CustomizeBlocks.isDungeonOvenBlockEntity(blockEntity)) {
+                                return new CookingPotActivationMarkerProvider(
+                                        blockEntity,
+                                        BridgeKeys.MARKER_DUNGEON_OVEN,
+                                        false
+                                ).asKitchenItemProvider();
+                            }
+                            if (CustomizeBlocks.isLavaSinkBlockEntity(blockEntity)) {
+                                return new CookingPotActivationMarkerProvider(
+                                        blockEntity,
+                                        BridgeKeys.MARKER_LAVA_SINK,
+                                        false
+                                ).asKitchenItemProvider();
+                            }
+
+                            return resolveTargetForBlockEntity(blockEntity, targets)
+                                    .map(target -> new CookingPotActivationMarkerProvider(
+                                            blockEntity,
+                                            target.targetKey()
+                                    ).asKitchenItemProvider())
+                                    .orElse(null);
+                        } catch (RuntimeException e) {
+                            LOGGER.warn("Failed to create runtime KitchenItemProvider marker proxy.", e);
+                            return null;
+                        }
                     }
-
-                    return resolveTargetForBlockEntity(blockEntity, targets)
-                            .map(target -> new CookingPotActivationMarkerProvider(blockEntity, target.targetKey()))
-                            .orElse(null);
-                }
-        );
-        return true;
+            );
+            return true;
+        } catch (ReflectiveOperationException ignored) {
+            return false;
+        }
     }
 
-    private static KitchenItemProcessor createProcessorForTarget(final BlockEntity blockEntity,
-                                                                 final List<CookingPotBridgeTarget> targets) {
+    private static Object createProcessorForTarget(final BlockEntity blockEntity,
+                                                   final List<CookingPotBridgeTarget> targets) {
         for (final CookingPotBridgeTarget target : targets) {
             if (!target.matchesBlockEntity(blockEntity)) {
                 continue;

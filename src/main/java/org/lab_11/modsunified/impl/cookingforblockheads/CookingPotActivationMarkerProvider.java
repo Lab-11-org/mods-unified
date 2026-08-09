@@ -1,19 +1,18 @@
 package org.lab_11.modsunified.impl.cookingforblockheads;
 
-import net.blay09.mods.cookingforblockheads.api.CacheHint;
-import net.blay09.mods.cookingforblockheads.api.IngredientToken;
-import net.blay09.mods.cookingforblockheads.api.KitchenItemProvider;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
 
 import java.util.Collection;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-public final class CookingPotActivationMarkerProvider implements KitchenItemProvider {
+public final class CookingPotActivationMarkerProvider implements CfbhRuntime.KitchenItemProviderView,
+        MarkerProviderView {
+
     private static final Map<String, MarkerEntry> MARKERS_BY_KEY = new ConcurrentHashMap<>();
 
     private final BlockEntity blockEntity;
@@ -36,18 +35,30 @@ public final class CookingPotActivationMarkerProvider implements KitchenItemProv
         return markerForKey(markerKey).ingredient;
     }
 
+    public Object asKitchenItemProvider() {
+        return CfbhRuntime.newKitchenItemProviderProxy(this, MarkerProviderView.class);
+    }
+
+    @Override
     public boolean isMarkerKey(final String markerKey) {
         return this.markerKey.equals(markerKey);
     }
 
-    boolean isActiveForCurrentTableMarker() {
+    @Override
+    public boolean isActiveForCurrentTableMarker() {
         return isActiveForCurrentTable();
     }
 
     @Override
-    public IngredientToken findIngredient(final Ingredient ingredient,
-                                          final Collection<IngredientToken> ingredientTokens,
-                                          final CacheHint cacheHint) {
+    public boolean isTargetPotConnectedForCurrentTableMarker() {
+        if (!isPotTargetMarker(markerKey)) {
+            return false;
+        }
+        return CookingPotHeatBridge.isTargetPotConnectedForCookingTable(blockEntity, markerKey);
+    }
+
+    @Override
+    public Object findByIngredient(final Ingredient ingredient, final Collection<?> allocatedTokens) {
         final MarkerEntry marker = markerForKey(markerKey);
         if (!isActiveForCurrentTable() || !ingredient.test(marker.stack)) {
             return null;
@@ -57,20 +68,13 @@ public final class CookingPotActivationMarkerProvider implements KitchenItemProv
     }
 
     @Override
-    public IngredientToken findIngredient(final ItemStack itemStack,
-                                          final Collection<IngredientToken> ingredientTokens,
-                                          final CacheHint cacheHint) {
+    public Object findByItem(final ItemStack itemStack, final Collection<?> allocatedTokens) {
         final MarkerEntry marker = markerForKey(markerKey);
-        if (!isActiveForCurrentTable() || !ItemStack.isSameItemSameComponents(marker.stack, itemStack)) {
+        if (!isActiveForCurrentTable() || !MinecraftApiCompat.isSameItemSameData(marker.stack, itemStack)) {
             return null;
         }
 
         return marker.token;
-    }
-
-    @Override
-    public CacheHint getCacheHint(final IngredientToken ingredientToken) {
-        return CacheHint.NONE;
     }
 
     private boolean isActiveForCurrentTable() {
@@ -90,7 +94,9 @@ public final class CookingPotActivationMarkerProvider implements KitchenItemProv
     private static boolean isPotTargetMarker(final String markerKey) {
         return BridgeKeys.TARGET_FARMERS_DELIGHT_COOKING_POT.equals(markerKey)
                 || BridgeKeys.TARGET_DUNGEONS_DELIGHT_MONSTER_POT.equals(markerKey)
-                || BridgeKeys.TARGET_MINERS_DELIGHT_COPPER_POT.equals(markerKey);
+                || BridgeKeys.TARGET_MINERS_DELIGHT_COPPER_POT.equals(markerKey)
+                || BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_POT.equals(markerKey)
+                || BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_STOCKPOT.equals(markerKey);
     }
 
     private static MarkerEntry markerForKey(final String markerKey) {
@@ -99,13 +105,14 @@ public final class CookingPotActivationMarkerProvider implements KitchenItemProv
 
     private static MarkerEntry createMarkerEntry(final String markerKey) {
         final ItemStack markerStack = createMarkerStack(markerKey);
-        return new MarkerEntry(markerStack, Ingredient.of(markerStack), new MarkerToken(markerStack));
+        final Object token = CfbhRuntime.newIngredientTokenProxy(new MarkerToken(markerStack));
+        return new MarkerEntry(markerStack, Ingredient.of(markerStack), token);
     }
 
     private static ItemStack createMarkerStack(final String markerKey) {
         final ItemStack markerStack = new ItemStack(BridgeMarkerRegistry.markerItemFor(markerKey));
-        markerStack.set(
-                DataComponents.CUSTOM_NAME,
+        MinecraftApiCompat.setCustomName(
+                markerStack,
                 Component.translatable(markerTranslationKey(markerKey))
         );
         return markerStack;
@@ -115,10 +122,10 @@ public final class CookingPotActivationMarkerProvider implements KitchenItemProv
         return "lab_11_mods_unified.marker." + markerKey;
     }
 
-    private record MarkerEntry(ItemStack stack, Ingredient ingredient, IngredientToken token) {
+    private record MarkerEntry(ItemStack stack, Ingredient ingredient, Object token) {
     }
 
-    private static final class MarkerToken implements IngredientToken {
+    private static final class MarkerToken implements CfbhRuntime.IngredientTokenView {
         private final ItemStack markerStack;
 
         private MarkerToken(final ItemStack markerStack) {

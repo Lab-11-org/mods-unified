@@ -1,0 +1,29 @@
+{
+  "parent": "lab_11_mods_unified:lava_sink_place",
+  "display": {
+    "icon": {
+      "id": "minecraft:lava_bucket",
+      "count": 1
+    },
+    "title": {
+      "translate": "advancement.lab_11_mods_unified.lava_sink_bare_hand.title"
+    },
+    "description": {
+      "translate": "advancement.lab_11_mods_unified.lava_sink_bare_hand.description"
+    },
+    "frame": "challenge",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "bare_hand": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "requirements": [
+    [
+      "bare_hand"
+    ]
+  ]
+}

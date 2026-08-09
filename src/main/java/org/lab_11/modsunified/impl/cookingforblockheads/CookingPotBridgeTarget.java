@@ -1,16 +1,18 @@
 package org.lab_11.modsunified.impl.cookingforblockheads;
 
-import net.minecraft.world.item.crafting.RecipeHolder;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
-import net.neoforged.fml.ModList;
+import org.lab_11.modsunified.impl.platform.LoaderApiCompat;
+import org.lab_11.modsunified.impl.platform.RecipeRuntimeCompat;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Supplier;
+import java.util.ArrayList;
 
 public final class CookingPotBridgeTarget {
     private final String targetKey;
@@ -22,6 +24,9 @@ public final class CookingPotBridgeTarget {
     private final String blockEntityClassName;
     private final String blockEntityTypeOwnerClassName;
     private final String blockEntityTypeFieldName;
+    private final List<String> allowedRecipeNamespaces;
+    private final List<String> allowedRecipeIdPrefixes;
+    private final List<String> deniedRecipeNamespaces;
     private final List<String> deniedRecipeIdPrefixes;
     private final List<String> requiredMarkerKeys;
 
@@ -30,17 +35,20 @@ public final class CookingPotBridgeTarget {
     private volatile Optional<Class<? extends BlockEntity>> cachedBlockEntityClass;
     private volatile Optional<BlockEntityType<?>> cachedBlockEntityType;
 
-    CookingPotBridgeTarget(final String targetKey,
-                           final String displayName,
-                           final List<String> requiredModIds,
-                           final String recipeClassName,
-                           final String recipeTypeOwnerClassName,
-                           final String recipeTypeFieldName,
-                           final String blockEntityClassName,
-                           final String blockEntityTypeOwnerClassName,
-                           final String blockEntityTypeFieldName,
-                           final List<String> deniedRecipeIdPrefixes,
-                           final List<String> requiredMarkerKeys) {
+    public CookingPotBridgeTarget(final String targetKey,
+                                  final String displayName,
+                                  final List<String> requiredModIds,
+                                  final String recipeClassName,
+                                  final String recipeTypeOwnerClassName,
+                                  final String recipeTypeFieldName,
+                                  final String blockEntityClassName,
+                                  final String blockEntityTypeOwnerClassName,
+                                  final String blockEntityTypeFieldName,
+                                  final List<String> allowedRecipeNamespaces,
+                                  final List<String> allowedRecipeIdPrefixes,
+                                  final List<String> deniedRecipeNamespaces,
+                                  final List<String> deniedRecipeIdPrefixes,
+                                  final List<String> requiredMarkerKeys) {
         this.targetKey = targetKey;
         this.displayName = displayName;
         this.requiredModIds = List.copyOf(requiredModIds);
@@ -50,8 +58,76 @@ public final class CookingPotBridgeTarget {
         this.blockEntityClassName = blockEntityClassName;
         this.blockEntityTypeOwnerClassName = blockEntityTypeOwnerClassName;
         this.blockEntityTypeFieldName = blockEntityTypeFieldName;
+        this.allowedRecipeNamespaces = List.copyOf(allowedRecipeNamespaces);
+        this.allowedRecipeIdPrefixes = List.copyOf(allowedRecipeIdPrefixes);
+        this.deniedRecipeNamespaces = List.copyOf(deniedRecipeNamespaces);
         this.deniedRecipeIdPrefixes = List.copyOf(deniedRecipeIdPrefixes);
         this.requiredMarkerKeys = List.copyOf(requiredMarkerKeys);
+    }
+
+    public CookingPotBridgeTarget(final String targetKey,
+                                  final String displayName,
+                                  final List<String> requiredModIds,
+                                  final String recipeClassName,
+                                  final String recipeTypeOwnerClassName,
+                                  final String recipeTypeFieldName,
+                                  final String blockEntityClassName,
+                                  final String blockEntityTypeOwnerClassName,
+                                  final String blockEntityTypeFieldName) {
+        this(
+                targetKey,
+                displayName,
+                requiredModIds,
+                recipeClassName,
+                recipeTypeOwnerClassName,
+                recipeTypeFieldName,
+                blockEntityClassName,
+                blockEntityTypeOwnerClassName,
+                blockEntityTypeFieldName,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of()
+        );
+    }
+
+    public CookingPotBridgeTarget withRequiredMarkerKeys(final List<String> requiredMarkerKeys) {
+        return new CookingPotBridgeTarget(
+                targetKey,
+                displayName,
+                requiredModIds,
+                recipeClassName,
+                recipeTypeOwnerClassName,
+                recipeTypeFieldName,
+                blockEntityClassName,
+                blockEntityTypeOwnerClassName,
+                blockEntityTypeFieldName,
+                allowedRecipeNamespaces,
+                allowedRecipeIdPrefixes,
+                deniedRecipeNamespaces,
+                deniedRecipeIdPrefixes,
+                requiredMarkerKeys
+        );
+    }
+
+    public CookingPotBridgeTarget withDeniedRecipeIdPrefixes(final List<String> deniedRecipeIdPrefixes) {
+        return new CookingPotBridgeTarget(
+                targetKey,
+                displayName,
+                requiredModIds,
+                recipeClassName,
+                recipeTypeOwnerClassName,
+                recipeTypeFieldName,
+                blockEntityClassName,
+                blockEntityTypeOwnerClassName,
+                blockEntityTypeFieldName,
+                allowedRecipeNamespaces,
+                allowedRecipeIdPrefixes,
+                deniedRecipeNamespaces,
+                deniedRecipeIdPrefixes,
+                requiredMarkerKeys
+        );
     }
 
     public String targetKey() {
@@ -62,12 +138,31 @@ public final class CookingPotBridgeTarget {
         return displayName;
     }
 
+    public List<String> requiredModIds() {
+        return requiredModIds;
+    }
+
+    public List<String> missingRequiredModIds() {
+        final List<String> missing = new ArrayList<>();
+        for (final String modId : requiredModIds) {
+            if (!LoaderApiCompat.isModLoaded(modId)) {
+                missing.add(modId);
+            }
+        }
+        return List.copyOf(missing);
+    }
+
     public List<String> requiredMarkerKeys() {
         return requiredMarkerKeys;
     }
 
     public boolean isModSetLoaded() {
-        return requiredModIds.stream().allMatch(modId -> ModList.get().isLoaded(modId));
+        for (final String modId : requiredModIds) {
+            if (!LoaderApiCompat.isModLoaded(modId)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public Optional<Class<?>> resolveRecipeClass() {
@@ -155,17 +250,47 @@ public final class CookingPotBridgeTarget {
         return blockEntityClass.filter(aClass -> aClass.isInstance(blockEntity)).isPresent();
     }
 
-    public boolean acceptsRecipe(final RecipeHolder<?> recipeHolder) {
-        final Class<?> recipeClass = resolveRecipeClass().orElse(null);
-        if (recipeClass == null || !recipeClass.isInstance(recipeHolder.value())) {
+    public boolean acceptsRecipe(final Object recipeEntry) {
+        final var recipe = RecipeRuntimeCompat.recipeValue(recipeEntry);
+        if (recipe == null) {
             return false;
         }
 
-        return !startsWithAny(recipeHolder.id().toString(), deniedRecipeIdPrefixes);
+        final Class<?> recipeClass = resolveRecipeClass().orElse(null);
+        if (recipeClass == null || !recipeClass.isInstance(recipe)) {
+            return false;
+        }
+
+        final ResourceLocation recipeId = RecipeRuntimeCompat.recipeId(recipeEntry);
+        if (recipeId == null) {
+            return false;
+        }
+        final String recipeNamespace = recipeId.getNamespace();
+        final String fullRecipeId = recipeId.toString();
+
+        final boolean hasAllowFilter = !allowedRecipeNamespaces.isEmpty() || !allowedRecipeIdPrefixes.isEmpty();
+        if (hasAllowFilter) {
+            final boolean allowByNamespace = allowedRecipeNamespaces.contains(recipeNamespace);
+            final boolean allowByIdPrefix = startsWithAny(fullRecipeId, allowedRecipeIdPrefixes);
+            if (!allowByNamespace && !allowByIdPrefix) {
+                return false;
+            }
+        }
+
+        if (deniedRecipeNamespaces.contains(recipeNamespace)) {
+            return false;
+        }
+
+        return !startsWithAny(fullRecipeId, deniedRecipeIdPrefixes);
     }
 
     private static boolean startsWithAny(final String value, final List<String> prefixes) {
-        return prefixes.stream().anyMatch(value::startsWith);
+        for (final String prefix : prefixes) {
+            if (value.startsWith(prefix)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static Object resolveHolderValue(final String ownerClassName, final String fieldName) {
@@ -184,15 +309,50 @@ public final class CookingPotBridgeTarget {
             return null;
         }
 
+        final Boolean present = queryPresence(holder);
+        if (Boolean.FALSE.equals(present)) {
+            return null;
+        }
+
         if (holder instanceof Supplier<?> supplier) {
-            return supplier.get();
+            try {
+                return supplier.get();
+            } catch (RuntimeException ignored) {
+                return null;
+            }
         }
 
         try {
             final Method getMethod = holder.getClass().getMethod("get");
             return getMethod.invoke(holder);
         } catch (ReflectiveOperationException ignored) {
+            // Some holders are direct values and do not expose a get() API.
             return holder;
+        } catch (RuntimeException ignored) {
+            return null;
         }
+    }
+
+    private static Boolean queryPresence(final Object holder) {
+        final Boolean byIsPresent = invokeBooleanMethod(holder, "isPresent");
+        if (byIsPresent != null) {
+            return byIsPresent;
+        }
+        return invokeBooleanMethod(holder, "isBound");
+    }
+
+    private static Boolean invokeBooleanMethod(final Object holder, final String methodName) {
+        try {
+            final Method method = holder.getClass().getMethod(methodName);
+            final Object value = method.invoke(holder);
+            if (value instanceof Boolean bool) {
+                return bool;
+            }
+        } catch (ReflectiveOperationException ignored) {
+            return null;
+        } catch (RuntimeException ignored) {
+            return null;
+        }
+        return null;
     }
 }
