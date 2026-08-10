@@ -1,0 +1,84 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+    paths:
+      - .github/workflows/release.yml
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to publish
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Resolve release tag
+        id: release
+        shell: bash
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            tag="$GITHUB_REF_NAME"
+          elif [[ -n "$INPUT_TAG" ]]; then
+            tag="$INPUT_TAG"
+          else
+            tag="v$(sed -n 's/^mod_version=//p' gradle.properties)"
+          fi
+          git rev-parse --verify "refs/tags/$tag"
+          git checkout --detach "$tag"
+          version="$(sed -n 's/^mod_version=//p' gradle.properties)"
+          [[ "$tag" == "v$version" ]]
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: temurin
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build release jars
+        env:
+          RELEASE_DIR: ${{ runner.temp }}/release
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          mkdir -p "$RELEASE_DIR"
+          ./gradlew clean build
+          cp "build/libs/lab_11_mods_unified-neoforge-1.21.1-$VERSION.jar" "$RELEASE_DIR/"
+          ./gradlew clean build -Ptarget_id=forge-1.20.1
+          cp "build/libs/lab_11_mods_unified-forge-1.20.1-$VERSION.jar" "$RELEASE_DIR/"
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          FORGE_JAR: ${{ runner.temp }}/release/lab_11_mods_unified-forge-1.20.1-${{ steps.release.outputs.version }}.jar
+          NEOFORGE_JAR: ${{ runner.temp }}/release/lab_11_mods_unified-neoforge-1.21.1-${{ steps.release.outputs.version }}.jar
+        run: |
+          test -f "$FORGE_JAR"
+          test -f "$NEOFORGE_JAR"
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "$FORGE_JAR" "$NEOFORGE_JAR"
+          else
+            gh release create "$RELEASE_TAG" "$FORGE_JAR" "$NEOFORGE_JAR" --verify-tag --generate-notes --title "$RELEASE_TAG"
+          fi
