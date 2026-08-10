@@ -55,12 +55,34 @@ public final class NeoForge121BridgeTargetProvider implements BridgeTargetProvid
                         "POT_BE"
                 ),
                 new CookingPotBridgeTarget(
+                        BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_POT,
+                        "KaleidoscopeCookery Flex Pot",
+                        List.of(BridgeKeys.MOD_KALEIDOSCOPE_COOKERY),
+                        "com.github.ysbbbbbb.kaleidoscopecookery.crafting.recipe.FlexPotRecipe",
+                        "com.github.ysbbbbbb.kaleidoscopecookery.init.ModRecipes",
+                        "FLEX_POT_RECIPE",
+                        "com.github.ysbbbbbb.kaleidoscopecookery.blockentity.kitchen.PotBlockEntity",
+                        "com.github.ysbbbbbb.kaleidoscopecookery.init.ModBlocks",
+                        "POT_BE"
+                ),
+                new CookingPotBridgeTarget(
                         BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_STOCKPOT,
                         "KaleidoscopeCookery Stockpot",
                         List.of(BridgeKeys.MOD_KALEIDOSCOPE_COOKERY),
                         "com.github.ysbbbbbb.kaleidoscopecookery.crafting.recipe.StockpotRecipe",
                         "com.github.ysbbbbbb.kaleidoscopecookery.init.ModRecipes",
                         "STOCKPOT_RECIPE",
+                        "com.github.ysbbbbbb.kaleidoscopecookery.blockentity.kitchen.StockpotBlockEntity",
+                        "com.github.ysbbbbbb.kaleidoscopecookery.init.ModBlocks",
+                        "STOCKPOT_BE"
+                ),
+                new CookingPotBridgeTarget(
+                        BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_STOCKPOT,
+                        "KaleidoscopeCookery Flex Stockpot",
+                        List.of(BridgeKeys.MOD_KALEIDOSCOPE_COOKERY),
+                        "com.github.ysbbbbbb.kaleidoscopecookery.crafting.recipe.FlexStockpotRecipe",
+                        "com.github.ysbbbbbb.kaleidoscopecookery.init.ModRecipes",
+                        "FLEX_STOCKPOT_RECIPE",
                         "com.github.ysbbbbbb.kaleidoscopecookery.blockentity.kitchen.StockpotBlockEntity",
                         "com.github.ysbbbbbb.kaleidoscopecookery.init.ModBlocks",
                         "STOCKPOT_BE"

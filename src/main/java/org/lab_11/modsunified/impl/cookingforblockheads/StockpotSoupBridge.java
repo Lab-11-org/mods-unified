@@ -10,6 +10,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
 
 import java.util.List;
+import java.lang.reflect.Method;
 
 final class StockpotSoupBridge {
     private static final String CFBH_SINK_PROVIDER_CLASS = "net.blay09.mods.cookingforblockheads.block.entity.SinkBlockEntity$SinkItemProvider";
@@ -165,6 +166,10 @@ final class StockpotSoupBridge {
     }
 
     static ItemStack soupBaseBucketStack(final ResourceLocation soupBaseId) {
+        final ItemStack registeredStack = registeredSoupBaseDisplayStack(soupBaseId);
+        if (!registeredStack.isEmpty()) {
+            return registeredStack;
+        }
         if (isWaterSoupBase(soupBaseId)) {
             return new ItemStack(Items.WATER_BUCKET);
         }
@@ -177,6 +182,26 @@ final class StockpotSoupBridge {
         }
         final Item item = BuiltInRegistries.ITEM.getOptional(soupBaseId).orElse(null);
         return item == null ? ItemStack.EMPTY : new ItemStack(item);
+    }
+
+    private static ItemStack registeredSoupBaseDisplayStack(final ResourceLocation soupBaseId) {
+        if (soupBaseId == null) {
+            return ItemStack.EMPTY;
+        }
+        try {
+            final Class<?> managerClass = Class.forName(
+                    "com.github.ysbbbbbb.kaleidoscopecookery.crafting.soupbase.SoupBaseManager");
+            final Object soupBase = managerClass.getMethod("getSoupBase", ResourceLocation.class)
+                    .invoke(null, soupBaseId);
+            if (soupBase == null) {
+                return ItemStack.EMPTY;
+            }
+            final Method displayStackMethod = soupBase.getClass().getMethod("getDisplayStack");
+            final Object value = displayStackMethod.invoke(soupBase);
+            return value instanceof ItemStack stack ? stack.copy() : ItemStack.EMPTY;
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            return ItemStack.EMPTY;
+        }
     }
 
     static ItemStack fishSoupBaseIngredientStack(final ResourceLocation soupBaseId) {

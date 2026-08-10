@@ -50,6 +50,7 @@ public final class BalmRecipeSyncBridge {
 
             final RecipeManager recipeManager = server.getRecipeManager();
             final RegistryAccess registryAccess = server.registryAccess();
+            DungeonsDelightCupRecipeMirror.injectMirroredRecipes(recipeManager, registryAccess, source);
             CookingPotRecipeIndexer.injectRecipes(recipeManager, registryAccess, source, targets);
         } catch (ReflectiveOperationException ignored) {
             // no-op

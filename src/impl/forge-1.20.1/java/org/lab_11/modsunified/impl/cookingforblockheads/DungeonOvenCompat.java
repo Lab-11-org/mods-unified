@@ -13,7 +13,14 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
+import net.minecraft.world.level.storage.loot.LootPool;
+import net.minecraft.world.level.storage.loot.LootTable;
+import net.minecraft.world.level.storage.loot.entries.LootItem;
+import net.minecraft.world.level.storage.loot.predicates.ExplosionCondition;
+import net.minecraft.world.level.storage.loot.providers.number.ConstantValue;
+import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.BuildCreativeModeTabContentsEvent;
+import net.minecraftforge.event.LootTableLoadEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.minecraftforge.fml.loading.FMLEnvironment;
@@ -28,8 +35,9 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Array;
 import java.lang.reflect.Constructor;
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 public final class DungeonOvenCompat {
@@ -49,86 +57,52 @@ public final class DungeonOvenCompat {
     private static final String CFBH_OVEN_DEFERRED_FIELD = "oven";
     private static final String[] CFBH_OVENS_FIELD_CANDIDATES = {"ovens", "dyedOvens"};
     private static final String BLOCK_ENTITY_VALID_BLOCKS_FIELD = "validBlocks";
-    private static final String CFBH_OVEN_BLOCK_CLASS = "net.blay09.mods.cookingforblockheads.block.OvenBlock";
+    private static final String CFBH_DYED_OVEN_BLOCK_CLASS =
+            "net.blay09.mods.cookingforblockheads.block.DyedOvenBlock";
     private static final String BALM_CLASS = "net.blay09.mods.balm.api.Balm";
     private static final String LOCAL_CLIENT_HOOKS_CLASS =
             "org.lab_11.modsunified.impl.cookingforblockheads.client.DungeonOvenClientHooks";
 
     private static final DeferredRegister<Block> BLOCKS = DeferredRegister.create(ForgeRegistries.BLOCKS, Unifiled.MOD_ID);
     private static final DeferredRegister<Item> ITEMS = DeferredRegister.create(ForgeRegistries.ITEMS, Unifiled.MOD_ID);
-    private static final RegistryObject<Block> DUNGEON_OVEN = BLOCKS.register(
-            "dungeon_oven",
-            DungeonOvenCompat::createDungeonOvenBlock
-    );
-    private static final RegistryObject<Item> DUNGEON_OVEN_ITEM = ITEMS.register(
-            "dungeon_oven",
-            () -> new BlockItem(DUNGEON_OVEN.get(), resolveBalmItemProperties())
-    );
+    private static final List<RegistryObject<Block>> DUNGEON_OVEN_BLOCKS = new ArrayList<>();
+    private static final List<RegistryObject<Item>> DUNGEON_OVEN_ITEMS = new ArrayList<>();
+    static {
+        for (final DyeColor color : DyeColor.values()) {
+            final String id = color == DyeColor.BLACK
+                    ? "dungeon_oven"
+                    : color.getName() + "_dungeon_oven";
+            final RegistryObject<Block> block = BLOCKS.register(id, () -> createDungeonOvenBlock(color));
+            DUNGEON_OVEN_BLOCKS.add(block);
+            DUNGEON_OVEN_ITEMS.add(ITEMS.register(
+                    id,
+                    () -> new BlockItem(block.get(), resolveBalmItemProperties())
+            ));
+        }
+    }
 
     private static boolean registered;
 
     private DungeonOvenCompat() {
     }
 
-    private static Block createDungeonOvenBlock() {
+    private static Block createDungeonOvenBlock(final DyeColor color) {
         try {
-            final Class<?> ovenBlockClass = Class.forName(CFBH_OVEN_BLOCK_CLASS);
+            final Class<?> ovenBlockClass = Class.forName(CFBH_DYED_OVEN_BLOCK_CLASS);
             if (!Block.class.isAssignableFrom(ovenBlockClass)) {
-                LOGGER.warn("Unable to create dungeon oven block: CFBH oven block class is not a Block.");
+                LOGGER.warn("Unable to create dungeon oven block: CFBH dyed oven block class is not a Block.");
                 return fallbackBlock();
             }
 
-            // Forge 1.20.1 CFBH OvenBlock exposes a no-arg constructor.
-            try {
-                final Constructor<?> noArgConstructor = ovenBlockClass.getConstructor();
-                final Object created = noArgConstructor.newInstance();
-                if (created instanceof Block block) {
-                    return block;
-                }
-            } catch (ReflectiveOperationException ignored) {
-                // Fall through to legacy constructor signatures.
+            final Constructor<?> constructor = ovenBlockClass.getConstructor(DyeColor.class);
+            final Object created = constructor.newInstance(color);
+            if (created instanceof Block block) {
+                return block;
             }
-
-            try {
-                final Constructor<?> ctorWithProperties = ovenBlockClass.getConstructor(BlockBehaviour.Properties.class);
-                final Object created = ctorWithProperties.newInstance(resolveBalmBlockProperties());
-                if (created instanceof Block block) {
-                    return block;
-                }
-            } catch (ReflectiveOperationException ignored) {
-                // Fall through to legacy constructor signatures.
-            }
-
-            try {
-                final Constructor<?> ctorWithColorAndProperties =
-                        ovenBlockClass.getConstructor(DyeColor.class, BlockBehaviour.Properties.class);
-                final Object created = ctorWithColorAndProperties.newInstance(DyeColor.BLACK, resolveBalmBlockProperties());
-                if (created instanceof Block block) {
-                    return block;
-                }
-            } catch (ReflectiveOperationException ignored) {
-                // Fall through to final fallback.
-            }
-
-            LOGGER.warn("Unable to create dungeon oven block: no compatible OvenBlock constructor found.");
         } catch (ReflectiveOperationException e) {
-            LOGGER.error("Failed to create dungeon oven block using CFBH oven implementation.", e);
+            LOGGER.error("Failed to create {} dungeon oven block using CFBH dyed oven implementation.", color, e);
         }
         return fallbackBlock();
-    }
-
-    private static BlockBehaviour.Properties resolveBalmBlockProperties() {
-        try {
-            final Class<?> balmClass = Class.forName(BALM_CLASS);
-            final Object blocksApi = balmClass.getMethod("getBlocks").invoke(null);
-            final Object properties = blocksApi.getClass().getMethod("blockProperties").invoke(blocksApi);
-            if (properties instanceof BlockBehaviour.Properties blockProperties) {
-                return blockProperties;
-            }
-        } catch (ReflectiveOperationException ignored) {
-            // no-op
-        }
-        return BlockBehaviour.Properties.of();
     }
 
     private static Item.Properties resolveBalmItemProperties() {
@@ -158,9 +132,10 @@ public final class DungeonOvenCompat {
         ITEMS.register(modEventBus);
         modEventBus.addListener(DungeonOvenCompat::onCommonSetup);
         modEventBus.addListener(DungeonOvenCompat::onBuildCreativeModeTabContents);
+        MinecraftForge.EVENT_BUS.addListener(DungeonOvenCompat::onLootTableLoad);
         registerClientHooks(modEventBus);
         registered = true;
-        LOGGER.info("Registered dungeon oven block and item.");
+        LOGGER.info("Registered {} dungeon oven blocks and items.", DUNGEON_OVEN_BLOCKS.size());
     }
 
     public static boolean isDungeonOvenBlockEntity(final BlockEntity blockEntity) {
@@ -168,7 +143,10 @@ public final class DungeonOvenCompat {
             return false;
         }
 
-        return DUNGEON_OVEN_ID.equals(BuiltInRegistries.BLOCK.getKey(blockEntity.getBlockState().getBlock()));
+        final ResourceLocation blockId = BuiltInRegistries.BLOCK.getKey(blockEntity.getBlockState().getBlock());
+        return blockId != null
+                && Unifiled.MOD_ID.equals(blockId.getNamespace())
+                && ("dungeon_oven".equals(blockId.getPath()) || blockId.getPath().endsWith("_dungeon_oven"));
     }
 
     private static void onCommonSetup(final FMLCommonSetupEvent event) {
@@ -215,13 +193,12 @@ public final class DungeonOvenCompat {
             }
 
             final Set<Block> updatedBlocks = new HashSet<>((Set<Block>) existing);
-            final Block dungeonOvenBlock = DUNGEON_OVEN.get();
-            if (!updatedBlocks.add(dungeonOvenBlock)) {
+            if (!updatedBlocks.addAll(allDungeonOvenBlocks())) {
                 return;
             }
 
             validBlocksField.set(ovenBlockEntityType, Set.copyOf(updatedBlocks));
-            LOGGER.info("Attached dungeon oven block to CFBH oven block entity type.");
+            LOGGER.info("Attached dungeon oven blocks to CFBH oven block entity type.");
         } catch (ReflectiveOperationException e) {
             LOGGER.error("Failed to attach dungeon oven block to CFBH oven block entity type.", e);
         }
@@ -254,13 +231,14 @@ public final class DungeonOvenCompat {
     }
 
     private static void addDungeonOvenIfMissing(final BuildCreativeModeTabContentsEvent event) {
-        final ItemStack dungeonOvenStack = new ItemStack(DUNGEON_OVEN_ITEM.get());
-        if (creativeTabContainsStack(event, "getParentEntries", dungeonOvenStack)
-                || creativeTabContainsStack(event, "getSearchEntries", dungeonOvenStack)) {
-            return;
+        for (final RegistryObject<Item> item : DUNGEON_OVEN_ITEMS) {
+            final ItemStack dungeonOvenStack = new ItemStack(item.get());
+            if (creativeTabContainsStack(event, "getParentEntries", dungeonOvenStack)
+                    || creativeTabContainsStack(event, "getSearchEntries", dungeonOvenStack)) {
+                continue;
+            }
+            event.accept(dungeonOvenStack, CreativeModeTab.TabVisibility.PARENT_AND_SEARCH_TABS);
         }
-
-        event.accept(dungeonOvenStack, CreativeModeTab.TabVisibility.PARENT_AND_SEARCH_TABS);
     }
 
     @SuppressWarnings("unchecked")
@@ -299,28 +277,66 @@ public final class DungeonOvenCompat {
             }
 
             final Class<?> componentType = rawOvens.getClass().getComponentType();
-            final Block dungeonOvenBlock = DUNGEON_OVEN.get();
-            if (componentType == null || !componentType.isInstance(dungeonOvenBlock)) {
+            final List<Block> dungeonOvenBlocks = allDungeonOvenBlocks();
+            if (componentType == null || dungeonOvenBlocks.stream().anyMatch(block -> !componentType.isInstance(block))) {
                 LOGGER.warn("Unable to attach dungeon oven to CFBH oven category: dungeon oven type does not match oven array component.");
                 return;
             }
 
             final int length = Array.getLength(rawOvens);
-            for (int i = 0; i < length; i++) {
-                if (Array.get(rawOvens, i) == dungeonOvenBlock) {
-                    return;
+            final List<Block> missingBlocks = new ArrayList<>();
+            for (final Block dungeonOvenBlock : dungeonOvenBlocks) {
+                boolean present = false;
+                for (int i = 0; i < length; i++) {
+                    if (Array.get(rawOvens, i) == dungeonOvenBlock) {
+                        present = true;
+                        break;
+                    }
+                }
+                if (!present) {
+                    missingBlocks.add(dungeonOvenBlock);
                 }
             }
+            if (missingBlocks.isEmpty()) {
+                return;
+            }
 
-            final Object updated = Array.newInstance(componentType, length + 1);
+            final Object updated = Array.newInstance(componentType, length + missingBlocks.size());
             for (int i = 0; i < length; i++) {
                 Array.set(updated, i, Array.get(rawOvens, i));
             }
-            Array.set(updated, length, dungeonOvenBlock);
+            for (int i = 0; i < missingBlocks.size(); i++) {
+                Array.set(updated, length + i, missingBlocks.get(i));
+            }
             ovensField.set(null, updated);
-            LOGGER.info("Attached dungeon oven block to CFBH oven category.");
+            LOGGER.info("Attached dungeon oven blocks to CFBH oven category.");
         } catch (ReflectiveOperationException e) {
             LOGGER.error("Failed to attach dungeon oven block to CFBH oven category.", e);
+        }
+    }
+
+    private static List<Block> allDungeonOvenBlocks() {
+        final List<Block> blocks = new ArrayList<>(DUNGEON_OVEN_BLOCKS.size());
+        for (final RegistryObject<Block> block : DUNGEON_OVEN_BLOCKS) {
+            blocks.add(block.get());
+        }
+        return blocks;
+    }
+
+    private static void onLootTableLoad(final LootTableLoadEvent event) {
+        for (final RegistryObject<Item> item : DUNGEON_OVEN_ITEMS) {
+            final ResourceLocation itemId = item.getId();
+            if (itemId == null || !event.getName().equals(MinecraftApiCompat.resourceLocation(
+                    itemId.getNamespace(), "blocks/" + itemId.getPath()))) {
+                continue;
+            }
+            event.setTable(LootTable.lootTable()
+                    .withPool(LootPool.lootPool()
+                            .setRolls(ConstantValue.exactly(1))
+                            .when(ExplosionCondition.survivesExplosion())
+                            .add(LootItem.lootTableItem(item.get())))
+                    .build());
+            return;
         }
     }
 

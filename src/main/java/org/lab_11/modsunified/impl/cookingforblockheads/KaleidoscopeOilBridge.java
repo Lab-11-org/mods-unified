@@ -12,8 +12,8 @@ final class KaleidoscopeOilBridge {
     private static final String KALEIDOSCOPE_OIL_POT_HAS_OIL_METHOD = "hasOil";
     private static final String KALEIDOSCOPE_OIL_POT_SHRINK_METHOD = "shrinkOilCount";
 
-    private static volatile Class<?> cachedOilPotItemClass;
-    private static volatile boolean oilPotItemClassInitialized;
+    private static final Method HAS_OIL = resolveMethod(KALEIDOSCOPE_OIL_POT_HAS_OIL_METHOD);
+    private static final Method SHRINK_OIL_COUNT = resolveMethod(KALEIDOSCOPE_OIL_POT_SHRINK_METHOD);
 
     private KaleidoscopeOilBridge() {
     }
@@ -37,14 +37,12 @@ final class KaleidoscopeOilBridge {
             return false;
         }
 
-        final Class<?> oilPotItemClass = oilPotItemClass();
-        if (oilPotItemClass == null) {
+        if (HAS_OIL == null) {
             return true;
         }
 
         try {
-            final Method hasOilMethod = oilPotItemClass.getMethod(KALEIDOSCOPE_OIL_POT_HAS_OIL_METHOD, ItemStack.class);
-            final Object value = hasOilMethod.invoke(null, stack);
+            final Object value = HAS_OIL.invoke(null, stack);
             return value instanceof Boolean boolValue && boolValue;
         } catch (ReflectiveOperationException ignored) {
             return true;
@@ -61,14 +59,12 @@ final class KaleidoscopeOilBridge {
             return updated;
         }
 
-        final Class<?> oilPotItemClass = oilPotItemClass();
-        if (oilPotItemClass == null) {
+        if (SHRINK_OIL_COUNT == null) {
             return updated;
         }
 
         try {
-            final Method shrinkMethod = oilPotItemClass.getMethod(KALEIDOSCOPE_OIL_POT_SHRINK_METHOD, ItemStack.class);
-            shrinkMethod.invoke(null, updated);
+            SHRINK_OIL_COUNT.invoke(null, updated);
             return updated;
         } catch (ReflectiveOperationException ignored) {
             return updated;
@@ -82,19 +78,11 @@ final class KaleidoscopeOilBridge {
         return BuiltInRegistries.ITEM.getKey(stack.getItem());
     }
 
-    private static Class<?> oilPotItemClass() {
-        if (oilPotItemClassInitialized) {
-            return cachedOilPotItemClass;
-        }
-
-        Class<?> resolved = null;
+    private static Method resolveMethod(final String name) {
         try {
-            resolved = Class.forName(KALEIDOSCOPE_OIL_POT_ITEM_CLASS);
-        } catch (ClassNotFoundException ignored) {
-            // Optional dependency is absent.
+            return Class.forName(KALEIDOSCOPE_OIL_POT_ITEM_CLASS).getMethod(name, ItemStack.class);
+        } catch (ReflectiveOperationException ignored) {
+            return null;
         }
-        cachedOilPotItemClass = resolved;
-        oilPotItemClassInitialized = true;
-        return resolved;
     }
 }

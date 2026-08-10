@@ -19,8 +19,29 @@ public final class CookingPotContainerCost {
     static ItemStack resolveForIndexedRecipe(final Recipe<?> recipe,
                                              final RegistryAccess registryAccess,
                                              final String markerKey) {
+        if (BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_POT.equals(markerKey)
+                || BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_STOCKPOT.equals(markerKey)) {
+            final ItemStack carrier = resolveCarrier(recipe);
+            if (!carrier.isEmpty()) {
+                carrier.setCount(Math.max(1, recipe.getResultItem(registryAccess).getCount()));
+                return carrier;
+            }
+        }
         final boolean copperPotTarget = MinersDelightCupConversion.COPPER_POT_TARGET_KEY.equals(markerKey);
         return resolveInternal(recipe, registryAccess, copperPotTarget);
+    }
+
+    private static ItemStack resolveCarrier(final Recipe<?> recipe) {
+        try {
+            final Object value = recipe.getClass().getMethod("carrier").invoke(recipe);
+            if (value instanceof Ingredient ingredient) {
+                final ItemStack[] candidates = ingredient.getItems();
+                return candidates.length == 0 ? ItemStack.EMPTY : candidates[0].copyWithCount(1);
+            }
+        } catch (ReflectiveOperationException ignored) {
+            // Not a Kaleidoscope carrier recipe.
+        }
+        return ItemStack.EMPTY;
     }
 
     static ItemStack resolveForCraft(final Recipe<?> recipe,

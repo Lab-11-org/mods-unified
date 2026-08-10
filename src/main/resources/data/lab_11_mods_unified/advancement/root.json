@@ -1,4 +1,10 @@
 {
+  "neoforge:conditions": [
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "cookingforblockheads"
+    }
+  ],
   "display": {
     "icon": {
       "id": "lab_11_mods_unified:lava_sink",

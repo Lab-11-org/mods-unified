@@ -39,18 +39,38 @@ abstract class KitchenMenuMixin {
     }
 
     @ModifyVariable(
-            method = "craft",
+            method = "craft(Lnet/minecraft/resources/ResourceLocation;Lnet/minecraft/core/NonNullList;ZZ)V",
             at = @At("HEAD"),
             argsOnly = true,
             index = 2,
+            require = 0,
             remap = false
     )
-    private NonNullList<ItemStack> lab11$useSelectedVariantLocksForCraft(final NonNullList<ItemStack> incomingLockedInputs) {
+    private NonNullList<ItemStack> lab11$useSelectedVariantLocksForLegacyCraft(final NonNullList<ItemStack> incomingLockedInputs) {
         final Object selected = invokeNoArg(this, "getSelectedRecipe");
-        if (!isIndexedRecipe(selected) || incomingLockedInputs == null) {
-            return incomingLockedInputs;
-        }
+        return isIndexedRecipe(selected) && incomingLockedInputs != null
+                ? normalizeCraftLocks(selected, incomingLockedInputs)
+                : incomingLockedInputs;
+    }
 
+    @ModifyVariable(
+            method = "craft(Lnet/minecraft/resources/ResourceLocation;Ljava/util/List;ZZ)V",
+            at = @At("HEAD"),
+            argsOnly = true,
+            index = 2,
+            require = 0,
+            remap = false
+    )
+    private List<ItemStack> lab11$useSelectedVariantLocksForCraft(final List<ItemStack> incomingLockedInputs) {
+        final Object selected = invokeNoArg(this, "getSelectedRecipe");
+        return isIndexedRecipe(selected) && incomingLockedInputs != null
+                ? normalizeCraftLocks(selected, incomingLockedInputs)
+                : incomingLockedInputs;
+    }
+
+    @Unique
+    private NonNullList<ItemStack> normalizeCraftLocks(final Object selected,
+                                                       final List<ItemStack> incomingLockedInputs) {
         final int requiredLockSize = resolveRequiredLockSizeForCraft(selected, incomingLockedInputs.size());
         final NonNullList<ItemStack> normalizedIncoming = normalizeLocks(incomingLockedInputs, requiredLockSize);
         copySelectedLocksToMenu(normalizedIncoming);
@@ -101,11 +121,11 @@ abstract class KitchenMenuMixin {
     }
 
     @Unique
-    private NonNullList<ItemStack> lockedInputs() {
+    private List<ItemStack> lockedInputs() {
         final Object value = readFieldValue(this, "lockedInputs");
-        if (value instanceof NonNullList<?> list) {
+        if (value instanceof List<?> list) {
             @SuppressWarnings("unchecked")
-            final NonNullList<ItemStack> cast = (NonNullList<ItemStack>) list;
+            final List<ItemStack> cast = (List<ItemStack>) list;
             return cast;
         }
         return NonNullList.create();
@@ -135,8 +155,8 @@ abstract class KitchenMenuMixin {
     }
 
     @Unique
-    private void copySelectedLocksToMenu(final NonNullList<ItemStack> selectedLocks) {
-        final NonNullList<ItemStack> lockedInputs = lockedInputs();
+    private void copySelectedLocksToMenu(final List<ItemStack> selectedLocks) {
+        final List<ItemStack> lockedInputs = lockedInputs();
         final NonNullList<ItemStack> normalized = normalizeLocks(selectedLocks, lockedInputs.size());
         if (lockedInputs.size() != selectedLocks.size()) {
             writeFieldValue(this, "lockedInputs", normalizeLocks(selectedLocks, selectedLocks.size()));
@@ -160,7 +180,7 @@ abstract class KitchenMenuMixin {
     }
 
     @Unique
-    private static NonNullList<ItemStack> normalizeLocks(final NonNullList<ItemStack> selectedLocks, final int targetSize) {
+    private static NonNullList<ItemStack> normalizeLocks(final List<ItemStack> selectedLocks, final int targetSize) {
         final NonNullList<ItemStack> normalized = NonNullList.withSize(targetSize, ItemStack.EMPTY);
         if (selectedLocks == null || selectedLocks.isEmpty()) {
             return normalized;
@@ -194,7 +214,7 @@ abstract class KitchenMenuMixin {
         }
 
         final StringBuilder signature = new StringBuilder(recipeId.toString());
-        final NonNullList<ItemStack> locks = lockedInputsOf(status);
+        final List<ItemStack> locks = lockedInputsOf(status);
         if (locks == null || locks.isEmpty()) {
             return signature.toString();
         }
@@ -219,11 +239,11 @@ abstract class KitchenMenuMixin {
     }
 
     @Unique
-    private static NonNullList<ItemStack> lockedInputsOf(final Object status) {
+    private static List<ItemStack> lockedInputsOf(final Object status) {
         final Object value = invokeNoArg(status, "lockedInputs");
-        if (value instanceof NonNullList<?> list) {
+        if (value instanceof List<?> list) {
             @SuppressWarnings("unchecked")
-            final NonNullList<ItemStack> cast = (NonNullList<ItemStack>) list;
+            final List<ItemStack> cast = (List<ItemStack>) list;
             return cast;
         }
         return NonNullList.create();

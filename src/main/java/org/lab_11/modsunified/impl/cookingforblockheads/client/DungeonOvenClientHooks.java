@@ -10,7 +10,9 @@ import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import net.neoforged.neoforge.client.event.ModelEvent;
 import org.lab_11.modsunified.Unifiled;
+import org.lab_11.modsunified.impl.cookingforblockheads.BridgeKeys;
 import org.lab_11.modsunified.impl.cookingforblockheads.CustomizeBlocks;
+import org.lab_11.modsunified.impl.platform.LoaderApiCompat;
 import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
 import org.slf4j.Logger;
 
@@ -52,15 +54,17 @@ public final class DungeonOvenClientHooks {
         registered = true;
         modEventBus.addListener(DungeonOvenClientHooks::onRegisterAdditional);
         modEventBus.addListener(DungeonOvenClientHooks::onRegisterRenderers);
-        LOGGER.info("Registered dungeon oven client hook listeners.");
+        LOGGER.info("Registered compatibility block client hook listeners.");
     }
 
     private static void onRegisterAdditional(final ModelEvent.RegisterAdditional event) {
-        event.register(DOOR_MODEL);
-        event.register(ACTIVE_DOOR_MODEL);
-        event.register(HANDLE_MODEL);
+        if (LoaderApiCompat.isModLoaded(BridgeKeys.MOD_DUNGEONS_DELIGHT)) {
+            event.register(DOOR_MODEL);
+            event.register(ACTIVE_DOOR_MODEL);
+            event.register(HANDLE_MODEL);
+            LOGGER.info("Registered additional dungeon oven door models.");
+        }
         event.register(LavaSinkRenderer.LAVA_LIQUID_MODEL);
-        LOGGER.info("Registered additional dungeon oven door models.");
     }
 
     private static void onRegisterRenderers(final EntityRenderersEvent.RegisterRenderers event) {

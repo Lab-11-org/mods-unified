@@ -11,6 +11,7 @@ import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.common.capabilities.RegisterCapabilitiesEvent;
 import net.minecraftforge.items.IItemHandler;
 import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
@@ -18,6 +19,7 @@ import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -43,6 +45,10 @@ public final class CookingPotProcessorCapability {
     private static final String FEEDBACK_POT_TRANSFER_FAILED_KEY = "lab_11_mods_unified.feedback.cooking_table.pot_transfer_failed";
     private static final String POT_COOK_TIME_FIELD = "cookTime";
     private static final String POT_COOK_TIME_TOTAL_FIELD = "cookTimeTotal";
+    private static final String KALEIDOSCOPE_POT_BLOCK_ENTITY_CLASS =
+            "com.github.ysbbbbbb.kaleidoscopecookery.blockentity.kitchen.PotBlockEntity";
+    private static final String KALEIDOSCOPE_STOCKPOT_BLOCK_ENTITY_CLASS =
+            "com.github.ysbbbbbb.kaleidoscopecookery.blockentity.kitchen.StockpotBlockEntity";
 
     private static final Map<String, Predicate<BlockEntity>> REQUIRED_MARKER_CHECKS = Map.of(
             BridgeKeys.MARKER_DUNGEON_OVEN, CookingPotProcessorCapability::hasConnectedDungeonOven
@@ -63,6 +69,9 @@ public final class CookingPotProcessorCapability {
         CONTAINER_SLOT_BLOCKED,
         INPUT_TRANSFER_FAILED,
         CONTAINER_TRANSFER_FAILED
+    }
+
+    private record TokenConsumption(Object token, ItemStack stack) {
     }
 
     private CookingPotProcessorCapability() {
@@ -157,6 +166,11 @@ public final class CookingPotProcessorCapability {
                                                                final List<ItemStack> ingredientStacks,
                                                                final ItemStack containerCost,
                                                                final boolean simulate) {
+        if (recipe instanceof CookingPotIndexedRecipe indexedRecipe
+                && isKaleidoscopeCookware(blockEntity, indexedRecipe.targetKey())) {
+            return transferToKaleidoscopeCookware(blockEntity, indexedRecipe, ingredientStacks, simulate);
+        }
+
         final IItemHandler potInventory = resolvePotInventory(blockEntity);
         if (potInventory == null) {
             return false;
@@ -212,6 +226,109 @@ public final class CookingPotProcessorCapability {
         }
         blockEntity.setChanged();
         CookingPotHeatBridge.tryIgniteManagedOvenForPot(blockEntity);
+        return true;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static boolean transferToKaleidoscopeCookware(final BlockEntity blockEntity,
+                                                           final CookingPotIndexedRecipe recipe,
+                                                           final List<ItemStack> ingredients,
+                                                           final boolean simulate) {
+        final Field inputsField = findField(blockEntity.getClass(), "inputs");
+        if (inputsField == null || blockEntity.getLevel() == null) {
+            return false;
+        }
+
+        try {
+            inputsField.setAccessible(true);
+            final Object value = inputsField.get(blockEntity);
+            if (!(value instanceof List<?> rawInputs)) {
+                return false;
+            }
+            final List<ItemStack> inputs = (List<ItemStack>) rawInputs;
+            if (ingredients.size() > inputs.size() || inputs.stream().anyMatch(stack -> !stack.isEmpty())) {
+                return false;
+            }
+            if (simulate) {
+                return true;
+            }
+
+            if (!prepareKaleidoscopeCookware(blockEntity, recipe)) {
+                return false;
+            }
+            for (int i = 0; i < ingredients.size(); i++) {
+                inputs.set(i, ingredients.get(i).copyWithCount(1));
+            }
+            blockEntity.setChanged();
+            CookingPotHeatBridge.tryIgniteManagedOvenForPot(blockEntity);
+            return true;
+        } catch (ReflectiveOperationException ignored) {
+            return false;
+        }
+    }
+
+    private static boolean isKaleidoscopeCookware(final BlockEntity blockEntity, final String targetKey) {
+        if (blockEntity == null) {
+            return false;
+        }
+        final String className = blockEntity.getClass().getName();
+        return BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_POT.equals(targetKey)
+                ? KALEIDOSCOPE_POT_BLOCK_ENTITY_CLASS.equals(className)
+                : BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_STOCKPOT.equals(targetKey)
+                && KALEIDOSCOPE_STOCKPOT_BLOCK_ENTITY_CLASS.equals(className);
+    }
+
+    private static boolean prepareKaleidoscopeCookware(final BlockEntity blockEntity,
+                                                        final CookingPotIndexedRecipe recipe)
+            throws ReflectiveOperationException {
+        if (BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_POT.equals(recipe.targetKey())) {
+            return prepareKaleidoscopePotOil(blockEntity);
+        }
+
+        final Field soupBaseField = findField(blockEntity.getClass(), "soupBaseId");
+        final Field statusField = findField(blockEntity.getClass(), "status");
+        if (soupBaseField == null || statusField == null) {
+            return false;
+        }
+        final Object requiredSoupBase = StockpotSoupBridge.resolveRequiredSoupBaseId(recipe);
+        soupBaseField.setAccessible(true);
+        statusField.setAccessible(true);
+        final int status = statusField.getInt(blockEntity);
+        if (status == 0) {
+            soupBaseField.set(blockEntity, requiredSoupBase);
+            statusField.setInt(blockEntity, 1);
+            return true;
+        }
+        return status == 1 && requiredSoupBase.equals(soupBaseField.get(blockEntity));
+    }
+
+    private static boolean prepareKaleidoscopePotOil(final BlockEntity blockEntity)
+            throws ReflectiveOperationException {
+        final Level level = blockEntity.getLevel();
+        if (level == null) {
+            return false;
+        }
+        final BlockState state = level.getBlockState(blockEntity.getBlockPos());
+        final var hasOilProperty = state.getBlock().getStateDefinition().getProperty("has_oil");
+        final var showOilProperty = state.getBlock().getStateDefinition().getProperty("show_oil");
+        if (!(hasOilProperty instanceof net.minecraft.world.level.block.state.properties.BooleanProperty hasOil)
+                || !(showOilProperty instanceof net.minecraft.world.level.block.state.properties.BooleanProperty showOil)) {
+            return false;
+        }
+        if (state.getValue(hasOil)) {
+            return true;
+        }
+
+        final Field currentTickField = findField(blockEntity.getClass(), "currentTick");
+        if (currentTickField == null) {
+            return false;
+        }
+        currentTickField.setAccessible(true);
+        currentTickField.setInt(blockEntity, 1200);
+        level.setBlockAndUpdate(
+                blockEntity.getBlockPos(),
+                state.setValue(hasOil, true).setValue(showOil, true)
+        );
         return true;
     }
 
@@ -403,19 +520,24 @@ public final class CookingPotProcessorCapability {
         if (!canInsertIntoInputSlots(potInventory, ingredientTokens, syntheticTokenCount, ingredientEnd, inputSlotCount)) {
             return TransferFailure.INPUT_SLOT_BLOCKED;
         }
-        final boolean canInsertContainers = canInsertIntoContainerSlot(
+        if (!canInsertIntoContainerSlot(
                 potInventory,
                 ingredientTokens,
                 ingredientEnd,
                 ingredientTokens.size(),
                 safeContainerSlot
-        );
+        )) {
+            return TransferFailure.CONTAINER_SLOT_BLOCKED;
+        }
 
-        if (!consumeIntoInputSlots(potInventory, ingredientTokens, syntheticTokenCount, ingredientEnd, inputSlotCount)) {
+        final List<ItemStack> inventorySnapshot = snapshotPotSlots(potInventory, inputSlotCount, safeContainerSlot);
+        final List<TokenConsumption> consumed = new ArrayList<>();
+        if (!consumeIntoInputSlots(potInventory, ingredientTokens, syntheticTokenCount, ingredientEnd, inputSlotCount, consumed)) {
+            rollbackPotTransfer(potInventory, inputSlotCount, safeContainerSlot, inventorySnapshot, consumed);
             return TransferFailure.INPUT_TRANSFER_FAILED;
         }
-        if (canInsertContainers
-                && !consumeIntoContainerSlot(potInventory, ingredientTokens, ingredientEnd, ingredientTokens.size(), safeContainerSlot)) {
+        if (!consumeIntoContainerSlot(potInventory, ingredientTokens, ingredientEnd, ingredientTokens.size(), safeContainerSlot, consumed)) {
+            rollbackPotTransfer(potInventory, inputSlotCount, safeContainerSlot, inventorySnapshot, consumed);
             return TransferFailure.CONTAINER_TRANSFER_FAILED;
         }
 
@@ -540,7 +662,8 @@ public final class CookingPotProcessorCapability {
                                                  final List<?> ingredientTokens,
                                                  final int startInclusive,
                                                  final int endExclusive,
-                                                 final int inputSlotCount) {
+                                                 final int inputSlotCount,
+                                                 final List<TokenConsumption> consumedTokens) {
         int slot = 0;
         for (int index = startInclusive; index < endExclusive && slot < inputSlotCount; index++, slot++) {
             final Object token = ingredientTokens.get(index);
@@ -552,11 +675,11 @@ public final class CookingPotProcessorCapability {
             if (consumed.isEmpty()) {
                 return false;
             }
+            consumedTokens.add(new TokenConsumption(token, consumed));
 
             final ItemStack oneIngredient = consumed.copyWithCount(1);
             final ItemStack remaining = potInventory.insertItem(slot, oneIngredient, false);
             if (!remaining.isEmpty()) {
-                CfbhRuntime.restoreIngredientToken(token, consumed);
                 return false;
             }
         }
@@ -568,7 +691,8 @@ public final class CookingPotProcessorCapability {
                                                     final List<?> ingredientTokens,
                                                     final int startInclusive,
                                                     final int endExclusive,
-                                                    final int containerSlot) {
+                                                    final int containerSlot,
+                                                    final List<TokenConsumption> consumedTokens) {
         for (int index = startInclusive; index < endExclusive; index++) {
             final Object token = ingredientTokens.get(index);
             if (CfbhRuntime.isEmptyIngredientToken(token)) {
@@ -579,15 +703,43 @@ public final class CookingPotProcessorCapability {
             if (consumed.isEmpty()) {
                 return false;
             }
+            consumedTokens.add(new TokenConsumption(token, consumed));
 
             final ItemStack remaining = potInventory.insertItem(containerSlot, consumed.copy(), false);
             if (!remaining.isEmpty()) {
-                CfbhRuntime.restoreIngredientToken(token, consumed);
                 return false;
             }
         }
 
         return true;
+    }
+
+    private static List<ItemStack> snapshotPotSlots(final IItemHandler inventory,
+                                                    final int inputSlotCount,
+                                                    final int containerSlot) {
+        final List<ItemStack> snapshot = new ArrayList<>(inputSlotCount + 1);
+        for (int slot = 0; slot < inputSlotCount; slot++) {
+            snapshot.add(inventory.getStackInSlot(slot).copy());
+        }
+        snapshot.add(inventory.getStackInSlot(containerSlot).copy());
+        return snapshot;
+    }
+
+    private static void rollbackPotTransfer(final IItemHandler inventory,
+                                            final int inputSlotCount,
+                                            final int containerSlot,
+                                            final List<ItemStack> snapshot,
+                                            final List<TokenConsumption> consumed) {
+        for (int slot = 0; slot < inputSlotCount; slot++) {
+            inventory.extractItem(slot, Integer.MAX_VALUE, false);
+            inventory.insertItem(slot, snapshot.get(slot).copy(), false);
+        }
+        inventory.extractItem(containerSlot, Integer.MAX_VALUE, false);
+        inventory.insertItem(containerSlot, snapshot.get(inputSlotCount).copy(), false);
+        for (int index = consumed.size() - 1; index >= 0; index--) {
+            final TokenConsumption tokenConsumption = consumed.get(index);
+            CfbhRuntime.restoreIngredientToken(tokenConsumption.token(), tokenConsumption.stack());
+        }
     }
 
     private static IItemHandler resolvePotInventory(final BlockEntity blockEntity) {

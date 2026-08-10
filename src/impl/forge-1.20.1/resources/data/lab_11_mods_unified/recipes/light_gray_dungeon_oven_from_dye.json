@@ -1,0 +1,26 @@
+{
+  "conditions": [
+    {
+      "type": "forge:mod_loaded",
+      "modid": "cookingforblockheads"
+    },
+    {
+      "type": "forge:mod_loaded",
+      "modid": "dungeonsdelight"
+    }
+  ],
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    {
+      "tag": "lab_11_mods_unified:dungeon_oven_variants"
+    },
+    {
+      "item": "minecraft:light_gray_dye"
+    }
+  ],
+  "result": {
+    "item": "lab_11_mods_unified:light_gray_dungeon_oven",
+    "count": 1
+  }
+}

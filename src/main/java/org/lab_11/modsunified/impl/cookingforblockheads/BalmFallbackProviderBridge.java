@@ -59,6 +59,9 @@ public final class BalmFallbackProviderBridge {
                                         false
                                 ).asKitchenItemProvider();
                             }
+                            if (CustomizeBlocks.isEnamelBasinBridge(blockEntity)) {
+                                return new EnamelBasinOilProvider(blockEntity).asKitchenItemProvider();
+                            }
 
                             return resolveTargetForBlockEntity(blockEntity, targets)
                                     .map(target -> new CookingPotActivationMarkerProvider(
@@ -90,9 +93,15 @@ public final class BalmFallbackProviderBridge {
                 continue;
             }
 
+            final java.util.Set<net.minecraft.world.item.crafting.RecipeType<?>> recipeTypes = new java.util.LinkedHashSet<>();
+            for (final CookingPotBridgeTarget candidate : targets) {
+                if (candidate.matchesBlockEntity(blockEntity)) {
+                    candidate.resolveRecipeType().ifPresent(recipeTypes::add);
+                }
+            }
             return CookingPotProcessorCapability.createProcessor(
                     blockEntity,
-                    Set.of(recipeTypeOptional.get()),
+                    Set.copyOf(recipeTypes),
                     target.requiredMarkerKeys(),
                     target.targetKey()
             );

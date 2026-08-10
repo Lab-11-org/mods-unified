@@ -13,6 +13,12 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Pseudo
 @Mixin(targets = "net.blay09.mods.cookingforblockheads.menu.RecipeBookMenu")
 abstract class RecipeBookMenuLegacyMixin {
+    @Inject(method = "findAndSendItemList", at = @At("HEAD"), remap = false)
+    private void lab11$diagnoseLegacyKitchen(final CallbackInfo ci) {
+        LegacyRecipeBookCraftBridge.restoreLegacyRecipes(this);
+        LegacyRecipeBookCraftBridge.logKitchenDiagnosticsOnce(this);
+    }
+
     @Inject(
             method = "tryCraft(Lnet/minecraft/world/item/ItemStack;Lnet/blay09/mods/cookingforblockheads/registry/FoodRecipeType;Lnet/minecraft/core/NonNullList;Z)V",
             at = @At("HEAD"),

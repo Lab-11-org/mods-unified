@@ -1,5 +1,7 @@
 /libs/
 /ext_src/
+/run/
+/src/generated/
 
 # Java / JVM build outputs
 *.class

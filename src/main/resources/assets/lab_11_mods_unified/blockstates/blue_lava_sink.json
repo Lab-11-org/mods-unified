@@ -1,7 +1,8 @@
 {
   "variants": {
-    "": {
-      "model": "lab_11_mods_unified:block/blue_lava_sink"
-    }
+    "facing=north": { "model": "lab_11_mods_unified:block/blue_lava_sink" },
+    "facing=east": { "model": "lab_11_mods_unified:block/blue_lava_sink", "y": 90 },
+    "facing=south": { "model": "lab_11_mods_unified:block/blue_lava_sink", "y": 180 },
+    "facing=west": { "model": "lab_11_mods_unified:block/blue_lava_sink", "y": 270 }
   }
 }

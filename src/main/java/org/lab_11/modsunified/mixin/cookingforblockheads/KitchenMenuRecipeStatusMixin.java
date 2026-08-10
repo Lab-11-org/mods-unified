@@ -29,7 +29,6 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 @Pseudo
@@ -79,14 +78,11 @@ abstract class KitchenMenuRecipeStatusMixin {
             return;
         }
 
-        final Map<String, Object> deduped = recipesForResult.stream()
+        final Map<String, Object> deduped = new LinkedHashMap<>();
+        recipesForResult.stream()
                 .flatMap(recipeHolder -> buildVariantCandidates(context, recipeHolder))
-                .collect(Collectors.toMap(
-                        VariantCandidate::displayKey,
-                        VariantCandidate::status,
-                        (existing, ignored) -> existing,
-                        LinkedHashMap::new
-                ));
+                .filter(candidate -> candidate.displayKey() != null && candidate.status() != null)
+                .forEach(candidate -> deduped.putIfAbsent(candidate.displayKey(), candidate.status()));
 
         final List<Object> result = new ArrayList<>(deduped.values());
         result.sort(selectionComparator());
@@ -159,13 +155,15 @@ abstract class KitchenMenuRecipeStatusMixin {
         }
         final NonNullList<ItemStack> operationLocks = prepareLocksForRecipe(locks, recipe);
         final Class<?> recipeEntryClass = recipeEntry.getClass();
-        final Object operationWithLocks = invoke(
+        final Object operationWithLocks = invokeListArgument(
                 invoke(context, "createOperation", new Class<?>[]{recipeEntryClass}, recipeEntry),
                 "withLockedInputs",
-                new Class<?>[]{NonNullList.class},
                 operationLocks
         );
         final Object operation = invokeNoArg(operationWithLocks, "prepare");
+        if (operation == null) {
+            return null;
+        }
 
         final NonNullList<ItemStack> displayLocks = copyLocks(lockedInputs(operation));
         List<Ingredient> finalMissingIngredients = missingIngredients(operation);
@@ -186,8 +184,12 @@ abstract class KitchenMenuRecipeStatusMixin {
                 recipeResult,
                 finalMissingIngredients,
                 finalMissingIngredientsMask,
-                displayLocks
+                displayLocks,
+                ingredientOptions(operation)
         );
+        if (status == null) {
+            return null;
+        }
         return new VariantCandidate(buildDisplayKey(recipe, recipeResult, displayLocks), status);
     }
 
@@ -390,14 +392,14 @@ abstract class KitchenMenuRecipeStatusMixin {
     }
 
     @Unique
-    private NonNullList<ItemStack> lockedInputs() {
+    private List<ItemStack> lockedInputs() {
         final Object value = readFieldValue(this, "lockedInputs");
-        if (value instanceof NonNullList<?> list) {
+        if (value instanceof List<?> list) {
             @SuppressWarnings("unchecked")
-            final NonNullList<ItemStack> cast = (NonNullList<ItemStack>) list;
+            final List<ItemStack> cast = (List<ItemStack>) list;
             return cast;
         }
-        return NonNullList.create();
+        return List.of();
     }
 
     @Unique
@@ -455,17 +457,23 @@ abstract class KitchenMenuRecipeStatusMixin {
     }
 
     @Unique
-    private static NonNullList<ItemStack> lockedInputs(final Object statusOrOperation) {
+    private static List<ItemStack> lockedInputs(final Object statusOrOperation) {
         Object value = invokeNoArg(statusOrOperation, "lockedInputs");
-        if (!(value instanceof NonNullList<?>)) {
+        if (!(value instanceof List<?>)) {
             value = invokeNoArg(statusOrOperation, "getLockedInputs");
         }
-        if (value instanceof NonNullList<?> list) {
+        if (value instanceof List<?> list) {
             @SuppressWarnings("unchecked")
-            final NonNullList<ItemStack> cast = (NonNullList<ItemStack>) list;
+            final List<ItemStack> cast = (List<ItemStack>) list;
             return cast;
         }
-        return NonNullList.create();
+        return List.of();
+    }
+
+    @Unique
+    private static List<?> ingredientOptions(final Object operation) {
+        final Object value = invokeNoArg(operation, "getIngredientOptions");
+        return value instanceof List<?> list ? list : List.of();
     }
 
     @Unique
@@ -497,26 +505,24 @@ abstract class KitchenMenuRecipeStatusMixin {
                                               final ItemStack resultItem,
                                               final List<Ingredient> missingIngredients,
                                               final int missingIngredientsMask,
-                                              final NonNullList<ItemStack> lockedInputs) {
+                                              final List<ItemStack> lockedInputs,
+                                              final List<?> ingredientOptions) {
         try {
             final Class<?> statusClass = Class.forName(RECIPE_WITH_STATUS_CLASS);
-            final Constructor<?> constructor = statusClass.getConstructor(
-                    ResourceLocation.class,
-                    ItemStack.class,
-                    List.class,
-                    int.class,
-                    NonNullList.class
-            );
-            return constructor.newInstance(
-                    recipeId,
-                    resultItem,
-                    missingIngredients,
-                    missingIngredientsMask,
-                    lockedInputs
-            );
+            for (final Constructor<?> constructor : statusClass.getConstructors()) {
+                if (constructor.getParameterCount() == 6) {
+                    return constructor.newInstance(recipeId, resultItem, missingIngredients,
+                            missingIngredientsMask, lockedInputs, ingredientOptions);
+                }
+                if (constructor.getParameterCount() == 5) {
+                    return constructor.newInstance(recipeId, resultItem, missingIngredients,
+                            missingIngredientsMask, copyLocks(lockedInputs));
+                }
+            }
         } catch (ReflectiveOperationException ignored) {
-            return null;
+            // Unsupported dependency version.
         }
+        return null;
     }
 
     @Unique
@@ -576,6 +582,23 @@ abstract class KitchenMenuRecipeStatusMixin {
         } catch (ReflectiveOperationException ignored) {
             return null;
         }
+    }
+
+    @Unique
+    private static Object invokeListArgument(final Object target,
+                                             final String methodName,
+                                             final List<ItemStack> argument) {
+        if (target == null) {
+            return null;
+        }
+
+        for (final Class<?> parameterType : List.of(List.class, NonNullList.class)) {
+            final Object result = invoke(target, methodName, new Class<?>[]{parameterType}, argument);
+            if (result != null) {
+                return result;
+            }
+        }
+        return null;
     }
 
     @Unique

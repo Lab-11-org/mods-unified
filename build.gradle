@@ -16,8 +16,20 @@ group = mod_group_id
 def targetId = providers.gradleProperty('target_id')
         .orElse("neoforge-${minecraft_version}")
         .get()
-def javaVersion = providers.gradleProperty('java_version').orElse('21').get().toInteger()
-def useParchment = providers.gradleProperty('use_parchment').orElse('true').get().toBoolean()
+if (targetId == 'forge-1.20.1') {
+    [
+            'minecraft_version', 'minecraft_version_range', 'forge_version',
+            'forge_version_range', 'loader_version_range', 'parchment_minecraft_version',
+            'parchment_mappings_version', 'java_version', 'use_parchment'
+    ].each { name ->
+        if (!gradle.startParameter.projectProperties.containsKey(name)) {
+            project.extensions.extraProperties.set(name, project.property("forge1201_${name}"))
+        }
+    }
+}
+def javaVersion = project.findProperty('java_version')?.toString()?.toInteger() ?: 21
+def useParchmentProperty = project.findProperty('use_parchment')
+def useParchment = useParchmentProperty == null || useParchmentProperty.toString().toBoolean()
 def isForgeTarget = targetId.startsWith('forge-')
 def isNeoForgeTarget = targetId.startsWith('neoforge-')
 
@@ -145,19 +157,33 @@ def targetSpecificJavaDir = "src/impl/${targetId}/java"
 if (file(targetSpecificJavaDir).exists()) {
     sourceSets.main.java.srcDir targetSpecificJavaDir
 }
+def targetSpecificResourcesDir = "src/impl/${targetId}/resources"
+if (file(targetSpecificResourcesDir).exists()) {
+    sourceSets.main.resources.srcDir targetSpecificResourcesDir
+}
 
 if (isForgeTarget) {
     final List<String> mainOverridePaths = [
             '/src/main/java/org/lab_11/modsunified/Unifiled.java',
             '/src/main/java/org/lab_11/modsunified/impl/cookingforblockheads/CookingPotContainerTooltipBridge.java',
             '/src/main/java/org/lab_11/modsunified/impl/cookingforblockheads/CookingPotProcessorCapability.java',
+            '/src/main/java/org/lab_11/modsunified/impl/cookingforblockheads/CookingPotKitchenHandler.java',
             '/src/main/java/org/lab_11/modsunified/impl/cookingforblockheads/CustomizeBlocks.java',
+            '/src/main/java/org/lab_11/modsunified/impl/cookingforblockheads/BalmFallbackProviderBridge.java',
             '/src/main/java/org/lab_11/modsunified/impl/cookingforblockheads/client/DungeonOvenClientHooks.java',
+            '/src/main/java/org/lab_11/modsunified/impl/cookingforblockheads/client/LavaSinkRenderer.java',
+            '/src/main/java/org/lab_11/modsunified/mixin/cookingforblockheads/EnamelBasinBlockMixin.java',
+            '/src/main/java/org/lab_11/modsunified/mixin/cookingforblockheads/KaleidoscopePotBlockMixin.java',
+            '/src/main/java/org/lab_11/modsunified/mixin/cookingforblockheads/OvenRendererMixin.java',
             '/src/main/java/org/lab_11/modsunified/impl/cookingforblockheads/CookingPotIndexedRecipe.java'
     ]
     sourceSets.main.java.exclude { details ->
         final String normalizedPath = details.file.absolutePath.replace('\\', '/')
         return mainOverridePaths.any { normalizedPath.endsWith(it) }
+    }
+    sourceSets.main.resources.exclude { details ->
+        details.file.absolutePath.replace('\\', '/').endsWith(
+                '/src/main/resources/lab_11_mods_unified.mixins.json')
     }
 }
 
@@ -187,8 +213,6 @@ var generateModMetadata = tasks.register('generateModMetadata', ProcessResources
     def defaultPackFormat = '34'
     if (targetId == 'forge-1.20.1') {
         defaultPackFormat = '15'
-    } else if (targetId == 'neoforge-20.x') {
-        defaultPackFormat = '22'
     }
 
     var replaceProperties = [
@@ -251,6 +275,20 @@ if (isForgeTarget) {
     }
 }
 
+tasks.register('multiPotSelectionCheck', JavaExec) {
+    dependsOn tasks.named('testClasses')
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.lab_11.modsunified.impl.cookingforblockheads.MultiPotSelectionCheck'
+}
+tasks.register('optionalDependencyMixinCheck', JavaExec) {
+    dependsOn tasks.named('testClasses')
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.lab_11.modsunified.mixin.OptionalDependencyMixinPluginCheck'
+}
+tasks.named('check') {
+    dependsOn tasks.named('multiPotSelectionCheck'), tasks.named('optionalDependencyMixinCheck')
+}
+
 publishing {
     publications {
         register('mavenJava', MavenPublication) {
@@ -266,65 +304,6 @@ publishing {
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
-}
-
-def targetPropsNeoForge211 = [
-        target_id                  : 'neoforge-1.21.1',
-        minecraft_version          : providers.gradleProperty('minecraft_version').orElse('1.21.1').get(),
-        minecraft_version_range    : providers.gradleProperty('minecraft_version_range').orElse('[1.21.1,1.22)').get(),
-        neo_version                : providers.gradleProperty('neo_version').orElse('21.1.219').get(),
-        loader_version_range       : providers.gradleProperty('loader_version_range').orElse('[4,)').get(),
-        parchment_minecraft_version: providers.gradleProperty('parchment_minecraft_version').orElse('1.21').get(),
-        parchment_mappings_version : providers.gradleProperty('parchment_mappings_version').orElse('2024.07.28').get(),
-        java_version               : '21',
-        use_parchment              : 'true'
-]
-
-def targetPropsNeoForge20x = [
-        target_id                  : 'neoforge-20.x',
-        minecraft_version          : providers.gradleProperty('neo20_minecraft_version').orElse('1.20.4').get(),
-        minecraft_version_range    : providers.gradleProperty('neo20_minecraft_version_range').orElse('[1.20.4,1.21)').get(),
-        neo_version                : providers.gradleProperty('neo20_version').orElse('20.4.251').get(),
-        loader_version_range       : providers.gradleProperty('neo20_loader_version_range').orElse('[1,)').get(),
-        parchment_minecraft_version: providers.gradleProperty('neo20_parchment_minecraft_version').orElse('1.20.4').get(),
-        parchment_mappings_version : providers.gradleProperty('neo20_parchment_mappings_version').orElse('2024.04.14').get(),
-        java_version               : providers.gradleProperty('neo20_java_version').orElse('21').get(),
-        use_parchment              : providers.gradleProperty('neo20_use_parchment').orElse('false').get(),
-        optional_loader_platform   : 'neoforge'
-]
-
-def targetPropsForge1201 = [
-        target_id                  : 'forge-1.20.1',
-        minecraft_version          : providers.gradleProperty('forge1201_minecraft_version').orElse('1.20.1').get(),
-        minecraft_version_range    : providers.gradleProperty('forge1201_minecraft_version_range').orElse('[1.20.1,1.21)').get(),
-        forge_version              : providers.gradleProperty('forge1201_forge_version').orElse('47.4.0').get(),
-        forge_version_range        : providers.gradleProperty('forge1201_forge_version_range').orElse('[47,)').get(),
-        loader_version_range       : providers.gradleProperty('forge1201_loader_version_range').orElse('[47,)').get(),
-        parchment_minecraft_version: providers.gradleProperty('forge1201_parchment_minecraft_version').orElse('1.20.1').get(),
-        parchment_mappings_version : providers.gradleProperty('forge1201_parchment_mappings_version').orElse('2023.09.03').get(),
-        java_version               : providers.gradleProperty('forge1201_java_version').orElse('17').get(),
-        use_parchment              : providers.gradleProperty('forge1201_use_parchment').orElse('true').get(),
-        optional_loader_platform   : 'forge'
-]
-
-def registerNestedBuild = { String taskName, Map<String, String> props ->
-    tasks.register(taskName, GradleBuild) {
-        group = 'build'
-        description = "Build ${props.target_id} target artifact"
-        tasks = ['clean', 'build']
-        startParameter.excludedTaskNames = ['test'] as Set<String>
-        startParameter.projectProperties.putAll(props)
-    }
-}
-
-registerNestedBuild('buildNeoForge211', targetPropsNeoForge211)
-registerNestedBuild('buildNeoForge20x', targetPropsNeoForge20x)
-registerNestedBuild('buildForge1201', targetPropsForge1201)
-
-tasks.register('buildAllTargets') {
-    group = 'build'
-    description = 'Build all currently supported loader/version targets.'
-    dependsOn 'buildNeoForge211', 'buildNeoForge20x', 'buildForge1201'
 }
 
 idea {

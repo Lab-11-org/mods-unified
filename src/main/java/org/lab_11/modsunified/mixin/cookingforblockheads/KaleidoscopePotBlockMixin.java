@@ -26,12 +26,12 @@ public class KaleidoscopePotBlockMixin {
     @Inject(method = "updateShape", at = @At("RETURN"), cancellable = true)
     private void onUpdateShape(BlockState state, Direction direction, BlockState neighborState, LevelAccessor levelAccessor, BlockPos pos, BlockPos neighborPos, CallbackInfoReturnable<BlockState> cir) {
         BlockState result = cir.getReturnValue();
-        if (direction == Direction.DOWN) {
+        if (direction == Direction.DOWN
+                && levelAccessor instanceof Level level
+                && CookingPotHeatBridge.isAnyManagedOvenBelow(level, pos)) {
             Property<?> baseProp = result.getBlock().getStateDefinition().getProperty("has_base");
             if (baseProp instanceof BooleanProperty boolProp && result.getValue(boolProp)) {
-                if (isHeatSource(neighborState)) {
-                    cir.setReturnValue(result.setValue(boolProp, false));
-                }
+                cir.setReturnValue(result.setValue(boolProp, false));
             }
         }
     }
@@ -49,8 +49,4 @@ public class KaleidoscopePotBlockMixin {
         }
     }
 
-    private boolean isHeatSource(BlockState state) {
-        String descId = state.getBlock().getDescriptionId();
-        return descId.contains("oven") || descId.contains("stove");
-    }
 }

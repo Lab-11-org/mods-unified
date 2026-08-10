@@ -2,7 +2,6 @@ package org.lab_11.modsunified;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
-import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.item.crafting.RecipeManager;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModList;
@@ -14,8 +13,6 @@ import net.neoforged.neoforge.client.event.RenderTooltipEvent;
 import net.neoforged.neoforge.client.event.RecipesUpdatedEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.entity.player.ItemTooltipEvent;
-import net.neoforged.neoforge.event.OnDatapackSyncEvent;
-import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import org.lab_11.modsunified.impl.cookingforblockheads.BridgeKeys;
 import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotBridgeTarget;
 import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotBridgeCatalog;
@@ -25,13 +22,11 @@ import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotKitchenHandler
 import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotProcessorCapability;
 import org.lab_11.modsunified.impl.cookingforblockheads.CookingPotRecipeIndexer;
 import org.lab_11.modsunified.impl.cookingforblockheads.DungeonsDelightCupRecipeMirror;
-import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
 import org.lab_11.modsunified.impl.platform.ModRuntimeBindings;
 import org.lab_11.modsunified.impl.platform.RuntimeBindings;
 import org.slf4j.Logger;
 
 import java.lang.reflect.Method;
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -53,8 +48,6 @@ public final class Unifiled {
         registerCompatBlocks(modEventBus);
         modEventBus.addListener(this::onCommonSetup);
         modEventBus.addListener(this::onRegisterCapabilities);
-        NeoForge.EVENT_BUS.addListener(this::onServerStarted);
-        NeoForge.EVENT_BUS.addListener(this::onDatapackSync);
         if (FMLEnvironment.dist.isClient()) {
             NeoForge.EVENT_BUS.addListener(this::onClientRecipesUpdated);
             NeoForge.EVENT_BUS.addListener(this::onItemTooltip);
@@ -197,15 +190,6 @@ public final class Unifiled {
         }
     }
 
-    private void onServerStarted(final ServerStartedEvent event) {
-        injectCookingPotRecipesIntoCookingForBlockheads(event.getServer().getRecipeManager(), event.getServer().registryAccess(), "neoforge_server_started");
-    }
-
-    private void onDatapackSync(final OnDatapackSyncEvent event) {
-        final MinecraftServer server = event.getPlayerList().getServer();
-        injectCookingPotRecipesIntoCookingForBlockheads(server.getRecipeManager(), server.registryAccess(), "neoforge_datapack_sync");
-    }
-
     private void onClientRecipesUpdated(final RecipesUpdatedEvent event) {
         if (!isCookingForBlockheadsLoaded()) {
             return;
@@ -246,16 +230,6 @@ public final class Unifiled {
 
         DungeonsDelightCupRecipeMirror.injectMirroredRecipes(recipeManager, registryAccess, source);
         CookingPotRecipeIndexer.injectRecipes(recipeManager, registryAccess, source, activeCookingPotTargets);
-        CookingPotRecipeIndexer.injectNonFoodCraftingRecipes(recipeManager, registryAccess, resolveNonFoodCraftingItems());
-    }
-
-    private static List<net.minecraft.resources.ResourceLocation> resolveNonFoodCraftingItems() {
-        final List<net.minecraft.resources.ResourceLocation> items = new ArrayList<>();
-        if (ModList.get().isLoaded(BridgeKeys.MOD_KALEIDOSCOPE_COOKERY)) {
-            items.add(MinecraftApiCompat.resourceLocation(BridgeKeys.MOD_KALEIDOSCOPE_COOKERY, "stuffed_dough_food"));
-            items.add(MinecraftApiCompat.resourceLocation(BridgeKeys.MOD_KALEIDOSCOPE_COOKERY, "raw_dough"));
-        }
-        return items;
     }
 
     private void refreshActiveCookingPotTargets() {

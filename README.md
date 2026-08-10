@@ -1,11 +1,13 @@
 # Mods Unified By LAB-11
 
-NeoForge compat bridge for `cookingforblockheads:cooking_table`.
+Forge/NeoForge compatibility bridge for `cookingforblockheads:cooking_table`.
 
 Current targets:
 - FarmersDelight `farmersdelight:cooking_pot`
 - DungeonsDelight `dungeonsdelight:monster_pot`
 - MinersDelight `minersdelight:copper_pot`
+- Kaleidoscope Cookery `kaleidoscope_cookery:pot`
+- Kaleidoscope Cookery `kaleidoscope_cookery:stockpot`
 
 ## What This Mod Does
 - Registers pot recipes into Cooking for Blockheads at runtime.
@@ -16,12 +18,19 @@ Current targets:
 
 ## Runtime Notes
 - Singleplayer and dedicated server both use the same indexed recipe path.
-- Bridge recipe wrappers are injected into RecipeManager by id for CFBH compatibility.
+- Bridge recipe wrappers stay in Cooking for Blockheads' runtime index so recipe sync remains serializable.
 - If a target mod is missing, the bridge for that target is skipped cleanly.
 
 ## Build
 ```bash
 ./gradlew build -x test
+```
+
+Other targets use the same task with the target properties from
+`gradle.properties`, for example:
+
+```bash
+./gradlew build -x test -Ptarget_id=forge-1.20.1
 ```
 
 Dependency versions live in `gradle.properties`; Gradle downloads them from
@@ -30,7 +39,7 @@ combination:
 
 ```bash
 ./gradlew compileJava \
-  -Pcooking_for_blockheads_compile_version=21.1.24 \
+  -Pcfbh_compile_version=21.1.24 \
   -Pbalm_compile_version=21.0.64 \
   -Pfarmers_delight_compile_version=1.3.2
 ```
@@ -51,5 +60,7 @@ breaking combination; add compatibility code only when that row fails.
 ## Version Baseline
 - Minecraft `1.21.1`
 - NeoForge `21.1.219`
+- Minecraft `1.20.1`
+- Forge `47.4.0`
 - Cooking for Blockheads `21.1.17`
 - FarmersDelight `1.2.9`

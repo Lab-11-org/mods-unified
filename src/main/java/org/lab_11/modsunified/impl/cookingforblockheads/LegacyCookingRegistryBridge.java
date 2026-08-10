@@ -25,6 +25,7 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.HashMap;
 
 public final class LegacyCookingRegistryBridge {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -34,12 +35,16 @@ public final class LegacyCookingRegistryBridge {
             "net.blay09.mods.cookingforblockheads.registry.recipe.GeneralFoodRecipe";
     private static final Set<Object> INJECTED_FOOD_RECIPES =
             Collections.newSetFromMap(new IdentityHashMap<>());
+    private static final Set<Object> INJECTED_KALEIDOSCOPE_RECIPES =
+            Collections.newSetFromMap(new IdentityHashMap<>());
+    private static Map<ResourceLocation, Object> lastIndexedRecipesById = Map.of();
 
     private LegacyCookingRegistryBridge() {
     }
 
     public static synchronized int injectIndexedRecipes(final Map<ResourceLocation, Object> indexedRecipesById,
                                                         final RegistryAccess registryAccess) {
+        lastIndexedRecipesById = Map.copyOf(indexedRecipesById);
         final Multimap<ResourceLocation, Object> foodRecipes = resolveLegacyFoodRecipes();
         if (foodRecipes == null) {
             INJECTED_FOOD_RECIPES.clear();
@@ -52,7 +57,8 @@ public final class LegacyCookingRegistryBridge {
         }
 
         final List<Map.Entry<ResourceLocation, Object>> orderedEntries = new ArrayList<>(indexedRecipesById.entrySet());
-        orderedEntries.sort(Comparator.comparing(entry -> entry.getKey().toString()));
+        orderedEntries.sort(Comparator.comparing((Map.Entry<ResourceLocation, Object> entry) -> entry.getKey().toString())
+                .reversed());
 
         int injected = 0;
         for (final Map.Entry<ResourceLocation, Object> entry : orderedEntries) {
@@ -76,12 +82,26 @@ public final class LegacyCookingRegistryBridge {
                 continue;
             }
 
-            foodRecipes.put(outputItemId, legacyFoodRecipe);
+            final List<Object> recipesForOutput = new ArrayList<>(foodRecipes.get(outputItemId));
+            recipesForOutput.add(0, legacyFoodRecipe);
+            foodRecipes.replaceValues(outputItemId, recipesForOutput);
             INJECTED_FOOD_RECIPES.add(legacyFoodRecipe);
+            if (BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_POT.equals(indexedRecipe.targetKey())
+                    || BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_STOCKPOT.equals(indexedRecipe.targetKey())) {
+                INJECTED_KALEIDOSCOPE_RECIPES.add(legacyFoodRecipe);
+            }
             injected++;
         }
 
         return injected;
+    }
+
+    public static synchronized int ensureIndexedRecipesPresent(final RegistryAccess registryAccess) {
+        if (lastIndexedRecipesById.isEmpty()
+                || countInjectedRecipes() == lastIndexedRecipesById.size()) {
+            return 0;
+        }
+        return injectIndexedRecipes(lastIndexedRecipesById, registryAccess);
     }
 
     public static synchronized int countInjectedRecipes() {
@@ -103,6 +123,37 @@ public final class LegacyCookingRegistryBridge {
         return count;
     }
 
+    public static synchronized void logKaleidoscopeStatusSummary(final List<?> providers, final boolean hasOven) {
+        final Multimap<ResourceLocation, Object> foodRecipes = resolveLegacyFoodRecipes();
+        if (foodRecipes == null) {
+            LOGGER.warn("Legacy CFBH status diagnostics: food registry unavailable.");
+            return;
+        }
+
+        try {
+            final Class<?> registryClass = Class.forName(LEGACY_COOKING_REGISTRY_CLASS);
+            final Class<?> foodRecipeClass = Class.forName(
+                    "net.blay09.mods.cookingforblockheads.registry.recipe.FoodRecipe");
+            final Method getStatus = registryClass.getMethod(
+                    "getRecipeStatus", foodRecipeClass, List.class, boolean.class);
+            final Map<String, Integer> statuses = new HashMap<>();
+            int present = 0;
+            for (final Object recipe : foodRecipes.values()) {
+                if (!INJECTED_KALEIDOSCOPE_RECIPES.contains(recipe)) {
+                    continue;
+                }
+                present++;
+                final Object status = getStatus.invoke(null, recipe, providers, hasOven);
+                statuses.merge(String.valueOf(status), 1, Integer::sum);
+            }
+            LOGGER.info(
+                    "Legacy CFBH status diagnostics: tracked={}, present={}, statuses={}",
+                    INJECTED_KALEIDOSCOPE_RECIPES.size(), present, statuses);
+        } catch (ReflectiveOperationException e) {
+            LOGGER.warn("Legacy CFBH status diagnostics failed.", e);
+        }
+    }
+
     private static void removePreviouslyInjectedRecipes(final Multimap<ResourceLocation, Object> foodRecipes) {
         if (INJECTED_FOOD_RECIPES.isEmpty()) {
             return;
@@ -111,6 +162,7 @@ public final class LegacyCookingRegistryBridge {
         final Collection<Object> values = foodRecipes.values();
         values.removeIf(INJECTED_FOOD_RECIPES::contains);
         INJECTED_FOOD_RECIPES.clear();
+        INJECTED_KALEIDOSCOPE_RECIPES.clear();
     }
 
     private static Object createLegacyFoodRecipe(final ResourceLocation indexedRecipeId,
@@ -130,10 +182,6 @@ public final class LegacyCookingRegistryBridge {
 
     private static NonNullList<Ingredient> visibleIngredients(final CookingPotIndexedRecipe indexedRecipe) {
         final List<Ingredient> ingredients = indexedRecipe.getIngredients();
-        if (ingredients.isEmpty()) {
-            return NonNullList.create();
-        }
-
         final int start = Math.max(0, Math.min(indexedRecipe.syntheticIngredientCount(), ingredients.size()));
         final NonNullList<Ingredient> visible = NonNullList.create();
         for (int i = start; i < ingredients.size(); i++) {

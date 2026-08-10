@@ -388,9 +388,7 @@ public final class CookingPotContainerTooltipBridge {
     private static Recipe<?> findIndexedRecipeByOutputAndMatrix(final Minecraft minecraft,
                                                                  final ItemStack outputItem,
                                                                  final List<ItemStack> matrixStacks) {
-        final var recipeManager = minecraft.level.getRecipeManager();
-        for (final Object recipeEntry : RecipeRuntimeCompat.getAllRecipes(recipeManager)) {
-            final Recipe<?> recipe = RecipeRuntimeCompat.recipeValue(recipeEntry);
+        for (final Recipe<?> recipe : CookingPotRecipeIndexer.indexedRecipes()) {
             if (!(recipe instanceof CookingPotIndexedRecipe indexedRecipe)) {
                 continue;
             }

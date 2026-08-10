@@ -17,8 +17,13 @@ import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.level.block.EntityBlock;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Mirror;
+import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.StateDefinition;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.level.block.state.properties.DirectionProperty;
 import net.minecraft.world.level.material.Fluids;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.CreativeModeTab;
@@ -27,6 +32,7 @@ import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -44,6 +50,7 @@ import net.neoforged.neoforge.fluids.capability.IFluidHandler;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
 import org.lab_11.modsunified.Unifiled;
+import org.lab_11.modsunified.impl.platform.LoaderApiCompat;
 import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
 import org.slf4j.Logger;
 
@@ -96,18 +103,12 @@ public final class CustomizeBlocks {
     private static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(Unifiled.MOD_ID);
     private static final DeferredRegister<BlockEntityType<?>> BLOCK_ENTITY_TYPES =
             DeferredRegister.create(BuiltInRegistries.BLOCK_ENTITY_TYPE, Unifiled.MOD_ID);
+    private static final boolean DUNGEON_OVENS_ENABLED =
+            LoaderApiCompat.isModLoaded(BridgeKeys.MOD_DUNGEONS_DELIGHT);
     private static final List<DeferredHolder<Block, Block>> DUNGEON_OVEN_VARIANT_BLOCKS = new ArrayList<>();
     private static final List<DeferredHolder<Item, BlockItem>> DUNGEON_OVEN_VARIANT_ITEMS = new ArrayList<>();
     private static final List<DeferredHolder<Block, Block>> LAVA_SINK_VARIANT_BLOCKS = new ArrayList<>();
     private static final List<DeferredHolder<Item, BlockItem>> LAVA_SINK_VARIANT_ITEMS = new ArrayList<>();
-    private static final DeferredHolder<Block, Block> DUNGEON_OVEN = BLOCKS.register(
-            "dungeon_oven",
-            () -> createDungeonOvenBlock(DyeColor.BLACK)
-    );
-    private static final DeferredHolder<Item, BlockItem> DUNGEON_OVEN_ITEM = ITEMS.register(
-            "dungeon_oven",
-            () -> new BlockItem(DUNGEON_OVEN.get(), resolveBalmItemProperties())
-    );
     private static final DeferredHolder<Block, Block> LAVA_SINK = BLOCKS.register(
             BridgeKeys.BLOCK_LAVA_SINK,
             () -> new LavaSinkBlock(resolveLavaSinkBlockProperties())
@@ -117,20 +118,21 @@ public final class CustomizeBlocks {
             () -> new BlockItem(LAVA_SINK.get(), resolveBalmItemProperties())
     );
     static {
-        for (final DyeColor color : DyeColor.values()) {
-            if (color == DyeColor.BLACK) {
-                continue;
+        if (DUNGEON_OVENS_ENABLED) {
+            for (final DyeColor color : DyeColor.values()) {
+                final String id = color == DyeColor.BLACK
+                        ? "dungeon_oven"
+                        : color.getSerializedName() + "_dungeon_oven";
+                final DeferredHolder<Block, Block> blockHolder = BLOCKS.register(
+                        id,
+                        () -> createDungeonOvenBlock(color)
+                );
+                DUNGEON_OVEN_VARIANT_BLOCKS.add(blockHolder);
+                DUNGEON_OVEN_VARIANT_ITEMS.add(ITEMS.register(
+                        id,
+                        () -> new BlockItem(blockHolder.get(), resolveBalmItemProperties())
+                ));
             }
-            final String id = color.getSerializedName() + "_dungeon_oven";
-            final DeferredHolder<Block, Block> blockHolder = BLOCKS.register(
-                    id,
-                    () -> createDungeonOvenBlock(color)
-            );
-            DUNGEON_OVEN_VARIANT_BLOCKS.add(blockHolder);
-            DUNGEON_OVEN_VARIANT_ITEMS.add(ITEMS.register(
-                    id,
-                    () -> new BlockItem(blockHolder.get(), resolveBalmItemProperties())
-            ));
         }
 
         for (final DyeColor color : DyeColor.values()) {
@@ -152,6 +154,16 @@ public final class CustomizeBlocks {
                     () -> BlockEntityType.Builder.of(
                             LavaSinkBlockEntity::new,
                             allLavaSinkBlocks().toArray(Block[]::new)
+                    ).build(null)
+            );
+    private static final DeferredHolder<BlockEntityType<?>, BlockEntityType<EnamelBasinBridgeBlockEntity>> ENAMEL_BASIN_BRIDGE_TYPE =
+            BLOCK_ENTITY_TYPES.register(
+                    "enamel_basin_bridge",
+                    () -> BlockEntityType.Builder.of(
+                            EnamelBasinBridgeBlockEntity::new,
+                            BuiltInRegistries.BLOCK.getOptional(MinecraftApiCompat.resourceLocation(
+                                    BridgeKeys.MOD_KALEIDOSCOPE_COOKERY, "enamel_basin"
+                            )).orElse(LAVA_SINK.get())
                     ).build(null)
             );
 
@@ -232,7 +244,8 @@ public final class CustomizeBlocks {
         modEventBus.addListener(CustomizeBlocks::onBuildCreativeModeTabContents);
         registerClientHooks(modEventBus);
         registered = true;
-        LOGGER.info("Registered CFBH compatibility blocks (dungeon oven, lava sink).");
+        LOGGER.info("Registered CFBH compatibility blocks (lava sink{}).",
+                DUNGEON_OVENS_ENABLED ? ", dungeon oven" : "");
     }
 
     public static boolean isDungeonOvenBlockEntity(final BlockEntity blockEntity) {
@@ -249,6 +262,14 @@ public final class CustomizeBlocks {
         }
 
         return isLavaSinkBlockId(BuiltInRegistries.BLOCK.getKey(blockEntity.getBlockState().getBlock()));
+    }
+
+    public static boolean isEnamelBasinBridge(final BlockEntity blockEntity) {
+        return blockEntity instanceof EnamelBasinBridgeBlockEntity;
+    }
+
+    public static BlockEntity newEnamelBasinBridge(final BlockPos pos, final BlockState state) {
+        return new EnamelBasinBridgeBlockEntity(pos, state);
     }
 
     public static boolean isDungeonOvenBlockId(final ResourceLocation blockId) {
@@ -279,6 +300,9 @@ public final class CustomizeBlocks {
     }
 
     private static void onCommonSetup(final FMLCommonSetupEvent event) {
+        if (!DUNGEON_OVENS_ENABLED) {
+            return;
+        }
         event.enqueueWork(() -> {
             attachDungeonOvenToCfbhOvenBlockEntityType();
             attachDungeonOvenToCfbhOvenCategory();
@@ -295,7 +319,9 @@ public final class CustomizeBlocks {
 
     private static void onBuildCreativeModeTabContents(final BuildCreativeModeTabContentsEvent event) {
         if (event.getTabKey() == CreativeModeTabs.FUNCTIONAL_BLOCKS || isCfbhCreativeTab(event.getTabKey())) {
-            addDungeonOvenIfMissing(event);
+            if (DUNGEON_OVENS_ENABLED) {
+                addDungeonOvenIfMissing(event);
+            }
             addLavaSinkIfMissing(event);
         }
     }
@@ -369,11 +395,7 @@ public final class CustomizeBlocks {
     }
 
     private static void addDungeonOvenIfMissing(final BuildCreativeModeTabContentsEvent event) {
-        final List<DeferredHolder<Item, BlockItem>> allItems = new ArrayList<>(1 + DUNGEON_OVEN_VARIANT_ITEMS.size());
-        allItems.add(DUNGEON_OVEN_ITEM);
-        allItems.addAll(DUNGEON_OVEN_VARIANT_ITEMS);
-
-        for (final DeferredHolder<Item, BlockItem> itemHolder : allItems) {
+        for (final DeferredHolder<Item, BlockItem> itemHolder : DUNGEON_OVEN_VARIANT_ITEMS) {
             final ItemStack dungeonOvenStack = new ItemStack(itemHolder.get());
             if (creativeTabContainsStack(event, "getParentEntries", dungeonOvenStack)
                     || creativeTabContainsStack(event, "getSearchEntries", dungeonOvenStack)) {
@@ -473,8 +495,7 @@ public final class CustomizeBlocks {
     }
 
     private static List<Block> allDungeonOvenBlocks() {
-        final List<Block> blocks = new ArrayList<>(1 + DUNGEON_OVEN_VARIANT_BLOCKS.size());
-        blocks.add(DUNGEON_OVEN.get());
+        final List<Block> blocks = new ArrayList<>(DUNGEON_OVEN_VARIANT_BLOCKS.size());
         for (final DeferredHolder<Block, Block> blockHolder : DUNGEON_OVEN_VARIANT_BLOCKS) {
             blocks.add(blockHolder.get());
         }
@@ -498,9 +519,9 @@ public final class CustomizeBlocks {
         try {
             final Class<?> hooksClass = Class.forName(LOCAL_CLIENT_HOOKS_CLASS);
             hooksClass.getMethod("register", IEventBus.class).invoke(null, modEventBus);
-            LOGGER.info("Registered dungeon oven client hooks.");
+            LOGGER.info("Registered compatibility block client hooks.");
         } catch (ReflectiveOperationException e) {
-            LOGGER.error("Failed to register dungeon oven client hooks.", e);
+            LOGGER.error("Failed to register compatibility block client hooks.", e);
         }
     }
 
@@ -637,8 +658,31 @@ public final class CustomizeBlocks {
     }
 
     private static final class LavaSinkBlock extends Block implements EntityBlock {
+        private static final DirectionProperty FACING = BlockStateProperties.HORIZONTAL_FACING;
+
         private LavaSinkBlock(final BlockBehaviour.Properties properties) {
             super(properties);
+            registerDefaultState(stateDefinition.any().setValue(FACING, net.minecraft.core.Direction.NORTH));
+        }
+
+        @Override
+        public BlockState getStateForPlacement(final BlockPlaceContext context) {
+            return defaultBlockState().setValue(FACING, context.getHorizontalDirection().getOpposite());
+        }
+
+        @Override
+        protected BlockState rotate(final BlockState state, final Rotation rotation) {
+            return state.setValue(FACING, rotation.rotate(state.getValue(FACING)));
+        }
+
+        @Override
+        protected BlockState mirror(final BlockState state, final Mirror mirror) {
+            return state.rotate(mirror.getRotation(state.getValue(FACING)));
+        }
+
+        @Override
+        protected void createBlockStateDefinition(final StateDefinition.Builder<Block, BlockState> builder) {
+            builder.add(FACING);
         }
 
         @Override
@@ -869,6 +913,12 @@ public final class CustomizeBlocks {
             }
             final BlockState state = getBlockState();
             level.sendBlockUpdated(getBlockPos(), state, state, Block.UPDATE_CLIENTS);
+        }
+    }
+
+    public static final class EnamelBasinBridgeBlockEntity extends BlockEntity {
+        private EnamelBasinBridgeBlockEntity(final BlockPos pos, final BlockState state) {
+            super(ENAMEL_BASIN_BRIDGE_TYPE.get(), pos, state);
         }
     }
 }

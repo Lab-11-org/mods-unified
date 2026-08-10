@@ -13,7 +13,6 @@ import net.minecraft.world.item.crafting.RecipeManager;
 import net.minecraft.world.item.crafting.RecipeType;
 import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
 import org.lab_11.modsunified.impl.platform.RecipeRuntimeCompat;
-import org.lab_11.modsunified.impl.platform.RuntimeBindings;
 import org.slf4j.Logger;
 
 import java.util.Collections;
@@ -143,58 +142,33 @@ public final class CookingPotRecipeIndexer {
                 recipesByItemId.put(itemId, indexedRecipeEntry);
             }
 
-            final boolean installedByName = installIndexedRecipesByName(recipeManager, indexedRecipesById);
-            if (!installedByName) {
-                LOGGER.warn("Injected {} indexed recipes into Cooking for Blockheads index via {}, but failed to expose IDs in RecipeManager byName lookup.",
-                        added, source);
-            } else {
-                LOGGER.info("Injected {} cooking-pot recipes into Cooking for Blockheads recipe index (removed {}) and updated RecipeManager byName lookup via {}.",
-                        added, removed, source);
-            }
+            LOGGER.info("Injected {} cooking-pot recipes into Cooking for Blockheads recipe index (removed {}) via {}.",
+                    added, removed, source);
             return;
         }
 
-        installIndexedRecipes(recipeManager, indexedRecipesById);
-
         final boolean refreshedLegacyRegistry = refreshLegacyCookingForBlockheadsRegistry(recipeManager, registryAccess);
         if (!refreshedLegacyRegistry) {
-            LOGGER.warn("Injected {} cooking-pot recipes into RecipeManager, but could not refresh Cooking for Blockheads registry via {}.",
+            LOGGER.warn("Indexed {} cooking-pot recipes, but could not refresh Cooking for Blockheads registry via {}.",
                     added, source);
             return;
         }
 
         final int legacyInjectedRecipes = LegacyCookingRegistryBridge.injectIndexedRecipes(indexedRecipesById, registryAccess);
-        final int indexedRecipesInManager = countIndexedRecipesInRecipeManager(recipeManager);
         final int indexedRecipesInLegacyRegistry = countIndexedRecipesInLegacyRegistry();
-        if (!isLegacyVisibilitySynchronized(added, indexedRecipesInManager, indexedRecipesInLegacyRegistry)) {
+        if (indexedRecipesInLegacyRegistry != added) {
             LOGGER.warn(
-                    "Indexed recipe visibility is out of sync after legacy refresh via {} (expected={}, managerIndexed={}, legacyIndexed={}); forcing rebuild.",
+                    "Indexed recipe visibility is out of sync via {} (expected={}, legacyIndexed={}).",
                     source,
                     added,
-                    indexedRecipesInManager,
                     indexedRecipesInLegacyRegistry
-            );
-            forceRebuildLegacyRegistry(recipeManager, registryAccess, indexedRecipesById);
-        }
-
-        final int finalIndexedRecipesInManager = countIndexedRecipesInRecipeManager(recipeManager);
-        final int finalIndexedRecipesInLegacyRegistry = countIndexedRecipesInLegacyRegistry();
-        if (!isLegacyVisibilitySynchronized(added, finalIndexedRecipesInManager, finalIndexedRecipesInLegacyRegistry)) {
-            LOGGER.warn(
-                    "Indexed recipe visibility remains out of sync via {} (expected={}, managerIndexed={}, legacyIndexed={}).",
-                    source,
-                    added,
-                    finalIndexedRecipesInManager,
-                    finalIndexedRecipesInLegacyRegistry
             );
         } else {
             LOGGER.info(
-                    "Injected {} cooking-pot recipes into legacy Cooking for Blockheads registry via {} (legacyInjected={}, managerIndexed={}, legacyIndexed={}).",
+                    "Injected {} cooking-pot recipes into legacy Cooking for Blockheads registry via {} (legacyInjected={}).",
                     added,
                     source,
-                    legacyInjectedRecipes,
-                    finalIndexedRecipesInManager,
-                    finalIndexedRecipesInLegacyRegistry
+                    legacyInjectedRecipes
             );
         }
     }
@@ -443,6 +417,10 @@ public final class CookingPotRecipeIndexer {
         return INDEXED_RECIPES_BY_ID.get(recipeId);
     }
 
+    public static List<Recipe<?>> indexedRecipes() {
+        return List.copyOf(INDEXED_RECIPES_BY_ID.values());
+    }
+
     private static void cacheIndexedRecipes(final Map<ResourceLocation, Object> indexedRecipesById) {
         INDEXED_RECIPES_BY_ID.clear();
         for (final Map.Entry<ResourceLocation, Object> entry : indexedRecipesById.entrySet()) {
@@ -450,131 +428,6 @@ public final class CookingPotRecipeIndexer {
             if (recipe != null) {
                 INDEXED_RECIPES_BY_ID.put(entry.getKey(), recipe);
             }
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private static void installIndexedRecipesByNameAndType(final RecipeManager recipeManager,
-                                                           final Map<ResourceLocation, Object> indexedRecipesById) {
-        boolean installedByName = installIndexedRecipesByName(recipeManager, indexedRecipesById);
-        boolean installedByType = installIndexedRecipesByType(recipeManager, indexedRecipesById);
-        if (!installedByName && !installedByType) {
-            LOGGER.warn("Failed to install indexed cooking-pot recipes into RecipeManager fallback maps (byName/byType).");
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private static boolean installIndexedRecipesByName(final RecipeManager recipeManager,
-                                                       final Map<ResourceLocation, Object> indexedRecipesById) {
-        try {
-            final Field byNameField = resolveRecipeByIdMapField(recipeManager);
-            if (byNameField == null) {
-                LOGGER.warn("Failed to install indexed cooking-pot recipes into RecipeManager byName map: no compatible map field found.");
-                return false;
-            }
-
-            byNameField.setAccessible(true);
-            final Object fieldValue = byNameField.get(recipeManager);
-            if (!(fieldValue instanceof Map<?, ?> rawMap)) {
-                LOGGER.warn("Failed to install indexed cooking-pot recipes into RecipeManager byName map: resolved field is not a map.");
-                return false;
-            }
-
-            final Map<ResourceLocation, Object> byIdMap = new HashMap<>((Map<ResourceLocation, Object>) rawMap);
-            byIdMap.entrySet().removeIf(entry -> isIndexedRecipeId(entry.getKey()));
-            byIdMap.putAll(indexedRecipesById);
-            byNameField.set(recipeManager, byIdMap);
-            return true;
-        } catch (ReflectiveOperationException e) {
-            LOGGER.warn("Failed to install indexed cooking-pot recipes into RecipeManager byName map.", e);
-            return false;
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private static boolean installIndexedRecipesByType(final RecipeManager recipeManager,
-                                                       final Map<ResourceLocation, Object> indexedRecipesById) {
-        try {
-            final Field byTypeField = resolveRecipeByTypeMapField(recipeManager);
-            if (byTypeField == null) {
-                return false;
-            }
-
-            byTypeField.setAccessible(true);
-            final Object fieldValue = byTypeField.get(recipeManager);
-            if (!(fieldValue instanceof Map<?, ?> rawMap)) {
-                return false;
-            }
-
-            final Map<Object, Object> byTypeMap = new HashMap<>();
-            for (final Map.Entry<?, ?> entry : rawMap.entrySet()) {
-                final Object key = entry.getKey();
-                final Object value = entry.getValue();
-                if (!(value instanceof Map<?, ?> nestedRawMap)) {
-                    byTypeMap.put(key, value);
-                    continue;
-                }
-
-                final Map<ResourceLocation, Object> nestedMap = new HashMap<>();
-                for (final Map.Entry<?, ?> nestedEntry : nestedRawMap.entrySet()) {
-                    if (!(nestedEntry.getKey() instanceof ResourceLocation nestedRecipeId)) {
-                        continue;
-                    }
-                    if (isIndexedRecipeId(nestedRecipeId)) {
-                        continue;
-                    }
-                    nestedMap.put(nestedRecipeId, nestedEntry.getValue());
-                }
-                byTypeMap.put(key, nestedMap);
-            }
-
-            for (final Map.Entry<ResourceLocation, Object> indexedEntry : indexedRecipesById.entrySet()) {
-                final Recipe<?> recipe = RecipeRuntimeCompat.recipeValue(indexedEntry.getValue());
-                if (recipe == null) {
-                    continue;
-                }
-                final Object typeKey = recipe.getType();
-                final Object existing = byTypeMap.get(typeKey);
-                final Map<ResourceLocation, Object> recipeMap;
-                if (existing instanceof Map<?, ?> existingMap) {
-                    recipeMap = new HashMap<>((Map<ResourceLocation, Object>) existingMap);
-                } else {
-                    recipeMap = new HashMap<>();
-                }
-                recipeMap.put(indexedEntry.getKey(), indexedEntry.getValue());
-                byTypeMap.put(typeKey, recipeMap);
-            }
-
-            byTypeField.set(recipeManager, byTypeMap);
-            return true;
-        } catch (ReflectiveOperationException e) {
-            LOGGER.warn("Failed to install indexed cooking-pot recipes into RecipeManager byType map.", e);
-            return false;
-        }
-    }
-
-    private static void installIndexedRecipes(final RecipeManager recipeManager,
-                                              final Map<ResourceLocation, Object> indexedRecipesById) {
-        if (shouldUseMapInjectionOnly()) {
-            installIndexedRecipesByNameAndType(recipeManager, indexedRecipesById);
-            return;
-        }
-
-        final List<Object> mergedRecipes = new ArrayList<>();
-        for (final Object recipeEntry : RecipeRuntimeCompat.getAllRecipes(recipeManager)) {
-            final ResourceLocation recipeId = RecipeRuntimeCompat.recipeId(recipeEntry);
-            if (recipeId != null && isIndexedRecipeId(recipeId)) {
-                continue;
-            }
-            mergedRecipes.add(recipeEntry);
-        }
-        mergedRecipes.addAll(indexedRecipesById.values());
-
-        try {
-            RecipeRuntimeCompat.replaceRecipes(recipeManager, mergedRecipes);
-        } catch (RuntimeException e) {
-            LOGGER.warn("Falling back to RecipeManager byName/byType injection because replaceRecipes failed.", e);
-            installIndexedRecipesByNameAndType(recipeManager, indexedRecipesById);
         }
     }
 
@@ -619,32 +472,6 @@ public final class CookingPotRecipeIndexer {
         return null;
     }
 
-    private static Field resolveRecipeByTypeMapField(final RecipeManager recipeManager) {
-        for (final Field field : RecipeManager.class.getDeclaredFields()) {
-            if (!Map.class.isAssignableFrom(field.getType())) {
-                continue;
-            }
-            final Field byNameField = resolveRecipeByIdMapField(recipeManager);
-            if (byNameField != null && byNameField.getName().equals(field.getName())) {
-                continue;
-            }
-
-            try {
-                field.setAccessible(true);
-                final Object value = field.get(recipeManager);
-                if (!(value instanceof Map<?, ?> map) || map.isEmpty()) {
-                    continue;
-                }
-                if (isRecipeByTypeMap(map)) {
-                    return field;
-                }
-            } catch (ReflectiveOperationException ignored) {
-                // Try the next field.
-            }
-        }
-        return null;
-    }
-
     private static boolean isRecipeByIdMap(final Map<?, ?> map) {
         if (map.isEmpty()) {
             return false;
@@ -657,63 +484,6 @@ public final class CookingPotRecipeIndexer {
 
         final Map.Entry<?, ?> sample = iterator.next();
         return sample.getKey() instanceof ResourceLocation;
-    }
-
-    private static boolean isRecipeByTypeMap(final Map<?, ?> map) {
-        if (map.isEmpty()) {
-            return false;
-        }
-
-        final Iterator<? extends Map.Entry<?, ?>> iterator = map.entrySet().iterator();
-        if (!iterator.hasNext()) {
-            return false;
-        }
-
-        final Map.Entry<?, ?> sample = iterator.next();
-        if (!(sample.getKey() instanceof RecipeType<?>)) {
-            return false;
-        }
-        if (!(sample.getValue() instanceof Map<?, ?> nestedMap) || nestedMap.isEmpty()) {
-            return true;
-        }
-        final Iterator<? extends Map.Entry<?, ?>> nestedIterator = nestedMap.entrySet().iterator();
-        if (!nestedIterator.hasNext()) {
-            return true;
-        }
-        final Map.Entry<?, ?> nestedSample = nestedIterator.next();
-        return nestedSample.getKey() instanceof ResourceLocation;
-    }
-
-    private static boolean isLegacyVisibilitySynchronized(final int expectedIndexedRecipes,
-                                                          final int indexedRecipesInManager,
-                                                          final int indexedRecipesInLegacyRegistry) {
-        if (expectedIndexedRecipes <= 0) {
-            return true;
-        }
-        return indexedRecipesInManager >= expectedIndexedRecipes
-                && indexedRecipesInLegacyRegistry >= expectedIndexedRecipes;
-    }
-
-    private static void forceRebuildLegacyRegistry(final RecipeManager recipeManager,
-                                                   final RegistryAccess registryAccess,
-                                                   final Map<ResourceLocation, Object> indexedRecipesById) {
-        installIndexedRecipesByNameAndType(recipeManager, indexedRecipesById);
-        if (!refreshLegacyCookingForBlockheadsRegistry(recipeManager, registryAccess)) {
-            LOGGER.warn("Forced legacy Cooking for Blockheads registry rebuild failed.");
-            return;
-        }
-        LegacyCookingRegistryBridge.injectIndexedRecipes(indexedRecipesById, registryAccess);
-    }
-
-    private static int countIndexedRecipesInRecipeManager(final RecipeManager recipeManager) {
-        final Set<ResourceLocation> indexedRecipeIds = new HashSet<>();
-        for (final Object recipeEntry : RecipeRuntimeCompat.getAllRecipes(recipeManager)) {
-            final ResourceLocation recipeId = RecipeRuntimeCompat.recipeId(recipeEntry);
-            if (recipeId != null && isIndexedRecipeId(recipeId)) {
-                indexedRecipeIds.add(recipeId);
-            }
-        }
-        return indexedRecipeIds.size();
     }
 
     private static int countIndexedRecipesInLegacyRegistry() {
@@ -745,11 +515,6 @@ public final class CookingPotRecipeIndexer {
         } catch (ReflectiveOperationException ignored) {
             return 0;
         }
-    }
-
-    private static boolean shouldUseMapInjectionOnly() {
-        final var profile = RuntimeBindings.active().profile();
-        return "forge".equals(profile.loader()) && profile.minecraftVersion().startsWith("1.20.1");
     }
 
     private static ResourceLocation indexedRecipeId(final ResourceLocation originalRecipeId, final String targetKey) {

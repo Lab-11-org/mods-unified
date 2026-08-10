@@ -22,12 +22,10 @@ public final class CookingPotBridgeCatalog {
                 continue;
             }
 
-            if (target.resolveRecipeClass().isEmpty()
-                    || target.resolveRecipeType().isEmpty()
-                    || target.resolveBlockEntityClass().isEmpty()
-                    || target.resolveBlockEntityType().isEmpty()) {
-                logger.warn("Skipping cooking-pot bridge target '{}' because one or more reflective bindings are unavailable.",
-                        target.displayName());
+            final List<String> unavailableBindings = target.unavailableBindings();
+            if (!unavailableBindings.isEmpty()) {
+                logger.warn("Skipping cooking-pot bridge target '{}' because bindings are unavailable: {}.",
+                        target.displayName(), String.join(", ", unavailableBindings));
                 continue;
             }
 

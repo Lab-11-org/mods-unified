@@ -1,5 +1,7 @@
 {
+  "minVersion": "0.8.5",
   "required": false,
+  "plugin": "org.lab_11.modsunified.mixin.OptionalDependencyMixinPlugin",
   "package": "org.lab_11.modsunified.mixin.cookingforblockheads",
   "compatibilityLevel": "JAVA_17",
   "mixins": [
@@ -7,6 +9,7 @@
     "CookingPotBlockEntityMixin",
     "CopperPotBlockMixin",
     "CopperPotBlockEntityMixin",
+    "EnamelBasinBlockMixin",
     "KitchenMenuMixin",
     "KitchenMenuRecipeStatusMixin",
     "RecipeBookMenuLegacyMixin",

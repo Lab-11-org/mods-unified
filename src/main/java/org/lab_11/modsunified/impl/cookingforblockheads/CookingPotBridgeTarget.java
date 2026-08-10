@@ -177,7 +177,9 @@ public final class CookingPotBridgeTarget {
         } catch (ClassNotFoundException ignored) {
             resolved = Optional.empty();
         }
-        cachedRecipeClass = resolved;
+        if (resolved.isPresent()) {
+            cachedRecipeClass = resolved;
+        }
         return resolved;
     }
 
@@ -194,9 +196,7 @@ public final class CookingPotBridgeTarget {
             return resolved;
         }
 
-        final Optional<RecipeType<?>> resolved = Optional.empty();
-        cachedRecipeType = resolved;
-        return resolved;
+        return Optional.empty();
     }
 
     public Optional<Class<? extends BlockEntity>> resolveBlockEntityClass() {
@@ -218,9 +218,7 @@ public final class CookingPotBridgeTarget {
             // no-op
         }
 
-        final Optional<Class<? extends BlockEntity>> resolved = Optional.empty();
-        cachedBlockEntityClass = resolved;
-        return resolved;
+        return Optional.empty();
     }
 
     public Optional<BlockEntityType<?>> resolveBlockEntityType() {
@@ -236,9 +234,16 @@ public final class CookingPotBridgeTarget {
             return resolved;
         }
 
-        final Optional<BlockEntityType<?>> resolved = Optional.empty();
-        cachedBlockEntityType = resolved;
-        return resolved;
+        return Optional.empty();
+    }
+
+    public List<String> unavailableBindings() {
+        final List<String> missing = new ArrayList<>();
+        if (resolveRecipeClass().isEmpty()) missing.add(recipeClassName);
+        if (resolveRecipeType().isEmpty()) missing.add(recipeTypeOwnerClassName + "#" + recipeTypeFieldName);
+        if (resolveBlockEntityClass().isEmpty()) missing.add(blockEntityClassName);
+        if (resolveBlockEntityType().isEmpty()) missing.add(blockEntityTypeOwnerClassName + "#" + blockEntityTypeFieldName);
+        return List.copyOf(missing);
     }
 
     public boolean matchesBlockEntity(final BlockEntity blockEntity) {
