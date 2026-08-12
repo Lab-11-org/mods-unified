@@ -101,15 +101,14 @@ public final class Unifiled {
         }
 
         refreshActiveCookingPotTargets();
+        if (LegacyKitchenConnectorCompat.register(activeCookingPotTargets)) {
+            LOGGER.info("Registered legacy CFBH kitchen connectors and tagged item providers.");
+        } else {
+            LOGGER.warn("Could not register legacy CFBH kitchen connectors and tagged item providers.");
+        }
         if (activeCookingPotTargets.isEmpty()) {
             LOGGER.info("Skipping cooking-pot bridge because no supported external cooking-pot mods are currently loaded.");
             return;
-        }
-
-        if (LegacyKitchenConnectorCompat.register(activeCookingPotTargets)) {
-            LOGGER.info("Registered Kaleidoscope cookware as legacy CFBH kitchen connectors.");
-        } else {
-            LOGGER.warn("Could not register Kaleidoscope cookware as legacy CFBH kitchen connectors.");
         }
         registerBalmRecipeSyncListeners();
     }
