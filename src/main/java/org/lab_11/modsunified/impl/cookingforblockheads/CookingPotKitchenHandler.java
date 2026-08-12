@@ -97,19 +97,16 @@ public final class CookingPotKitchenHandler implements CfbhRuntime.KitchenRecipe
         }
         appendTargetStartupRequirementTokens(context, recipe, processingTokens);
 
-        int matchingProcessors = 0;
-        Object deferredStockpotCookingOperation = null;
+        Object deferredFailureOperation = null;
         for (final Object itemProcessor : CfbhRuntime.contextItemProcessors(context)) {
             if (!CfbhRuntime.processorCanProcess(itemProcessor, recipe.getType())) {
                 continue;
             }
-            matchingProcessors++;
-
             final Object operation = CfbhRuntime.processorProcessRecipe(itemProcessor, recipe, processingTokens);
             if (!CfbhRuntime.isEmptyKitchenOperation(operation)) {
-                if (CookingPotProcessorCapability.isStockpotCookingOperation(operation)) {
-                    if (deferredStockpotCookingOperation == null) {
-                        deferredStockpotCookingOperation = operation;
+                if (CfbhRuntime.isRetryableKitchenOperation(operation)) {
+                    if (deferredFailureOperation == null) {
+                        deferredFailureOperation = operation;
                     }
                     continue;
                 }
@@ -118,8 +115,8 @@ public final class CookingPotKitchenHandler implements CfbhRuntime.KitchenRecipe
             }
         }
 
-        if (deferredStockpotCookingOperation != null) {
-            CfbhRuntime.contextNotify(context, deferredStockpotCookingOperation);
+        if (deferredFailureOperation != null) {
+            CfbhRuntime.contextNotify(context, deferredFailureOperation);
             return ItemStack.EMPTY;
         }
 

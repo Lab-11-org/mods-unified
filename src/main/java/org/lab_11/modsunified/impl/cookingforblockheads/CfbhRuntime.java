@@ -16,6 +16,9 @@ import java.util.List;
 import java.util.Optional;
 
 final class CfbhRuntime {
+    private interface RetryableKitchenOperation {
+    }
+
     private static final String CFBH_CACHE_HINT_CLASS = "net.blay09.mods.cookingforblockheads.api.CacheHint";
     private static final String CFBH_INGREDIENT_TOKEN_CLASS = "net.blay09.mods.cookingforblockheads.api.IngredientToken";
     private static final String CFBH_KITCHEN_OPERATION_CLASS = "net.blay09.mods.cookingforblockheads.api.KitchenOperation";
@@ -183,6 +186,15 @@ final class CfbhRuntime {
     }
 
     static Object newKitchenOperationWithFeedback(final Component feedback) {
+        return newKitchenOperationWithFeedback(feedback, false);
+    }
+
+    static Object newRetryableKitchenOperationWithFeedback(final Component feedback) {
+        return newKitchenOperationWithFeedback(feedback, true);
+    }
+
+    private static Object newKitchenOperationWithFeedback(final Component feedback,
+                                                          final boolean retryable) {
         final Class<?> operationClass = resolveKitchenOperationClass();
         if (operationClass == null || feedback == null) {
             return kitchenOperationEmpty();
@@ -193,7 +205,14 @@ final class CfbhRuntime {
             }
             return objectMethodFallback(proxy, method, args, "KitchenOperationProxy");
         };
-        return Proxy.newProxyInstance(operationClass.getClassLoader(), new Class<?>[]{operationClass}, handler);
+        final Class<?>[] interfaces = retryable
+                ? new Class<?>[]{operationClass, RetryableKitchenOperation.class}
+                : new Class<?>[]{operationClass};
+        return Proxy.newProxyInstance(operationClass.getClassLoader(), interfaces, handler);
+    }
+
+    static boolean isRetryableKitchenOperation(final Object operation) {
+        return operation instanceof RetryableKitchenOperation;
     }
 
     static Object newKitchenItemProcessorProxy(final KitchenItemProcessorView view) {

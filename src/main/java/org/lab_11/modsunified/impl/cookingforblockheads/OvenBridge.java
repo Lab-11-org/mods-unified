@@ -79,7 +79,7 @@ public final class OvenBridge {
             return true;
         }
         // Client-side animation checks can run before reflective burn-time fields are visible.
-        return level.isClientSide && isActive(level.getBlockState(ovenPos));
+        return level.isClientSide && hasBurningVisual(level.getBlockState(ovenPos));
     }
 
     public static boolean ignite(final Level level,
@@ -105,7 +105,7 @@ public final class OvenBridge {
             return;
         }
         final boolean burning = isBurning(level, ovenPos);
-        setActiveProperty(level, ovenPos, ovenState, burning);
+        setBurningVisual(level, ovenPos, ovenState, burning);
     }
 
     // -- Package-private --
@@ -179,7 +179,7 @@ public final class OvenBridge {
         );
         setBooleanField(ovenBlockEntity, OVEN_FIELD_IS_DIRTY, true);
         ovenBlockEntity.setChanged();
-        setActiveProperty(level, ovenPos, ovenState, true);
+        setBurningVisual(level, ovenPos, ovenState, true);
         return true;
     }
 
@@ -298,7 +298,7 @@ public final class OvenBridge {
             // Keep CFBH sync behavior consistent with its own slot-change flow.
             setBooleanField(ovenBlockEntity, OVEN_FIELD_IS_DIRTY, true);
             ovenBlockEntity.setChanged();
-            setActiveProperty(level, ovenPos, ovenState, true);
+            setBurningVisual(level, ovenPos, ovenState, true);
             return true;
         }
 
@@ -318,27 +318,32 @@ public final class OvenBridge {
         return ovenState.is(LAB11_CFBH_OVEN_BLOCK_TAG);
     }
 
-    private static boolean isActive(final BlockState state) {
+    private static boolean hasBurningVisual(final BlockState state) {
         final Property<?> property = state.getBlock().getStateDefinition().getProperty(ACTIVE_PROPERTY);
         if (!(property instanceof BooleanProperty booleanProperty) || !state.hasProperty(booleanProperty)) {
             return false;
         }
-        return state.getValue(booleanProperty);
+        return state.getValue(booleanProperty) == activePropertyValueForBurning(true);
     }
 
-    private static void setActiveProperty(final Level level,
-                                          final BlockPos ovenPos,
-                                          final BlockState ovenState,
-                                          final boolean active) {
+    private static void setBurningVisual(final Level level,
+                                         final BlockPos ovenPos,
+                                         final BlockState ovenState,
+                                         final boolean burning) {
         final Property<?> property = ovenState.getBlock().getStateDefinition().getProperty(ACTIVE_PROPERTY);
         if (!(property instanceof BooleanProperty booleanProperty) || !ovenState.hasProperty(booleanProperty)) {
             return;
         }
-        if (ovenState.getValue(booleanProperty) == active) {
+        final boolean propertyValue = activePropertyValueForBurning(burning);
+        if (ovenState.getValue(booleanProperty) == propertyValue) {
             return;
         }
-        // Toggle model state immediately after ignition so players get instant feedback.
-        level.setBlock(ovenPos, ovenState.setValue(booleanProperty, active), 3);
+        level.setBlock(ovenPos, ovenState.setValue(booleanProperty, propertyValue), 3);
+    }
+
+    static boolean activePropertyValueForBurning(final boolean burning) {
+        // CFBH maps active=false to its lit oven model.
+        return !burning;
     }
 
     // -- Reflection helpers --

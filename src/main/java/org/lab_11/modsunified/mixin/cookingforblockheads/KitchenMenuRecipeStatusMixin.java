@@ -129,7 +129,9 @@ abstract class KitchenMenuRecipeStatusMixin {
         }
         final RegistryAccess registryAccess = player.level().registryAccess();
         final ItemStack recipeResult = recipe.getResultItem(registryAccess);
-        final NonNullList<ItemStack> baseLocks = recipe instanceof CookingPotIndexedRecipe
+        final boolean unrelatedIndexedRecipe = recipe instanceof CookingPotIndexedRecipe
+                && !shouldUseRequestedLocks(RecipeRuntimeCompat.recipeId(recipeEntry), serverSideSelectedRecipe());
+        final NonNullList<ItemStack> baseLocks = unrelatedIndexedRecipe
                 ? emptyLocksForRecipe(recipe)
                 : prepareLocksForRecipe(lockedInputs(), recipe);
 
@@ -341,6 +343,12 @@ abstract class KitchenMenuRecipeStatusMixin {
     }
 
     @Unique
+    private static boolean shouldUseRequestedLocks(final ResourceLocation recipeId,
+                                                   final ResourceLocation selectedRecipeId) {
+        return recipeId != null && recipeId.equals(selectedRecipeId);
+    }
+
+    @Unique
     private static String buildDisplayKey(final Recipe<?> recipe,
                                           final ItemStack result,
                                           final List<ItemStack> lockedInputs) {
@@ -389,6 +397,12 @@ abstract class KitchenMenuRecipeStatusMixin {
     @Unique
     private Object kitchen() {
         return readFieldValue(this, "kitchen");
+    }
+
+    @Unique
+    private ResourceLocation serverSideSelectedRecipe() {
+        final Object value = readFieldValue(this, "serversideSelectedRecipe");
+        return value instanceof ResourceLocation recipeId ? recipeId : null;
     }
 
     @Unique

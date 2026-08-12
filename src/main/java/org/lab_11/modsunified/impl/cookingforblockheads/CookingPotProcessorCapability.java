@@ -452,7 +452,7 @@ public final class CookingPotProcessorCapability {
         if (cached != null) {
             return cached;
         }
-        final Object created = feedbackOperation(FEEDBACK_POT_NOT_CONNECTED_KEY, ChatFormatting.RED);
+        final Object created = retryableFeedbackOperation(FEEDBACK_POT_NOT_CONNECTED_KEY, ChatFormatting.RED);
         potNotConnectedOperation = created;
         return created;
     }
@@ -462,7 +462,7 @@ public final class CookingPotProcessorCapability {
         if (cached != null) {
             return cached;
         }
-        final Object created = feedbackOperation(FEEDBACK_POT_INPUT_BLOCKED_KEY, ChatFormatting.RED);
+        final Object created = retryableFeedbackOperation(FEEDBACK_POT_INPUT_BLOCKED_KEY, ChatFormatting.RED);
         potInputBlockedOperation = created;
         return created;
     }
@@ -472,7 +472,7 @@ public final class CookingPotProcessorCapability {
         if (cached != null) {
             return cached;
         }
-        final Object created = feedbackOperation(FEEDBACK_POT_CONTAINER_BLOCKED_KEY, ChatFormatting.RED);
+        final Object created = retryableFeedbackOperation(FEEDBACK_POT_CONTAINER_BLOCKED_KEY, ChatFormatting.RED);
         potContainerBlockedOperation = created;
         return created;
     }
@@ -482,7 +482,7 @@ public final class CookingPotProcessorCapability {
         if (cached != null) {
             return cached;
         }
-        final Object created = feedbackOperation(FEEDBACK_POT_TRANSFER_FAILED_KEY, ChatFormatting.RED);
+        final Object created = retryableFeedbackOperation(FEEDBACK_POT_TRANSFER_FAILED_KEY, ChatFormatting.RED);
         potTransferFailedOperation = created;
         return created;
     }
@@ -502,7 +502,7 @@ public final class CookingPotProcessorCapability {
         if (cached != null) {
             return cached;
         }
-        final Object created = feedbackOperation(FEEDBACK_STOCKPOT_MISSING_SOUP_BASE_KEY, ChatFormatting.RED);
+        final Object created = retryableFeedbackOperation(FEEDBACK_STOCKPOT_MISSING_SOUP_BASE_KEY, ChatFormatting.RED);
         potStockpotMissingSoupBaseOperation = created;
         return created;
     }
@@ -513,7 +513,7 @@ public final class CookingPotProcessorCapability {
         final Component soupBaseName = soupBaseStack.isEmpty()
                 ? Component.literal(soupBaseId.toString())
                 : soupBaseStack.getHoverName();
-        return CfbhRuntime.newKitchenOperationWithFeedback(
+        return CfbhRuntime.newRetryableKitchenOperationWithFeedback(
                 Component.translatable(FEEDBACK_STOCKPOT_MISSING_SOUP_BASE_KEY, soupBaseName)
                         .withStyle(ChatFormatting.RED)
         );
@@ -524,7 +524,7 @@ public final class CookingPotProcessorCapability {
         if (cached != null) {
             return cached;
         }
-        final Object created = feedbackOperation(FEEDBACK_STOCKPOT_COOKING_KEY, ChatFormatting.YELLOW);
+        final Object created = retryableFeedbackOperation(FEEDBACK_STOCKPOT_COOKING_KEY, ChatFormatting.YELLOW);
         potStockpotCookingOperation = created;
         return created;
     }
@@ -534,7 +534,7 @@ public final class CookingPotProcessorCapability {
         if (cached != null) {
             return cached;
         }
-        final Object created = feedbackOperation(FEEDBACK_POT_CONTENT_CONFLICT_KEY, ChatFormatting.RED);
+        final Object created = retryableFeedbackOperation(FEEDBACK_POT_CONTENT_CONFLICT_KEY, ChatFormatting.RED);
         potContentConflictOperation = created;
         return created;
     }
@@ -544,7 +544,7 @@ public final class CookingPotProcessorCapability {
         if (cached != null) {
             return cached;
         }
-        final Object created = feedbackOperation(FEEDBACK_POT_FULL_MATCH_KEY, ChatFormatting.YELLOW);
+        final Object created = retryableFeedbackOperation(FEEDBACK_POT_FULL_MATCH_KEY, ChatFormatting.YELLOW);
         potFullMatchOperation = created;
         return created;
     }
@@ -554,7 +554,7 @@ public final class CookingPotProcessorCapability {
         if (cached != null) {
             return cached;
         }
-        final Object created = feedbackOperation(FEEDBACK_POT_MISSING_OIL_KEY, ChatFormatting.RED);
+        final Object created = retryableFeedbackOperation(FEEDBACK_POT_MISSING_OIL_KEY, ChatFormatting.RED);
         potMissingOilOperation = created;
         return created;
     }
@@ -564,13 +564,9 @@ public final class CookingPotProcessorCapability {
         if (cached != null) {
             return cached;
         }
-        final Object created = feedbackOperation(FEEDBACK_POT_MISSING_HEAT_KEY, ChatFormatting.RED);
+        final Object created = retryableFeedbackOperation(FEEDBACK_POT_MISSING_HEAT_KEY, ChatFormatting.RED);
         potMissingHeatOperation = created;
         return created;
-    }
-
-    static boolean isStockpotCookingOperation(final Object operation) {
-        return operation != null && operation == potStockpotCookingOperation();
     }
 
     private static boolean isRecipeAcceptedForTarget(final Recipe<?> recipe, final String targetKey) {
@@ -1104,6 +1100,12 @@ public final class CookingPotProcessorCapability {
 
     private static Object feedbackOperation(final String translationKey, final ChatFormatting style) {
         return CfbhRuntime.newKitchenOperationWithFeedback(
+                Component.translatable(translationKey).withStyle(style)
+        );
+    }
+
+    private static Object retryableFeedbackOperation(final String translationKey, final ChatFormatting style) {
+        return CfbhRuntime.newRetryableKitchenOperationWithFeedback(
                 Component.translatable(translationKey).withStyle(style)
         );
     }

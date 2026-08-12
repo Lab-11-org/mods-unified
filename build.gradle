@@ -62,6 +62,10 @@ if (isNeoForgeTarget) {
     neoForge {
         version = project.neo_version
 
+        unitTest {
+            enable()
+        }
+
         if (useParchment) {
             parchment {
                 mappingsVersion = project.parchment_mappings_version
@@ -160,6 +164,10 @@ if (file(targetSpecificJavaDir).exists()) {
 def targetSpecificResourcesDir = "src/impl/${targetId}/resources"
 if (file(targetSpecificResourcesDir).exists()) {
     sourceSets.main.resources.srcDir targetSpecificResourcesDir
+}
+def targetSpecificTestJavaDir = "src/impl/${targetId}/test"
+if (file(targetSpecificTestJavaDir).exists()) {
+    sourceSets.test.java.srcDir targetSpecificTestJavaDir
 }
 
 if (isForgeTarget) {
@@ -285,8 +293,18 @@ tasks.register('optionalDependencyMixinCheck', JavaExec) {
     classpath = sourceSets.test.runtimeClasspath
     mainClass = 'org.lab_11.modsunified.mixin.OptionalDependencyMixinPluginCheck'
 }
+if (targetId == 'neoforge-1.21.1') {
+    tasks.register('indexedRecipeLookupCheck', JavaExec) {
+        dependsOn tasks.named('testClasses')
+        classpath = sourceSets.test.runtimeClasspath
+        mainClass = 'org.lab_11.modsunified.impl.cookingforblockheads.IndexedRecipeLookupCheck'
+    }
+}
 tasks.named('check') {
     dependsOn tasks.named('multiPotSelectionCheck'), tasks.named('optionalDependencyMixinCheck')
+    if (targetId == 'neoforge-1.21.1') {
+        dependsOn tasks.named('indexedRecipeLookupCheck')
+    }
 }
 
 publishing {

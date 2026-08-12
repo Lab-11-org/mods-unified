@@ -6,6 +6,7 @@ import java.util.Optional;
 import java.util.Set;
 
 public final class LoaderApiCompat {
+    private static final String NEOFORGE_LOADING_MOD_LIST_CLASS = "net.neoforged.fml.loading.LoadingModList";
     private static final String NEOFORGE_MOD_LIST_CLASS = "net.neoforged.fml.ModList";
     private static final String FORGE_MOD_LIST_CLASS = "net.minecraftforge.fml.ModList";
 
@@ -13,29 +14,44 @@ public final class LoaderApiCompat {
     }
 
     public static boolean isModLoaded(final String modId) {
+        if (modId == null || modId.isBlank()) {
+            return false;
+        }
+
+        final Object loadingModList = resolveSingleton(NEOFORGE_LOADING_MOD_LIST_CLASS);
         final Object modList = resolveModList();
-        if (modList == null || modId == null || modId.isBlank()) {
-            return false;
-        }
-
-        final Method isLoadedMethod;
-        try {
-            isLoadedMethod = modList.getClass().getMethod("isLoaded", String.class);
-        } catch (ReflectiveOperationException ignored) {
-            return false;
-        }
-
         for (final String candidate : modIdCandidates(modId)) {
-            try {
-                final Object value = isLoadedMethod.invoke(modList, candidate);
-                if (value instanceof Boolean loaded && loaded) {
-                    return true;
-                }
-            } catch (ReflectiveOperationException ignored) {
-                // Try the next alias candidate.
+            if (hasModFile(loadingModList, candidate)
+                    || hasModFile(modList, candidate)
+                    || invokeBoolean(modList, "isLoaded", candidate)) {
+                return true;
             }
         }
         return false;
+    }
+
+    private static boolean hasModFile(final Object modList, final String modId) {
+        if (modList == null) {
+            return false;
+        }
+        try {
+            final Method method = modList.getClass().getMethod("getModFileById", String.class);
+            return method.invoke(modList, modId) != null;
+        } catch (ReflectiveOperationException ignored) {
+            return false;
+        }
+    }
+
+    private static boolean invokeBoolean(final Object target, final String methodName, final String argument) {
+        if (target == null) {
+            return false;
+        }
+        try {
+            final Method method = target.getClass().getMethod(methodName, String.class);
+            return Boolean.TRUE.equals(method.invoke(target, argument));
+        } catch (ReflectiveOperationException ignored) {
+            return false;
+        }
     }
 
     public static Optional<String> resolveModDisplayName(final String modId) {
@@ -98,7 +114,11 @@ public final class LoaderApiCompat {
     }
 
     private static Object resolveModList() {
-        final Class<?> modListClass = resolveClass(NEOFORGE_MOD_LIST_CLASS, FORGE_MOD_LIST_CLASS);
+        return resolveSingleton(NEOFORGE_MOD_LIST_CLASS, FORGE_MOD_LIST_CLASS);
+    }
+
+    private static Object resolveSingleton(final String... classNames) {
+        final Class<?> modListClass = resolveClass(classNames);
         if (modListClass == null) {
             return null;
         }

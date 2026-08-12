@@ -142,8 +142,13 @@ public final class CookingPotRecipeIndexer {
                 recipesByItemId.put(itemId, indexedRecipeEntry);
             }
 
-            LOGGER.info("Injected {} cooking-pot recipes into Cooking for Blockheads recipe index (removed {}) via {}.",
-                    added, removed, source);
+            if (!installIndexedRecipesByName(recipeManager, indexedRecipesById)) {
+                LOGGER.warn("Injected {} indexed recipes into Cooking for Blockheads index via {}, but failed to expose IDs in RecipeManager byName lookup.",
+                        added, source);
+            } else {
+                LOGGER.info("Injected {} cooking-pot recipes into Cooking for Blockheads recipe index (removed {}) and updated RecipeManager byName lookup via {}.",
+                        added, removed, source);
+            }
             return;
         }
 
@@ -393,6 +398,42 @@ public final class CookingPotRecipeIndexer {
             LOGGER.warn("Failed to install non-food variant recipes into RecipeManager byName map.", e);
             return false;
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static boolean installIndexedRecipesByName(final RecipeManager recipeManager,
+                                                        final Map<ResourceLocation, Object> indexedRecipesById) {
+        try {
+            final Field byNameField = resolveRecipeByIdMapField(recipeManager);
+            if (byNameField == null) {
+                return false;
+            }
+
+            byNameField.setAccessible(true);
+            final Object fieldValue = byNameField.get(recipeManager);
+            if (!(fieldValue instanceof Map<?, ?> rawMap)) {
+                return false;
+            }
+
+            final Map<ResourceLocation, Object> byIdMap = mergeIndexedRecipesByName(
+                    (Map<ResourceLocation, Object>) rawMap,
+                    indexedRecipesById
+            );
+            byNameField.set(recipeManager, byIdMap);
+            return true;
+        } catch (ReflectiveOperationException e) {
+            LOGGER.warn("Failed to install indexed cooking-pot recipes into RecipeManager byName map.", e);
+            return false;
+        }
+    }
+
+    static Map<ResourceLocation, Object> mergeIndexedRecipesByName(
+            final Map<ResourceLocation, Object> currentRecipes,
+            final Map<ResourceLocation, Object> indexedRecipes) {
+        final Map<ResourceLocation, Object> merged = new HashMap<>(currentRecipes);
+        merged.entrySet().removeIf(entry -> isIndexedRecipeId(entry.getKey()));
+        merged.putAll(indexedRecipes);
+        return merged;
     }
 
     @SuppressWarnings("unchecked")
