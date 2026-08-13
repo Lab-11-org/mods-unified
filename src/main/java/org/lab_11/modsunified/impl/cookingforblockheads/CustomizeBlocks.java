@@ -6,7 +6,6 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.ItemInteractionResult;
@@ -45,7 +44,6 @@ import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.neoforged.neoforge.fluids.FluidStack;
-import net.neoforged.neoforge.fluids.FluidType;
 import net.neoforged.neoforge.fluids.capability.IFluidHandler;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
@@ -58,18 +56,14 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Array;
 import java.lang.reflect.Constructor;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
 public final class CustomizeBlocks {
-    public static final String DUNGEON_OVEN_MARKER_KEY = BridgeKeys.MARKER_DUNGEON_OVEN;
     public static final ResourceLocation DUNGEON_OVEN_ID =
             MinecraftApiCompat.resourceLocation(Unifiled.MOD_ID, "dungeon_oven");
-    public static final ResourceLocation LAVA_SINK_ID =
-            MinecraftApiCompat.resourceLocation(Unifiled.MOD_ID, BridgeKeys.BLOCK_LAVA_SINK);
     private static final ResourceLocation ROOT_ADVANCEMENT_ID =
             MinecraftApiCompat.resourceLocation(Unifiled.MOD_ID, "root");
     private static final ResourceLocation LAVA_SINK_PLACE_ADVANCEMENT_ID =
@@ -96,7 +90,6 @@ public final class CustomizeBlocks {
     private static final String LAVA_AMOUNT_TAG = "LavaAmount";
     private static final String LAVA_SINK_BARE_HAND_INTERACTIONS_TAG = "Lab11LavaSinkBareHandInteractions";
     private static final int LAVA_SINK_BARE_HAND_INTERACTIONS_REQUIRED = 2;
-    private static final int LAVA_BUCKET_MB = FluidType.BUCKET_VOLUME;
     private static final int LAVA_CAPACITY_MB = Integer.MAX_VALUE;
 
     private static final DeferredRegister.Blocks BLOCKS = DeferredRegister.createBlocks(Unifiled.MOD_ID);
@@ -170,10 +163,6 @@ public final class CustomizeBlocks {
     private static boolean registered;
 
     private CustomizeBlocks() {
-    }
-
-    private static Block createDungeonOvenBlock() {
-        return createDungeonOvenBlock(DyeColor.BLACK);
     }
 
     private static Block createDungeonOvenBlock(final DyeColor color) {
@@ -293,10 +282,7 @@ public final class CustomizeBlocks {
     }
 
     public static float lavaSinkFillRatio(final BlockEntity blockEntity) {
-        if (!(blockEntity instanceof LavaSinkBlockEntity lavaSinkBlockEntity)) {
-            return 0f;
-        }
-        return lavaSinkBlockEntity.fillRatio();
+        return blockEntity instanceof LavaSinkBlockEntity ? 1f : 0f;
     }
 
     private static void onCommonSetup(final FMLCommonSetupEvent event) {
@@ -481,9 +467,7 @@ public final class CustomizeBlocks {
             }
 
             final Object updated = Array.newInstance(componentType, length + missingBlocks.size());
-            for (int i = 0; i < length; i++) {
-                Array.set(updated, i, Array.get(rawOvens, i));
-            }
+            System.arraycopy(rawOvens, 0, updated, 0, length);
             for (int i = 0; i < missingBlocks.size(); i++) {
                 Array.set(updated, length + i, missingBlocks.get(i));
             }
@@ -495,11 +479,7 @@ public final class CustomizeBlocks {
     }
 
     private static List<Block> allDungeonOvenBlocks() {
-        final List<Block> blocks = new ArrayList<>(DUNGEON_OVEN_VARIANT_BLOCKS.size());
-        for (final DeferredHolder<Block, Block> blockHolder : DUNGEON_OVEN_VARIANT_BLOCKS) {
-            blocks.add(blockHolder.get());
-        }
-        return blocks;
+        return DUNGEON_OVEN_VARIANT_BLOCKS.stream().map(DeferredHolder::get).toList();
     }
 
     private static List<Block> allLavaSinkBlocks() {
@@ -707,7 +687,7 @@ public final class CustomizeBlocks {
                                                   final InteractionHand hand,
                                                   final BlockHitResult hitResult) {
             final BlockEntity blockEntity = level.getBlockEntity(pos);
-            if (!(blockEntity instanceof LavaSinkBlockEntity lavaSinkBlockEntity)) {
+            if (!(blockEntity instanceof LavaSinkBlockEntity)) {
                 return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
             }
 
@@ -719,10 +699,6 @@ public final class CustomizeBlocks {
 
             if (stack.is(Items.LAVA_BUCKET)) {
                 if (level.isClientSide()) {
-                    playLavaInteractionFeedback(level, pos);
-                    return ItemInteractionResult.SUCCESS;
-                }
-                if (!lavaSinkBlockEntity.addLava(LAVA_BUCKET_MB)) {
                     playLavaInteractionFeedback(level, pos);
                     return ItemInteractionResult.SUCCESS;
                 }
@@ -744,10 +720,6 @@ public final class CustomizeBlocks {
                 return ItemInteractionResult.SUCCESS;
             }
 
-            if (!lavaSinkBlockEntity.removeLava(LAVA_BUCKET_MB)) {
-                playLavaInteractionFeedback(level, pos);
-                return ItemInteractionResult.SUCCESS;
-            }
             consumeHeldItemAndGive(player, hand, stack, new ItemStack(Items.LAVA_BUCKET));
             playLavaInteractionFeedback(level, pos);
             level.playSound(null, pos, SoundEvents.BUCKET_FILL_LAVA, SoundSource.BLOCKS, 1f, level.random.nextFloat() + 0.5f);
@@ -816,7 +788,6 @@ public final class CustomizeBlocks {
     }
 
     private static final class LavaSinkBlockEntity extends BlockEntity {
-        private int lavaAmount = LAVA_CAPACITY_MB;
         private final IFluidHandler fluidHandler = new IFluidHandler() {
             @Override
             public int getTanks() {
@@ -825,10 +796,7 @@ public final class CustomizeBlocks {
 
             @Override
             public FluidStack getFluidInTank(final int tank) {
-                if (tank != 0 || lavaAmount <= 0) {
-                    return FluidStack.EMPTY;
-                }
-                return new FluidStack(Fluids.LAVA, lavaAmount);
+                return tank == 0 ? new FluidStack(Fluids.LAVA, LAVA_CAPACITY_MB) : FluidStack.EMPTY;
             }
 
             @Override
@@ -874,46 +842,19 @@ public final class CustomizeBlocks {
             return fluidHandler;
         }
 
-        private boolean addLava(final int amountMb) {
-            return amountMb > 0;
-        }
-
-        private boolean removeLava(final int amountMb) {
-            return amountMb > 0;
-        }
-
-        private float fillRatio() {
-            return Mth.clamp(lavaAmount / (float) LAVA_CAPACITY_MB, 0f, 1f);
-        }
-
         @Override
         protected void saveAdditional(final CompoundTag tag, final HolderLookup.Provider registries) {
             super.saveAdditional(tag, registries);
-            tag.putInt(LAVA_AMOUNT_TAG, lavaAmount);
-        }
-
-        @Override
-        protected void loadAdditional(final CompoundTag tag, final HolderLookup.Provider registries) {
-            super.loadAdditional(tag, registries);
-            lavaAmount = LAVA_CAPACITY_MB;
+            tag.putInt(LAVA_AMOUNT_TAG, LAVA_CAPACITY_MB);
         }
 
         @Override
         public CompoundTag getUpdateTag(final HolderLookup.Provider registries) {
             final CompoundTag tag = super.getUpdateTag(registries);
-            tag.putInt(LAVA_AMOUNT_TAG, lavaAmount);
+            tag.putInt(LAVA_AMOUNT_TAG, LAVA_CAPACITY_MB);
             return tag;
         }
 
-        private void syncToClient() {
-            setChanged();
-            final Level level = getLevel();
-            if (level == null) {
-                return;
-            }
-            final BlockState state = getBlockState();
-            level.sendBlockUpdated(getBlockPos(), state, state, Block.UPDATE_CLIENTS);
-        }
     }
 
     public static final class EnamelBasinBridgeBlockEntity extends BlockEntity {

@@ -1,11 +1,20 @@
-# Mods Unified By LAB-11
+# LAB-11 Mods Unified
 
-Forge/NeoForge compatibility bridge for `cookingforblockheads:cooking_table`.
+A runtime compatibility bridge between `cookingforblockheads:cooking_table`
+and pot-based cooking mods.
 
-Current targets:
-- FarmersDelight `farmersdelight:cooking_pot`
-- DungeonsDelight `dungeonsdelight:monster_pot`
-- MinersDelight `minersdelight:copper_pot`
+## Support Matrix
+
+| Minecraft | Loader | Java | Gradle profile |
+| --- | --- | --- | --- |
+| 1.21.1 | NeoForge | 21 | default |
+| 1.20.1 | Forge | 17 | `-Ptarget_id=forge-1.20.1` |
+
+## Integrations
+
+- Farmer's Delight `farmersdelight:cooking_pot`
+- Dungeon's Delight `dungeonsdelight:monster_pot`
+- Miner's Delight `minersdelight:copper_pot`
 - Kaleidoscope Cookery `kaleidoscope_cookery:pot`
 - Kaleidoscope Cookery `kaleidoscope_cookery:stockpot`
 
@@ -16,10 +25,12 @@ Current targets:
 - Supports extra requirements (example: dungeon oven) as marker-based constraints.
 - Handles container consumption and tooltip warnings in the cooking table flow.
 
-## Runtime Notes
+## Architecture
 - Singleplayer and dedicated server both use the same indexed recipe path.
 - Bridge recipe wrappers stay in Cooking for Blockheads' runtime index so recipe sync remains serializable.
 - If a target mod is missing, the bridge for that target is skipped cleanly.
+
+`RecipeManager` → target catalog → CFBH index → cooking table → connected cookware
 
 ## Build
 ```bash
@@ -44,7 +55,7 @@ combination:
   -Pfarmers_delight_compile_version=1.3.2
 ```
 
-The build workflow checks both the baseline versions below and the newer
+The build workflow checks both the versions in `gradle.properties` and the newer
 21.1.24 / 21.0.64 / 1.3.2 combination. Add a matrix row when supporting a new
 breaking combination; add compatibility code only when that row fails.
 
@@ -56,11 +67,3 @@ breaking combination; add compatibility code only when that row fails.
    - requirement predicate in `src/main/java/org/lab_11/modsunified/impl/cookingforblockheads/CookingPotProcessorCapability.java`
    - lang keys in `src/main/resources/assets/lab_11_mods_unified/lang/`
 4. Build and validate both integrated server and dedicated server.
-
-## Version Baseline
-- Minecraft `1.21.1`
-- NeoForge `21.1.219`
-- Minecraft `1.20.1`
-- Forge `47.4.0`
-- Cooking for Blockheads `21.1.17`
-- FarmersDelight `1.2.9`

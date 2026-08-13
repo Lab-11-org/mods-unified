@@ -9,7 +9,7 @@ final class OptionalDependencyMixinPluginCheck {
     private OptionalDependencyMixinPluginCheck() {
     }
 
-    public static void main(final String[] args) {
+    public static void main(final String[] args) throws ReflectiveOperationException {
         check("CookingPotBlockMixin", BridgeKeys.MOD_FARMERS_DELIGHT);
         check("CopperPotBlockMixin", BridgeKeys.MOD_MINERS_DELIGHT);
         check("MonsterPotBlockMixin", BridgeKeys.MOD_DUNGEONS_DELIGHT);
@@ -27,15 +27,11 @@ final class OptionalDependencyMixinPluginCheck {
         }
     }
 
-    private static void checkEarlyModDiscovery() {
-        try {
-            final Method method = LoaderApiCompat.class.getDeclaredMethod("hasModFile", Object.class, String.class);
-            method.setAccessible(true);
-            if (!Boolean.TRUE.equals(method.invoke(null, new EarlyModList(), BridgeKeys.MOD_COOKING_FOR_BLOCKHEADS))) {
-                throw new AssertionError("Early NeoForge mod discovery must enable optional mixins");
-            }
-        } catch (ReflectiveOperationException e) {
-            throw new AssertionError(e);
+    private static void checkEarlyModDiscovery() throws ReflectiveOperationException {
+        final Method method = LoaderApiCompat.class.getDeclaredMethod("hasModFile", Object.class, String.class);
+        method.setAccessible(true);
+        if (!Boolean.TRUE.equals(method.invoke(null, new EarlyModList(), BridgeKeys.MOD_COOKING_FOR_BLOCKHEADS))) {
+            throw new AssertionError("Early NeoForge mod discovery must enable optional mixins");
         }
     }
 

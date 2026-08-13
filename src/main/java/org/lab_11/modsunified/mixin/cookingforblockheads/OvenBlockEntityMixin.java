@@ -11,7 +11,10 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Pseudo
-@Mixin(targets = "net.blay09.mods.cookingforblockheads.block.entity.OvenBlockEntity")
+@Mixin(targets = {
+        "net.blay09.mods.cookingforblockheads.block.entity.OvenBlockEntity",
+        "net.blay09.mods.cookingforblockheads.tile.OvenBlockEntity"
+})
 abstract class OvenBlockEntityMixin {
     @Inject(
             method = "serverTick(Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;)V",

@@ -16,10 +16,6 @@ public final class BridgeMarkerRegistry {
             BridgeKeys.MARKER_LAVA_SINK, Items.LAVA_BUCKET
     );
 
-    private static final Map<String, String> MISSING_REQUIREMENT_TOOLTIPS = Map.of(
-            BridgeKeys.MARKER_DUNGEON_OVEN, BridgeKeys.TOOLTIP_MISSING_DUNGEON_OVEN
-    );
-
     private BridgeMarkerRegistry() {
     }
 
@@ -28,6 +24,8 @@ public final class BridgeMarkerRegistry {
     }
 
     public static Optional<String> missingRequirementTooltipKey(final String markerKey) {
-        return Optional.ofNullable(MISSING_REQUIREMENT_TOOLTIPS.get(markerKey));
+        return BridgeKeys.MARKER_DUNGEON_OVEN.equals(markerKey)
+                ? Optional.of(BridgeKeys.TOOLTIP_MISSING_DUNGEON_OVEN)
+                : Optional.empty();
     }
 }

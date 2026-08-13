@@ -9,8 +9,9 @@ import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.core.registries.BuiltInRegistries;
 import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
 
-import java.util.List;
 import java.lang.reflect.Method;
+import java.util.List;
+import java.util.Map;
 
 final class StockpotSoupBridge {
     private static final String CFBH_SINK_PROVIDER_CLASS = "net.blay09.mods.cookingforblockheads.block.entity.SinkBlockEntity$SinkItemProvider";
@@ -22,12 +23,11 @@ final class StockpotSoupBridge {
             MinecraftApiCompat.resourceLocation("minecraft", "water");
     private static final ResourceLocation SOUP_BASE_LAVA_ID =
             MinecraftApiCompat.resourceLocation("minecraft", "lava");
-    private static final ResourceLocation SOUP_BASE_COD_BUCKET_ID =
-            MinecraftApiCompat.resourceLocation("minecraft", "cod_bucket");
-    private static final ResourceLocation SOUP_BASE_SALMON_BUCKET_ID =
-            MinecraftApiCompat.resourceLocation("minecraft", "salmon_bucket");
-    private static final ResourceLocation SOUP_BASE_PUFFERFISH_BUCKET_ID =
-            MinecraftApiCompat.resourceLocation("minecraft", "pufferfish_bucket");
+    private static final Map<ResourceLocation, Item> FISH_SOUP_BASE_ITEMS = Map.of(
+            MinecraftApiCompat.resourceLocation("minecraft", "cod_bucket"), Items.COD,
+            MinecraftApiCompat.resourceLocation("minecraft", "salmon_bucket"), Items.SALMON,
+            MinecraftApiCompat.resourceLocation("minecraft", "pufferfish_bucket"), Items.PUFFERFISH
+    );
 
     private static volatile Object syntheticWaterSinkToken;
     private static volatile Object syntheticLavaSinkToken;
@@ -62,22 +62,7 @@ final class StockpotSoupBridge {
             return cached;
         }
         final ItemStack markerStack = syntheticWaterSinkSoupMarkerStack();
-        final Object created = CfbhRuntime.newIngredientTokenProxy(new CfbhRuntime.IngredientTokenView() {
-            @Override
-            public ItemStack peek() {
-                return markerStack.copy();
-            }
-
-            @Override
-            public ItemStack consume() {
-                return markerStack.copy();
-            }
-
-            @Override
-            public ItemStack restore(final ItemStack itemStack) {
-                return ItemStack.EMPTY;
-            }
-        });
+        final Object created = CfbhRuntime.newStaticIngredientToken(markerStack);
         syntheticWaterSinkToken = created;
         return created;
     }
@@ -88,28 +73,9 @@ final class StockpotSoupBridge {
             return cached;
         }
         final ItemStack markerStack = syntheticLavaSinkSoupMarkerStack();
-        final Object created = CfbhRuntime.newIngredientTokenProxy(new CfbhRuntime.IngredientTokenView() {
-            @Override
-            public ItemStack peek() {
-                return markerStack.copy();
-            }
-
-            @Override
-            public ItemStack consume() {
-                return markerStack.copy();
-            }
-
-            @Override
-            public ItemStack restore(final ItemStack itemStack) {
-                return ItemStack.EMPTY;
-            }
-        });
+        final Object created = CfbhRuntime.newStaticIngredientToken(markerStack);
         syntheticLavaSinkToken = created;
         return created;
-    }
-
-    static boolean isSyntheticSinkSoupMarker(final ItemStack stack) {
-        return isSyntheticWaterSinkSoupMarker(stack) || isSyntheticLavaSinkSoupMarker(stack);
     }
 
     static boolean isSyntheticWaterSinkSoupMarker(final ItemStack stack) {
@@ -149,20 +115,8 @@ final class StockpotSoupBridge {
         return soupBaseId != null && SOUP_BASE_LAVA_ID.equals(soupBaseId);
     }
 
-    static boolean isCodSoupBase(final ResourceLocation soupBaseId) {
-        return soupBaseId != null && SOUP_BASE_COD_BUCKET_ID.equals(soupBaseId);
-    }
-
-    static boolean isSalmonSoupBase(final ResourceLocation soupBaseId) {
-        return soupBaseId != null && SOUP_BASE_SALMON_BUCKET_ID.equals(soupBaseId);
-    }
-
-    static boolean isPufferfishSoupBase(final ResourceLocation soupBaseId) {
-        return soupBaseId != null && SOUP_BASE_PUFFERFISH_BUCKET_ID.equals(soupBaseId);
-    }
-
     static boolean isFishBucketSoupBase(final ResourceLocation soupBaseId) {
-        return isCodSoupBase(soupBaseId) || isSalmonSoupBase(soupBaseId) || isPufferfishSoupBase(soupBaseId);
+        return soupBaseId != null && FISH_SOUP_BASE_ITEMS.containsKey(soupBaseId);
     }
 
     static ItemStack soupBaseBucketStack(final ResourceLocation soupBaseId) {
@@ -205,16 +159,8 @@ final class StockpotSoupBridge {
     }
 
     static ItemStack fishSoupBaseIngredientStack(final ResourceLocation soupBaseId) {
-        if (isCodSoupBase(soupBaseId)) {
-            return new ItemStack(Items.COD);
-        }
-        if (isSalmonSoupBase(soupBaseId)) {
-            return new ItemStack(Items.SALMON);
-        }
-        if (isPufferfishSoupBase(soupBaseId)) {
-            return new ItemStack(Items.PUFFERFISH);
-        }
-        return ItemStack.EMPTY;
+        final Item fish = soupBaseId == null ? null : FISH_SOUP_BASE_ITEMS.get(soupBaseId);
+        return fish == null ? ItemStack.EMPTY : new ItemStack(fish);
     }
 
     private static ItemStack syntheticWaterSinkSoupMarkerStack() {

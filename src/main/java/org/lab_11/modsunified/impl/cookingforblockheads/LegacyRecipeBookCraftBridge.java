@@ -1,5 +1,6 @@
 package org.lab_11.modsunified.impl.cookingforblockheads;
 
+import com.google.common.primitives.Primitives;
 import com.mojang.logging.LogUtils;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
@@ -16,7 +17,6 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BooleanProperty;
 import net.minecraft.world.level.block.state.properties.IntegerProperty;
 import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
-import org.lab_11.modsunified.impl.platform.RuntimeBindings;
 import org.slf4j.Logger;
 
 import java.lang.reflect.Field;
@@ -24,10 +24,7 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.function.Predicate;
 
 public final class LegacyRecipeBookCraftBridge {
@@ -150,10 +147,10 @@ public final class LegacyRecipeBookCraftBridge {
             return false;
         }
 
-        final List<CookingPotBridgeTarget> allTargets = RuntimeBindings.active().bridgeTargetProvider().allTargets();
+        final List<CookingPotBridgeTarget> allTargets = CookingPotBridgeCatalog.allTargets();
         for (final CookingPotIndexedRecipe indexedRecipe : indexedCandidates) {
             final CookingPotBridgeTarget target = findTargetByKey(allTargets, indexedRecipe.targetKey());
-            if (target == null || !target.isModSetLoaded()) {
+            if (target == null || !target.missingRequiredModIds().isEmpty()) {
                 continue;
             }
 
@@ -710,7 +707,8 @@ public final class LegacyRecipeBookCraftBridge {
                                                 final boolean simulate,
                                                 final Predicate<ItemStack> predicate) {
 
-        final Class<?> ingredientPredicateClass = resolveClass("net.blay09.mods.cookingforblockheads.api.capability.IngredientPredicate");
+        final Class<?> ingredientPredicateClass = CfbhRuntime.resolveClass(
+                "net.blay09.mods.cookingforblockheads.api.capability.IngredientPredicate");
         if (ingredientPredicateClass == null) {
             return null;
         }
@@ -967,7 +965,7 @@ public final class LegacyRecipeBookCraftBridge {
         if (status instanceof Number number) {
             return number.intValue();
         }
-        final Field field = findField(targetPot.getClass(), "status");
+        final Field field = CfbhRuntime.findField(targetPot.getClass(), "status");
         if (field == null) {
             return Integer.MIN_VALUE;
         }
@@ -1111,29 +1109,11 @@ public final class LegacyRecipeBookCraftBridge {
     }
 
     private static Object invokeNoArg(final Object target, final String methodName) {
-        if (target == null) {
-            return null;
-        }
-
-        try {
-            final Method method = target.getClass().getMethod(methodName);
-            return method.invoke(target);
-        } catch (ReflectiveOperationException ignored) {
-            return null;
-        }
+        return CfbhRuntime.invokeNoArg(target, methodName);
     }
 
     private static Object invoke(final Object target, final String methodName, final Class<?>[] parameterTypes, final Object... args) {
-        if (target == null) {
-            return null;
-        }
-
-        try {
-            final Method method = target.getClass().getMethod(methodName, parameterTypes);
-            return method.invoke(target, args);
-        } catch (ReflectiveOperationException ignored) {
-            return null;
-        }
+        return CfbhRuntime.invoke(target, methodName, parameterTypes, args);
     }
 
     private static Object invokeByName(final Object target, final String methodName, final Object... args) {
@@ -1185,7 +1165,7 @@ public final class LegacyRecipeBookCraftBridge {
                 continue;
             }
 
-            final Class<?> wrapped = wrapPrimitive(parameterType);
+            final Class<?> wrapped = Primitives.wrap(parameterType);
             if (!wrapped.isInstance(arg)) {
                 return false;
             }
@@ -1193,51 +1173,12 @@ public final class LegacyRecipeBookCraftBridge {
         return true;
     }
 
-    private static Class<?> wrapPrimitive(final Class<?> type) {
-        if (!type.isPrimitive()) {
-            return type;
-        }
-        if (type == boolean.class) {
-            return Boolean.class;
-        }
-        if (type == int.class) {
-            return Integer.class;
-        }
-        if (type == long.class) {
-            return Long.class;
-        }
-        if (type == float.class) {
-            return Float.class;
-        }
-        if (type == double.class) {
-            return Double.class;
-        }
-        if (type == byte.class) {
-            return Byte.class;
-        }
-        if (type == short.class) {
-            return Short.class;
-        }
-        if (type == char.class) {
-            return Character.class;
-        }
-        return type;
-    }
-
-    private static Class<?> resolveClass(final String className) {
-        try {
-            return Class.forName(className);
-        } catch (ClassNotFoundException ignored) {
-            return null;
-        }
-    }
-
     private static <T> T readFieldValue(final Object target, final String fieldName, final Class<T> fieldType) {
         if (target == null) {
             return null;
         }
 
-        final Field field = findField(target.getClass(), fieldName);
+        final Field field = CfbhRuntime.findField(target.getClass(), fieldName);
         if (field == null) {
             return null;
         }
@@ -1250,18 +1191,6 @@ public final class LegacyRecipeBookCraftBridge {
             }
         } catch (ReflectiveOperationException e) {
             LOGGER.debug("Failed to read field {} from {}", fieldName, target.getClass().getName(), e);
-        }
-        return null;
-    }
-
-    private static Field findField(final Class<?> ownerClass, final String fieldName) {
-        Class<?> current = ownerClass;
-        while (current != null) {
-            try {
-                return current.getDeclaredField(fieldName);
-            } catch (NoSuchFieldException ignored) {
-                current = current.getSuperclass();
-            }
         }
         return null;
     }

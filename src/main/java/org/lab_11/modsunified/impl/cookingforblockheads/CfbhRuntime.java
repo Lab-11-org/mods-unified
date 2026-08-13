@@ -6,14 +6,18 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeType;
+import net.minecraft.world.entity.player.Player;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 final class CfbhRuntime {
     private interface RetryableKitchenOperation {
@@ -28,18 +32,8 @@ final class CfbhRuntime {
     private static final String CFBH_COMBINED_ITEM_PROVIDER_CLASS =
             "net.blay09.mods.cookingforblockheads.kitchen.CombinedKitchenItemProvider";
 
-    private static volatile Class<?> cacheHintClass;
-    private static volatile boolean cacheHintLookupFailed;
-    private static volatile Class<?> ingredientTokenClass;
-    private static volatile boolean ingredientTokenLookupFailed;
+    private static final Map<String, Optional<Class<?>>> RESOLVED_CLASSES = new ConcurrentHashMap<>();
     private static volatile Class<?> kitchenOperationClass;
-    private static volatile boolean kitchenOperationLookupFailed;
-    private static volatile Class<?> kitchenItemProviderClass;
-    private static volatile boolean kitchenItemProviderLookupFailed;
-    private static volatile Class<?> kitchenItemProcessorClass;
-    private static volatile boolean kitchenItemProcessorLookupFailed;
-    private static volatile Class<?> kitchenRecipeHandlerClass;
-    private static volatile boolean kitchenRecipeHandlerLookupFailed;
 
     private CfbhRuntime() {
     }
@@ -71,73 +65,23 @@ final class CfbhRuntime {
     }
 
     static Class<?> kitchenItemProviderClass() {
-        final Class<?> cached = kitchenItemProviderClass;
-        if (cached != null) {
-            return cached;
-        }
-        if (kitchenItemProviderLookupFailed) {
-            return null;
-        }
-        synchronized (CfbhRuntime.class) {
-            if (kitchenItemProviderClass != null) {
-                return kitchenItemProviderClass;
-            }
-            if (kitchenItemProviderLookupFailed) {
-                return null;
-            }
-            kitchenItemProviderClass = resolveClass(CFBH_KITCHEN_ITEM_PROVIDER_CLASS);
-            if (kitchenItemProviderClass == null) {
-                kitchenItemProviderLookupFailed = true;
-            }
-            return kitchenItemProviderClass;
-        }
+        return resolveClass(CFBH_KITCHEN_ITEM_PROVIDER_CLASS);
     }
 
     static Class<?> kitchenItemProcessorClass() {
-        final Class<?> cached = kitchenItemProcessorClass;
-        if (cached != null) {
-            return cached;
-        }
-        if (kitchenItemProcessorLookupFailed) {
-            return null;
-        }
-        synchronized (CfbhRuntime.class) {
-            if (kitchenItemProcessorClass != null) {
-                return kitchenItemProcessorClass;
-            }
-            if (kitchenItemProcessorLookupFailed) {
-                return null;
-            }
-            kitchenItemProcessorClass = resolveClass(CFBH_KITCHEN_ITEM_PROCESSOR_CLASS);
-            if (kitchenItemProcessorClass == null) {
-                kitchenItemProcessorLookupFailed = true;
-            }
-            return kitchenItemProcessorClass;
-        }
+        return resolveClass(CFBH_KITCHEN_ITEM_PROCESSOR_CLASS);
     }
 
     static Object kitchenOperationEmpty() {
-        final Class<?> operationClass = resolveKitchenOperationClass();
-        if (operationClass == null) {
-            return null;
-        }
-        try {
-            return operationClass.getField("EMPTY").get(null);
-        } catch (ReflectiveOperationException ignored) {
-            return null;
-        }
+        return staticFieldValue(resolveKitchenOperationClass(), "EMPTY");
     }
 
     static Object cacheHintNone() {
-        final Class<?> hintClass = resolveCacheHintClass();
-        if (hintClass == null) {
-            return null;
-        }
-        try {
-            return hintClass.getField("NONE").get(null);
-        } catch (ReflectiveOperationException ignored) {
-            return null;
-        }
+        return staticFieldValue(resolveCacheHintClass(), "NONE");
+    }
+
+    static boolean ingredientLookupAvailable() {
+        return resolveCacheHintClass() != null && cacheHintNone() != null;
     }
 
     static boolean isEmptyKitchenOperation(final Object operation) {
@@ -153,12 +97,7 @@ final class CfbhRuntime {
         if (tokenClass == null) {
             return false;
         }
-        try {
-            final Object emptyToken = tokenClass.getField("EMPTY").get(null);
-            return token == emptyToken;
-        } catch (ReflectiveOperationException ignored) {
-            return false;
-        }
+        return token == staticFieldValue(tokenClass, "EMPTY");
     }
 
     static ItemStack peekIngredientToken(final Object token) {
@@ -170,19 +109,8 @@ final class CfbhRuntime {
     }
 
     static ItemStack restoreIngredientToken(final Object token, final ItemStack stack) {
-        if (token == null) {
-            return stack;
-        }
-        try {
-            final Method restoreMethod = token.getClass().getMethod("restore", ItemStack.class);
-            final Object value = restoreMethod.invoke(token, stack);
-            if (value instanceof ItemStack result) {
-                return result;
-            }
-        } catch (ReflectiveOperationException ignored) {
-            // no-op
-        }
-        return stack;
+        final Object value = invoke(token, "restore", new Class<?>[]{ItemStack.class}, stack);
+        return value instanceof ItemStack result ? result : stack;
     }
 
     static Object newKitchenOperationWithFeedback(final Component feedback) {
@@ -326,12 +254,25 @@ final class CfbhRuntime {
         return Proxy.newProxyInstance(tokenClass.getClassLoader(), new Class<?>[]{tokenClass}, handler);
     }
 
+    static Object newStaticIngredientToken(final ItemStack stack) {
+        return newIngredientTokenProxy(new IngredientTokenView() {
+            @Override public ItemStack peek() { return stack.copy(); }
+            @Override public ItemStack consume() { return stack.copy(); }
+            @Override public ItemStack restore(final ItemStack itemStack) { return ItemStack.EMPTY; }
+        });
+    }
+
     static List<?> contextItemProviders(final Object context) {
         final Object providers = invokeNoArg(context, "getItemProviders");
         if (providers instanceof List<?> list) {
             return list;
         }
         return List.of();
+    }
+
+    static List<?> itemProviders(final Object kitchen, final Player player) {
+        final Object providers = invoke(kitchen, "getItemProviders", new Class<?>[]{Player.class}, player);
+        return providers instanceof List<?> list ? list : List.of();
     }
 
     static List<?> contextItemProcessors(final Object context) {
@@ -422,15 +363,7 @@ final class CfbhRuntime {
     }
 
     static Object invokeNoArg(final Object target, final String methodName) {
-        if (target == null) {
-            return null;
-        }
-        try {
-            final Method method = target.getClass().getMethod(methodName);
-            return method.invoke(target);
-        } catch (ReflectiveOperationException ignored) {
-            return null;
-        }
+        return invoke(target, methodName, new Class<?>[0]);
     }
 
     static Object invoke(final Object target, final String methodName, final Class<?>[] parameterTypes, final Object... args) {
@@ -443,6 +376,22 @@ final class CfbhRuntime {
         } catch (ReflectiveOperationException ignored) {
             return null;
         }
+    }
+
+    static Field findField(final Object target, final String fieldName) {
+        return target == null ? null : findField(target.getClass(), fieldName);
+    }
+
+    static Field findField(final Class<?> ownerClass, final String fieldName) {
+        Class<?> current = ownerClass;
+        while (current != null) {
+            try {
+                return current.getDeclaredField(fieldName);
+            } catch (NoSuchFieldException ignored) {
+                current = current.getSuperclass();
+            }
+        }
+        return null;
     }
 
     private static Object invokeBestMatch(final Object view,
@@ -490,118 +439,45 @@ final class CfbhRuntime {
     }
 
     private static ItemStack invokeTokenMethod(final Object token, final String methodName) {
-        if (token == null) {
-            return ItemStack.EMPTY;
+        final Object value = invokeNoArg(token, methodName);
+        return value instanceof ItemStack stack ? stack : ItemStack.EMPTY;
+    }
+
+    private static Object staticFieldValue(final Class<?> ownerClass, final String fieldName) {
+        if (ownerClass == null) {
+            return null;
         }
         try {
-            final Method method = token.getClass().getMethod(methodName);
-            final Object value = method.invoke(token);
-            if (value instanceof ItemStack stack) {
-                return stack;
-            }
+            return ownerClass.getField(fieldName).get(null);
         } catch (ReflectiveOperationException ignored) {
-            // no-op
+            return null;
         }
-        return ItemStack.EMPTY;
     }
 
     private static Class<?> resolveKitchenOperationClass() {
-        final Class<?> cached = kitchenOperationClass;
-        if (cached != null) {
-            return cached;
-        }
-        if (kitchenOperationLookupFailed) {
-            return null;
-        }
-        synchronized (CfbhRuntime.class) {
-            if (kitchenOperationClass != null) {
-                return kitchenOperationClass;
-            }
-            if (kitchenOperationLookupFailed) {
-                return null;
-            }
-            kitchenOperationClass = resolveClass(CFBH_KITCHEN_OPERATION_CLASS);
-            if (kitchenOperationClass == null) {
-                kitchenOperationLookupFailed = true;
-            }
-            return kitchenOperationClass;
-        }
+        final Class<?> override = kitchenOperationClass;
+        return override != null ? override : resolveClass(CFBH_KITCHEN_OPERATION_CLASS);
     }
 
     private static Class<?> resolveCacheHintClass() {
-        final Class<?> cached = cacheHintClass;
-        if (cached != null) {
-            return cached;
-        }
-        if (cacheHintLookupFailed) {
-            return null;
-        }
-        synchronized (CfbhRuntime.class) {
-            if (cacheHintClass != null) {
-                return cacheHintClass;
-            }
-            if (cacheHintLookupFailed) {
-                return null;
-            }
-            cacheHintClass = resolveClass(CFBH_CACHE_HINT_CLASS);
-            if (cacheHintClass == null) {
-                cacheHintLookupFailed = true;
-            }
-            return cacheHintClass;
-        }
+        return resolveClass(CFBH_CACHE_HINT_CLASS);
     }
 
     private static Class<?> resolveIngredientTokenClass() {
-        final Class<?> cached = ingredientTokenClass;
-        if (cached != null) {
-            return cached;
-        }
-        if (ingredientTokenLookupFailed) {
-            return null;
-        }
-        synchronized (CfbhRuntime.class) {
-            if (ingredientTokenClass != null) {
-                return ingredientTokenClass;
-            }
-            if (ingredientTokenLookupFailed) {
-                return null;
-            }
-            ingredientTokenClass = resolveClass(CFBH_INGREDIENT_TOKEN_CLASS);
-            if (ingredientTokenClass == null) {
-                ingredientTokenLookupFailed = true;
-            }
-            return ingredientTokenClass;
-        }
+        return resolveClass(CFBH_INGREDIENT_TOKEN_CLASS);
     }
 
     private static Class<?> resolveKitchenRecipeHandlerClass() {
-        final Class<?> cached = kitchenRecipeHandlerClass;
-        if (cached != null) {
-            return cached;
-        }
-        if (kitchenRecipeHandlerLookupFailed) {
-            return null;
-        }
-        synchronized (CfbhRuntime.class) {
-            if (kitchenRecipeHandlerClass != null) {
-                return kitchenRecipeHandlerClass;
-            }
-            if (kitchenRecipeHandlerLookupFailed) {
-                return null;
-            }
-            kitchenRecipeHandlerClass = resolveClass(CFBH_KITCHEN_RECIPE_HANDLER_CLASS);
-            if (kitchenRecipeHandlerClass == null) {
-                kitchenRecipeHandlerLookupFailed = true;
-            }
-            return kitchenRecipeHandlerClass;
-        }
+        return resolveClass(CFBH_KITCHEN_RECIPE_HANDLER_CLASS);
     }
 
-    private static Class<?> resolveClass(final String className) {
-        try {
-            return Class.forName(className);
-        } catch (ClassNotFoundException ignored) {
-            return null;
-        }
+    static Class<?> resolveClass(final String className) {
+        return RESOLVED_CLASSES.computeIfAbsent(className, name -> {
+            try {
+                return Optional.of(Class.forName(name));
+            } catch (ClassNotFoundException ignored) {
+                return Optional.empty();
+            }
+        }).orElse(null);
     }
 }

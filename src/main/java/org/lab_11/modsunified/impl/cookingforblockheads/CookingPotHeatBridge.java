@@ -1,5 +1,6 @@
 package org.lab_11.modsunified.impl.cookingforblockheads;
 
+import com.google.common.primitives.Primitives;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -50,6 +51,18 @@ public final class CookingPotHeatBridge {
     };
 
     private CookingPotHeatBridge() {
+    }
+
+    public static boolean callNativeIsHeated(final Object potBlockEntity) {
+        if (potBlockEntity == null) {
+            return false;
+        }
+        try {
+            final Object value = potBlockEntity.getClass().getMethod("isHeated").invoke(potBlockEntity);
+            return value instanceof Boolean result && result;
+        } catch (ReflectiveOperationException ignored) {
+            return false;
+        }
     }
 
     public static boolean callNativeIsHeated(final Object potBlockEntity,
@@ -107,10 +120,6 @@ public final class CookingPotHeatBridge {
                 || isMinersDelightCopperPotId(id)
                 || KALEIDOSCOPE_COOKERY_POT_ID.equals(id)
                 || KALEIDOSCOPE_COOKERY_STOCKPOT_ID.equals(id);
-    }
-
-    public static boolean isAnyOvenHeatedBelow(final Level level, final BlockPos potPos) {
-        return isOvenHeatedBelow(level, potPos, OvenBridge.OvenPolicy.ANY_OVEN, null);
     }
 
     public static boolean isAnyOvenHeatedBelow(final Level level,
@@ -234,10 +243,6 @@ public final class CookingPotHeatBridge {
         if (OvenBridge.ignite(level, ovenPos, ovenState)) {
             OvenBridge.syncActiveVisual(level, ovenPos, level.getBlockState(ovenPos));
         }
-    }
-
-    public static boolean isDungeonOvenHeatedBelow(final Level level, final BlockPos potPos) {
-        return isOvenHeatedBelow(level, potPos, OvenBridge.OvenPolicy.DUNGEON_OVEN_ONLY, null);
     }
 
     public static boolean isDungeonOvenHeatedBelow(final Level level,
@@ -533,7 +538,7 @@ public final class CookingPotHeatBridge {
         }
 
         final BlockEntity stockpotBlockEntity = level.getBlockEntity(potPos);
-        final Field soupBaseIdField = findField(stockpotBlockEntity, KALEIDOSCOPE_STOCKPOT_SOUP_BASE_ID_FIELD);
+        final Field soupBaseIdField = CfbhRuntime.findField(stockpotBlockEntity, KALEIDOSCOPE_STOCKPOT_SOUP_BASE_ID_FIELD);
         if (soupBaseIdField == null) {
             return;
         }
@@ -565,7 +570,7 @@ public final class CookingPotHeatBridge {
     }
 
     private static int readIntField(final Object target, final String fieldName) {
-        final Field field = findField(target, fieldName);
+        final Field field = CfbhRuntime.findField(target, fieldName);
         if (field == null) {
             return 0;
         }
@@ -581,35 +586,16 @@ public final class CookingPotHeatBridge {
     private static int resolveStaticIntField(final Class<?> ownerClass,
                                              final String fieldName,
                                              final int fallback) {
-        Class<?> currentClass = ownerClass;
-        while (currentClass != null) {
-            try {
-                final Field field = currentClass.getDeclaredField(fieldName);
-                field.setAccessible(true);
-                return field.getInt(null);
-            } catch (NoSuchFieldException ignored) {
-                currentClass = currentClass.getSuperclass();
-            } catch (ReflectiveOperationException ignored) {
-                return fallback;
-            }
+        final Field field = CfbhRuntime.findField(ownerClass, fieldName);
+        if (field == null) {
+            return fallback;
         }
-        return fallback;
-    }
-
-    private static Field findField(final Object target, final String fieldName) {
-        if (target == null) {
-            return null;
+        try {
+            field.setAccessible(true);
+            return field.getInt(null);
+        } catch (ReflectiveOperationException ignored) {
+            return fallback;
         }
-
-        Class<?> currentClass = target.getClass();
-        while (currentClass != null) {
-            try {
-                return currentClass.getDeclaredField(fieldName);
-            } catch (NoSuchFieldException ignored) {
-                currentClass = currentClass.getSuperclass();
-            }
-        }
-        return null;
     }
 
     private static Object invokeNoArg(final Object target, final String methodName) {
@@ -636,7 +622,7 @@ public final class CookingPotHeatBridge {
     }
 
     private static Object readFieldValue(final Object target, final String fieldName) {
-        final Field field = findField(target, fieldName);
+        final Field field = CfbhRuntime.findField(target, fieldName);
         if (field == null) {
             return null;
         }
@@ -679,7 +665,7 @@ public final class CookingPotHeatBridge {
                     fallback = method;
                 }
 
-                final Class<?> parameterType = wrapPrimitive(method.getParameterTypes()[0]);
+                final Class<?> parameterType = Primitives.wrap(method.getParameterTypes()[0]);
                 for (final Object candidate : candidates) {
                     if (candidate == null) {
                         continue;
@@ -694,34 +680,4 @@ public final class CookingPotHeatBridge {
         return fallback;
     }
 
-    private static Class<?> wrapPrimitive(final Class<?> type) {
-        if (!type.isPrimitive()) {
-            return type;
-        }
-        if (type == boolean.class) {
-            return Boolean.class;
-        }
-        if (type == byte.class) {
-            return Byte.class;
-        }
-        if (type == short.class) {
-            return Short.class;
-        }
-        if (type == int.class) {
-            return Integer.class;
-        }
-        if (type == long.class) {
-            return Long.class;
-        }
-        if (type == float.class) {
-            return Float.class;
-        }
-        if (type == double.class) {
-            return Double.class;
-        }
-        if (type == char.class) {
-            return Character.class;
-        }
-        return type;
-    }
 }

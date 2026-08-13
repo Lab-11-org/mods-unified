@@ -6,7 +6,6 @@ public final class BridgeKeys {
     public static final String MOD_FARMERS_DELIGHT = "farmersdelight";
     public static final String MOD_DUNGEONS_DELIGHT = "dungeonsdelight";
     public static final String MOD_MINERS_DELIGHT = "minersdelight";
-    public static final String MOD_MINERS_DELIGHT_ALT = "miners_delight";
     public static final String MOD_KALEIDOSCOPE_COOKERY = "kaleidoscope_cookery";
 
     public static final String TARGET_FARMERS_DELIGHT_COOKING_POT = "farmersdelight_cooking_pot";
@@ -28,16 +27,6 @@ public final class BridgeKeys {
 
     public static final String TOOLTIP_MISSING_DUNGEON_OVEN =
             "lab_11_mods_unified.tooltip.cooking_table.missing_dungeon_oven";
-
-    public static String minersDelightModId() {
-        if (org.lab_11.modsunified.impl.platform.LoaderApiCompat.isModLoaded(MOD_MINERS_DELIGHT)) {
-            return MOD_MINERS_DELIGHT;
-        }
-        if (org.lab_11.modsunified.impl.platform.LoaderApiCompat.isModLoaded(MOD_MINERS_DELIGHT_ALT)) {
-            return MOD_MINERS_DELIGHT_ALT;
-        }
-        return MOD_MINERS_DELIGHT;
-    }
 
     private BridgeKeys() {
     }

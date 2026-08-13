@@ -9,10 +9,10 @@ import org.lab_11.modsunified.impl.platform.RecipeRuntimeCompat;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Supplier;
-import java.util.ArrayList;
 
 public final class CookingPotBridgeTarget {
     private final String targetKey;
@@ -24,9 +24,6 @@ public final class CookingPotBridgeTarget {
     private final String blockEntityClassName;
     private final String blockEntityTypeOwnerClassName;
     private final String blockEntityTypeFieldName;
-    private final List<String> allowedRecipeNamespaces;
-    private final List<String> allowedRecipeIdPrefixes;
-    private final List<String> deniedRecipeNamespaces;
     private final List<String> deniedRecipeIdPrefixes;
     private final List<String> requiredMarkerKeys;
 
@@ -44,9 +41,6 @@ public final class CookingPotBridgeTarget {
                                   final String blockEntityClassName,
                                   final String blockEntityTypeOwnerClassName,
                                   final String blockEntityTypeFieldName,
-                                  final List<String> allowedRecipeNamespaces,
-                                  final List<String> allowedRecipeIdPrefixes,
-                                  final List<String> deniedRecipeNamespaces,
                                   final List<String> deniedRecipeIdPrefixes,
                                   final List<String> requiredMarkerKeys) {
         this.targetKey = targetKey;
@@ -58,9 +52,6 @@ public final class CookingPotBridgeTarget {
         this.blockEntityClassName = blockEntityClassName;
         this.blockEntityTypeOwnerClassName = blockEntityTypeOwnerClassName;
         this.blockEntityTypeFieldName = blockEntityTypeFieldName;
-        this.allowedRecipeNamespaces = List.copyOf(allowedRecipeNamespaces);
-        this.allowedRecipeIdPrefixes = List.copyOf(allowedRecipeIdPrefixes);
-        this.deniedRecipeNamespaces = List.copyOf(deniedRecipeNamespaces);
         this.deniedRecipeIdPrefixes = List.copyOf(deniedRecipeIdPrefixes);
         this.requiredMarkerKeys = List.copyOf(requiredMarkerKeys);
     }
@@ -85,48 +76,7 @@ public final class CookingPotBridgeTarget {
                 blockEntityTypeOwnerClassName,
                 blockEntityTypeFieldName,
                 List.of(),
-                List.of(),
-                List.of(),
-                List.of(),
                 List.of()
-        );
-    }
-
-    public CookingPotBridgeTarget withRequiredMarkerKeys(final List<String> requiredMarkerKeys) {
-        return new CookingPotBridgeTarget(
-                targetKey,
-                displayName,
-                requiredModIds,
-                recipeClassName,
-                recipeTypeOwnerClassName,
-                recipeTypeFieldName,
-                blockEntityClassName,
-                blockEntityTypeOwnerClassName,
-                blockEntityTypeFieldName,
-                allowedRecipeNamespaces,
-                allowedRecipeIdPrefixes,
-                deniedRecipeNamespaces,
-                deniedRecipeIdPrefixes,
-                requiredMarkerKeys
-        );
-    }
-
-    public CookingPotBridgeTarget withDeniedRecipeIdPrefixes(final List<String> deniedRecipeIdPrefixes) {
-        return new CookingPotBridgeTarget(
-                targetKey,
-                displayName,
-                requiredModIds,
-                recipeClassName,
-                recipeTypeOwnerClassName,
-                recipeTypeFieldName,
-                blockEntityClassName,
-                blockEntityTypeOwnerClassName,
-                blockEntityTypeFieldName,
-                allowedRecipeNamespaces,
-                allowedRecipeIdPrefixes,
-                deniedRecipeNamespaces,
-                deniedRecipeIdPrefixes,
-                requiredMarkerKeys
         );
     }
 
@@ -138,31 +88,12 @@ public final class CookingPotBridgeTarget {
         return displayName;
     }
 
-    public List<String> requiredModIds() {
-        return requiredModIds;
-    }
-
     public List<String> missingRequiredModIds() {
-        final List<String> missing = new ArrayList<>();
-        for (final String modId : requiredModIds) {
-            if (!LoaderApiCompat.isModLoaded(modId)) {
-                missing.add(modId);
-            }
-        }
-        return List.copyOf(missing);
+        return requiredModIds.stream().filter(modId -> !LoaderApiCompat.isModLoaded(modId)).toList();
     }
 
     public List<String> requiredMarkerKeys() {
         return requiredMarkerKeys;
-    }
-
-    public boolean isModSetLoaded() {
-        for (final String modId : requiredModIds) {
-            if (!LoaderApiCompat.isModLoaded(modId)) {
-                return false;
-            }
-        }
-        return true;
     }
 
     public Optional<Class<?>> resolveRecipeClass() {
@@ -270,32 +201,12 @@ public final class CookingPotBridgeTarget {
         if (recipeId == null) {
             return false;
         }
-        final String recipeNamespace = recipeId.getNamespace();
         final String fullRecipeId = recipeId.toString();
-
-        final boolean hasAllowFilter = !allowedRecipeNamespaces.isEmpty() || !allowedRecipeIdPrefixes.isEmpty();
-        if (hasAllowFilter) {
-            final boolean allowByNamespace = allowedRecipeNamespaces.contains(recipeNamespace);
-            final boolean allowByIdPrefix = startsWithAny(fullRecipeId, allowedRecipeIdPrefixes);
-            if (!allowByNamespace && !allowByIdPrefix) {
-                return false;
-            }
-        }
-
-        if (deniedRecipeNamespaces.contains(recipeNamespace)) {
-            return false;
-        }
-
         return !startsWithAny(fullRecipeId, deniedRecipeIdPrefixes);
     }
 
     private static boolean startsWithAny(final String value, final List<String> prefixes) {
-        for (final String prefix : prefixes) {
-            if (value.startsWith(prefix)) {
-                return true;
-            }
-        }
-        return false;
+        return prefixes.stream().anyMatch(value::startsWith);
     }
 
     private static Object resolveHolderValue(final String ownerClassName, final String fieldName) {
@@ -340,10 +251,7 @@ public final class CookingPotBridgeTarget {
 
     private static Boolean queryPresence(final Object holder) {
         final Boolean byIsPresent = invokeBooleanMethod(holder, "isPresent");
-        if (byIsPresent != null) {
-            return byIsPresent;
-        }
-        return invokeBooleanMethod(holder, "isBound");
+        return byIsPresent != null ? byIsPresent : invokeBooleanMethod(holder, "isBound");
     }
 
     private static Boolean invokeBooleanMethod(final Object holder, final String methodName) {
@@ -353,9 +261,7 @@ public final class CookingPotBridgeTarget {
             if (value instanceof Boolean bool) {
                 return bool;
             }
-        } catch (ReflectiveOperationException ignored) {
-            return null;
-        } catch (RuntimeException ignored) {
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
             return null;
         }
         return null;

@@ -1,9 +1,8 @@
 package org.lab_11.modsunified.impl.platform;
 
 import java.lang.reflect.Method;
-import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 
 public final class LoaderApiCompat {
     private static final String NEOFORGE_LOADING_MOD_LIST_CLASS = "net.neoforged.fml.loading.LoadingModList";
@@ -100,17 +99,12 @@ public final class LoaderApiCompat {
         }
     }
 
-    private static Set<String> modIdCandidates(final String modId) {
-        final Set<String> candidates = new LinkedHashSet<>();
-        candidates.add(modId);
-
-        if ("minersdelight".equals(modId)) {
-            candidates.add("miners_delight");
-        } else if ("miners_delight".equals(modId)) {
-            candidates.add("minersdelight");
-        }
-
-        return candidates;
+    private static List<String> modIdCandidates(final String modId) {
+        return switch (modId) {
+            case "minersdelight" -> List.of(modId, "miners_delight");
+            case "miners_delight" -> List.of(modId, "minersdelight");
+            default -> List.of(modId);
+        };
     }
 
     private static Object resolveModList() {

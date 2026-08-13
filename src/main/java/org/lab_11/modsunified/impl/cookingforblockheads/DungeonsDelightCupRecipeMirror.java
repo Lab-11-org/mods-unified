@@ -17,10 +17,8 @@ import org.slf4j.Logger;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 
 public final class DungeonsDelightCupRecipeMirror {
@@ -341,16 +339,7 @@ public final class DungeonsDelightCupRecipeMirror {
     }
 
     private static Object invokeNoArg(final Object target, final String methodName) {
-        if (target == null) {
-            return null;
-        }
-
-        try {
-            final Method method = target.getClass().getMethod(methodName);
-            return method.invoke(target);
-        } catch (ReflectiveOperationException ignored) {
-            return null;
-        }
+        return CfbhRuntime.invokeNoArg(target, methodName);
     }
 
     private static Object invokeStatic(final Method method, final Object argument) {

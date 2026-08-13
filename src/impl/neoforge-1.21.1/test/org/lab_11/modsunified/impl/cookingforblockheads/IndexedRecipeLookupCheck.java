@@ -17,7 +17,7 @@ final class IndexedRecipeLookupCheck {
     private IndexedRecipeLookupCheck() {
     }
 
-    public static void main(final String[] args) {
+    public static void main(final String[] args) throws ReflectiveOperationException {
         final ResourceLocation normalId = MinecraftApiCompat.resourceLocation("minecraft", "bread");
         final ResourceLocation oldIndexedId = indexedId("old");
         final ResourceLocation newIndexedId = indexedId("new");
@@ -44,39 +44,31 @@ final class IndexedRecipeLookupCheck {
     }
 
     private static void checkVariantSelection(final ResourceLocation selectedId,
-                                              final ResourceLocation otherId) {
-        try {
-            final Class<?> mixin = Class.forName(
-                    "org.lab_11.modsunified.mixin.cookingforblockheads.KitchenMenuRecipeStatusMixin"
-            );
-            final Method method = mixin.getDeclaredMethod(
-                    "shouldUseRequestedLocks",
-                    ResourceLocation.class,
-                    ResourceLocation.class
-            );
-            method.setAccessible(true);
-            if (!Boolean.TRUE.equals(method.invoke(null, selectedId, selectedId))
-                    || !Boolean.FALSE.equals(method.invoke(null, otherId, selectedId))) {
-                throw new AssertionError("Indexed variant locks must apply only to the selected recipe");
-            }
-        } catch (ReflectiveOperationException e) {
-            throw new AssertionError(e);
+                                              final ResourceLocation otherId) throws ReflectiveOperationException {
+        final Class<?> mixin = Class.forName(
+                "org.lab_11.modsunified.mixin.cookingforblockheads.KitchenMenuRecipeStatusMixin"
+        );
+        final Method method = mixin.getDeclaredMethod(
+                "shouldUseRequestedLocks",
+                ResourceLocation.class,
+                ResourceLocation.class
+        );
+        method.setAccessible(true);
+        if (!Boolean.TRUE.equals(method.invoke(null, selectedId, selectedId))
+                || !Boolean.FALSE.equals(method.invoke(null, otherId, selectedId))) {
+            throw new AssertionError("Indexed variant locks must apply only to the selected recipe");
         }
     }
 
-    private static void checkRetryableOperationMarker() {
-        try {
-            final Field operationClass = CfbhRuntime.class.getDeclaredField("kitchenOperationClass");
-            operationClass.setAccessible(true);
-            operationClass.set(null, FakeKitchenOperation.class);
-            final Object retryable = CfbhRuntime.newRetryableKitchenOperationWithFeedback(Component.literal("retry"));
-            final Object terminal = CfbhRuntime.newKitchenOperationWithFeedback(Component.literal("terminal"));
-            if (!CfbhRuntime.isRetryableKitchenOperation(retryable)
-                    || CfbhRuntime.isRetryableKitchenOperation(terminal)) {
-                throw new AssertionError("Only retry-safe pot failures may advance to another processor");
-            }
-        } catch (ReflectiveOperationException e) {
-            throw new AssertionError(e);
+    private static void checkRetryableOperationMarker() throws ReflectiveOperationException {
+        final Field operationClass = CfbhRuntime.class.getDeclaredField("kitchenOperationClass");
+        operationClass.setAccessible(true);
+        operationClass.set(null, FakeKitchenOperation.class);
+        final Object retryable = CfbhRuntime.newRetryableKitchenOperationWithFeedback(Component.literal("retry"));
+        final Object terminal = CfbhRuntime.newKitchenOperationWithFeedback(Component.literal("terminal"));
+        if (!CfbhRuntime.isRetryableKitchenOperation(retryable)
+                || CfbhRuntime.isRetryableKitchenOperation(terminal)) {
+            throw new AssertionError("Only retry-safe pot failures may advance to another processor");
         }
     }
 

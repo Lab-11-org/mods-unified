@@ -16,37 +16,17 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(targets = "com.sammy.minersdelight.content.block.copper_pot.CopperPotBlockEntity")
 abstract class CopperPotBlockEntityMixin {
     @Redirect(
-            method = "cookingTick",
+            method = {"cookingTick", "animationTick"},
             at = @At(
                     value = "INVOKE",
                     target = "Lcom/sammy/minersdelight/content/block/copper_pot/CopperPotBlockEntity;isHeated(Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;)Z"
             ),
-            remap = false
+            remap = false,
+            require = 2
     )
-    private static boolean lab11$redirectCookingTickHeatCheck(final @Coerce Object self,
-                                                              final Level level,
-                                                              final BlockPos worldPosition) {
-        if (level != null
-                && worldPosition != null
-                && CookingPotHeatBridge.shouldUseOvenHeatForPot(level, worldPosition)
-                && CookingPotHeatBridge.isAnyManagedOvenBelow(level, worldPosition)) {
-            return CookingPotHeatBridge.isAnyOvenHeatedBelow(level, worldPosition, self);
-        }
-
-        return CookingPotHeatBridge.callNativeIsHeated(self, level, worldPosition);
-    }
-
-    @Redirect(
-            method = "animationTick",
-            at = @At(
-                    value = "INVOKE",
-                    target = "Lcom/sammy/minersdelight/content/block/copper_pot/CopperPotBlockEntity;isHeated(Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;)Z"
-            ),
-            remap = false
-    )
-    private static boolean lab11$redirectAnimationTickHeatCheck(final @Coerce Object self,
-                                                                final Level level,
-                                                                final BlockPos worldPosition) {
+    private static boolean lab11$redirectHeatCheck(final @Coerce Object self,
+                                                   final Level level,
+                                                   final BlockPos worldPosition) {
         if (level != null
                 && worldPosition != null
                 && CookingPotHeatBridge.shouldUseOvenHeatForPot(level, worldPosition)

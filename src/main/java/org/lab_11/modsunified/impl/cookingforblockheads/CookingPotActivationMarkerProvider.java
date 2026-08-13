@@ -104,47 +104,16 @@ public final class CookingPotActivationMarkerProvider implements CfbhRuntime.Kit
     }
 
     private static MarkerEntry createMarkerEntry(final String markerKey) {
-        final ItemStack markerStack = createMarkerStack(markerKey);
-        final Object token = CfbhRuntime.newIngredientTokenProxy(new MarkerToken(markerStack));
-        return new MarkerEntry(markerStack, Ingredient.of(markerStack), token);
-    }
-
-    private static ItemStack createMarkerStack(final String markerKey) {
         final ItemStack markerStack = new ItemStack(BridgeMarkerRegistry.markerItemFor(markerKey));
         MinecraftApiCompat.setCustomName(
                 markerStack,
-                Component.translatable(markerTranslationKey(markerKey))
+                Component.translatable("lab_11_mods_unified.marker." + markerKey)
         );
-        return markerStack;
-    }
-
-    private static String markerTranslationKey(final String markerKey) {
-        return "lab_11_mods_unified.marker." + markerKey;
+        final Object token = CfbhRuntime.newStaticIngredientToken(markerStack);
+        return new MarkerEntry(markerStack, Ingredient.of(markerStack), token);
     }
 
     private record MarkerEntry(ItemStack stack, Ingredient ingredient, Object token) {
     }
 
-    private static final class MarkerToken implements CfbhRuntime.IngredientTokenView {
-        private final ItemStack markerStack;
-
-        private MarkerToken(final ItemStack markerStack) {
-            this.markerStack = markerStack;
-        }
-
-        @Override
-        public ItemStack peek() {
-            return markerStack.copy();
-        }
-
-        @Override
-        public ItemStack consume() {
-            return markerStack.copy();
-        }
-
-        @Override
-        public ItemStack restore(final ItemStack itemStack) {
-            return ItemStack.EMPTY;
-        }
-    }
 }

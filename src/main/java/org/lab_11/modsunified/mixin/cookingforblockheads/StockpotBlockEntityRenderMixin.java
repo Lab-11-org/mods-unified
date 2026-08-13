@@ -89,33 +89,8 @@ abstract class StockpotBlockEntityRenderMixin {
             final Method method = target.getClass().getMethod(methodName);
             return method.invoke(target);
         } catch (ReflectiveOperationException ignored) {
-            final Method method = findMethod(target.getClass(), methodName, 0);
-            if (method == null) {
-                return null;
-            }
-
-            try {
-                method.setAccessible(true);
-                return method.invoke(target);
-            } catch (ReflectiveOperationException ignoredAgain) {
-                return null;
-            }
+            return null;
         }
-    }
-
-    private static Method findMethod(final Class<?> ownerClass,
-                                     final String methodName,
-                                     final int parameterCount) {
-        Class<?> currentClass = ownerClass;
-        while (currentClass != null) {
-            for (final Method method : currentClass.getDeclaredMethods()) {
-                if (methodName.equals(method.getName()) && method.getParameterCount() == parameterCount) {
-                    return method;
-                }
-            }
-            currentClass = currentClass.getSuperclass();
-        }
-        return null;
     }
 
     private static Field findField(final Class<?> ownerClass, final String fieldName) {

@@ -24,7 +24,6 @@ public final class CookingPotIndexedRecipe implements CraftingRecipe {
     private final ItemStack indexedResult;
     private final ItemStack indexedContainerCost;
     private final List<String> requiredMarkerKeys;
-    private final int syntheticIngredientCount;
 
     public CookingPotIndexedRecipe(final net.minecraft.resources.ResourceLocation indexedId,
                                    final Recipe<?> delegate,
@@ -37,9 +36,8 @@ public final class CookingPotIndexedRecipe implements CraftingRecipe {
         this.indexedResult = resolveIndexedResult(delegate, registryAccess, markerKey);
         this.indexedContainerCost = CookingPotContainerCost.resolveForIndexedRecipe(delegate, registryAccess, markerKey);
         this.requiredMarkerKeys = List.copyOf(requiredMarkerKeys);
-        // Legacy 1.20.1 recipe-book path does not include a synthetic marker ingredient.
-        this.syntheticIngredientCount = 0;
-        this.indexedIngredients = buildIndexedIngredients(delegate, markerKey);
+        this.indexedIngredients = NonNullList.create();
+        this.indexedIngredients.addAll(delegate.getIngredients());
     }
 
     public static Object toIndexedRecipeHolder(final Object recipeEntry,
@@ -140,7 +138,7 @@ public final class CookingPotIndexedRecipe implements CraftingRecipe {
     }
 
     public int syntheticIngredientCount() {
-        return syntheticIngredientCount;
+        return 0;
     }
 
     public String targetKey() {
@@ -157,13 +155,6 @@ public final class CookingPotIndexedRecipe implements CraftingRecipe {
 
     public List<String> requiredMarkerKeys() {
         return requiredMarkerKeys;
-    }
-
-    private static NonNullList<Ingredient> buildIndexedIngredients(final Recipe<?> recipe,
-                                                                   final String markerKey) {
-        final NonNullList<Ingredient> indexedIngredients = NonNullList.create();
-        indexedIngredients.addAll(recipe.getIngredients());
-        return indexedIngredients;
     }
 
     private static ItemStack resolveIndexedResult(final Recipe<?> recipe,

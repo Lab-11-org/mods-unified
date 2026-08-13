@@ -17,7 +17,6 @@
     "MonsterPotBlockEntity120Mixin",
     "MonsterPotBlockMixin",
     "MonsterPotBlockEntityMixin",
-    "OvenBlockEntity120Mixin",
     "OvenBlockEntityMixin",
     "KaleidoscopePotBlockMixin",
     "KaleidoscopePotBlockEntityMixin"

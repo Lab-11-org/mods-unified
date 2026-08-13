@@ -16,36 +16,17 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(targets = "net.yirmiri.dungeonsdelight.common.block.monster_pot.MonsterPotBlockEntity")
 abstract class MonsterPotBlockEntityMixin {
     @Redirect(
-            method = "cookingTick",
+            method = {"cookingTick", "animationTick"},
             at = @At(
                     value = "INVOKE",
                     target = "Lnet/yirmiri/dungeonsdelight/common/block/monster_pot/MonsterPotBlockEntity;isHeated(Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;)Z"
             ),
-            remap = false
+            remap = false,
+            require = 2
     )
-    private static boolean lab11$redirectCookingTickHeatCheck(final @Coerce Object self,
-                                                              final Level level,
-                                                              final BlockPos worldPosition) {
-        if (level != null
-                && worldPosition != null
-                && CookingPotHeatBridge.isAnyManagedOvenBelow(level, worldPosition)) {
-            return CookingPotHeatBridge.isDungeonOvenHeatedBelow(level, worldPosition, self);
-        }
-
-        return CookingPotHeatBridge.callNativeIsHeated(self, level, worldPosition);
-    }
-
-    @Redirect(
-            method = "animationTick",
-            at = @At(
-                    value = "INVOKE",
-                    target = "Lnet/yirmiri/dungeonsdelight/common/block/monster_pot/MonsterPotBlockEntity;isHeated(Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;)Z"
-            ),
-            remap = false
-    )
-    private static boolean lab11$redirectAnimationTickHeatCheck(final @Coerce Object self,
-                                                                final Level level,
-                                                                final BlockPos worldPosition) {
+    private static boolean lab11$redirectHeatCheck(final @Coerce Object self,
+                                                   final Level level,
+                                                   final BlockPos worldPosition) {
         if (level != null
                 && worldPosition != null
                 && CookingPotHeatBridge.isAnyManagedOvenBelow(level, worldPosition)) {

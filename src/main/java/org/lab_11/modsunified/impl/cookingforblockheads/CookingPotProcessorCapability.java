@@ -37,7 +37,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.WeakHashMap;
-import java.util.function.Predicate;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class CookingPotProcessorCapability {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -47,10 +47,10 @@ public final class CookingPotProcessorCapability {
     private static final ResourceLocation CFBH_KITCHEN_ITEM_PROCESSOR_CAPABILITY_ID =
             MinecraftApiCompat.resourceLocation(BridgeKeys.MOD_COOKING_FOR_BLOCKHEADS, "kitchen_item_processor");
     private static final String CFBH_KITCHEN_IMPL_CLASS = "net.blay09.mods.cookingforblockheads.crafting.KitchenImpl";
-    private static final String[] CFBH_COOKING_TABLE_BLOCK_ENTITY_CLASS_CANDIDATES = {
+    private static final Set<String> CFBH_COOKING_TABLE_BLOCK_ENTITY_CLASSES = Set.of(
             "net.blay09.mods.cookingforblockheads.block.entity.CookingTableBlockEntity",
             "net.blay09.mods.cookingforblockheads.tile.CookingTableBlockEntity"
-    };
+    );
     private static final String POT_GET_INVENTORY_METHOD = "getInventory";
     private static final String POT_INVENTORY_FIELD = "inventory";
     private static final String POT_MEAL_DISPLAY_SLOT_FIELD = "MEAL_DISPLAY_SLOT";
@@ -94,26 +94,11 @@ public final class CookingPotProcessorCapability {
     private static final ResourceLocation VANILLA_WATER_SOUP_BASE_ID =
             MinecraftApiCompat.resourceLocation("minecraft", "water");
 
-    private static final Map<String, Predicate<BlockEntity>> REQUIRED_MARKER_CHECKS = Map.of(
-            BridgeKeys.MARKER_DUNGEON_OVEN, CookingPotProcessorCapability::hasConnectedDungeonOven
-    );
-
     private static final Map<BlockEntity, Recipe<?>> LAST_RECIPE_BY_POT = new WeakHashMap<>();
+    private static final Map<String, Object> FEEDBACK_OPERATIONS = new ConcurrentHashMap<>();
     private static volatile List<ItemStack> cachedWaterSoupBaseCandidates;
 
     private static volatile BlockCapability<Object, Void> kitchenItemProcessorCapability;
-    private static volatile Object potTransferOperation;
-    private static volatile Object potNotConnectedOperation;
-    private static volatile Object potInputBlockedOperation;
-    private static volatile Object potContainerBlockedOperation;
-    private static volatile Object potTransferFailedOperation;
-    private static volatile Object potStockpotMissingLidOperation;
-    private static volatile Object potStockpotMissingSoupBaseOperation;
-    private static volatile Object potStockpotCookingOperation;
-    private static volatile Object potContentConflictOperation;
-    private static volatile Object potFullMatchOperation;
-    private static volatile Object potMissingOilOperation;
-    private static volatile Object potMissingHeatOperation;
 
     private enum TransferFailure {
         NONE,
@@ -161,7 +146,7 @@ public final class CookingPotProcessorCapability {
                 final boolean ovenConnectedPlacement =
                         CookingPotHeatBridge.isTargetPotConnectedForCookingTable(blockEntity, targetKey);
                 if (!directTablePlacement && !ovenConnectedPlacement) {
-                    return potNotConnectedOperation();
+                    return retryableFeedbackOperation(FEEDBACK_POT_NOT_CONNECTED_KEY, ChatFormatting.RED);
                 }
 
                 final TransferFailure transferFailure = transferRecipeToPot(blockEntity, recipe, ingredientTokens);
@@ -172,7 +157,7 @@ public final class CookingPotProcessorCapability {
                     return transferFailureOperation(transferFailure);
                 }
 
-                return potTransferOperation();
+                return feedbackOperation(FEEDBACK_MOVED_TO_POT_KEY, ChatFormatting.YELLOW);
             }
         });
     }
@@ -262,16 +247,6 @@ public final class CookingPotProcessorCapability {
         return created;
     }
 
-    private static Object potTransferOperation() {
-        final Object cached = potTransferOperation;
-        if (cached != null) {
-            return cached;
-        }
-        final Object created = feedbackOperation(FEEDBACK_MOVED_TO_POT_KEY, ChatFormatting.YELLOW);
-        potTransferOperation = created;
-        return created;
-    }
-
     private static boolean transferResolvedStacksToPotInternal(final BlockEntity blockEntity,
                                                                final Recipe<?> recipe,
                                                                final List<ItemStack> ingredientStacks,
@@ -313,7 +288,7 @@ public final class CookingPotProcessorCapability {
             }
         }
 
-        if (!canInsertResolvedIngredients(potInventory, ingredientStacks, inputSlotCount)) {
+        if (!insertResolvedIngredients(potInventory, ingredientStacks, inputSlotCount, true)) {
             return false;
         }
         if (!canInsertResolvedContainerCost(potInventory, containerCost, safeContainerSlot)) {
@@ -324,7 +299,7 @@ public final class CookingPotProcessorCapability {
             return true;
         }
 
-        if (!insertResolvedIngredients(potInventory, ingredientStacks, inputSlotCount)) {
+        if (!insertResolvedIngredients(potInventory, ingredientStacks, inputSlotCount, false)) {
             return false;
         }
         if (!insertResolvedContainerCost(potInventory, containerCost, safeContainerSlot)) {
@@ -362,31 +337,10 @@ public final class CookingPotProcessorCapability {
         return containerCost.getCount() <= maxStack;
     }
 
-    private static boolean canInsertResolvedIngredients(final IItemHandler potInventory,
-                                                        final List<ItemStack> ingredientStacks,
-                                                        final int inputSlotCount) {
-        int slot = 0;
-        for (final ItemStack ingredientStack : ingredientStacks) {
-            if (ingredientStack.isEmpty()) {
-                continue;
-            }
-            if (slot >= inputSlotCount) {
-                return false;
-            }
-
-            final ItemStack unit = ingredientStack.copyWithCount(1);
-            final ItemStack remaining = potInventory.insertItem(slot, unit, true);
-            if (!remaining.isEmpty()) {
-                return false;
-            }
-            slot++;
-        }
-        return true;
-    }
-
     private static boolean insertResolvedIngredients(final IItemHandler potInventory,
                                                      final List<ItemStack> ingredientStacks,
-                                                     final int inputSlotCount) {
+                                                     final int inputSlotCount,
+                                                     final boolean simulate) {
         int slot = 0;
         for (final ItemStack ingredientStack : ingredientStacks) {
             if (ingredientStack.isEmpty()) {
@@ -397,7 +351,7 @@ public final class CookingPotProcessorCapability {
             }
 
             final ItemStack unit = ingredientStack.copyWithCount(1);
-            final ItemStack remaining = potInventory.insertItem(slot, unit, false);
+            final ItemStack remaining = potInventory.insertItem(slot, unit, simulate);
             if (!remaining.isEmpty()) {
                 return false;
             }
@@ -447,66 +401,6 @@ public final class CookingPotProcessorCapability {
         return true;
     }
 
-    private static Object potNotConnectedOperation() {
-        final Object cached = potNotConnectedOperation;
-        if (cached != null) {
-            return cached;
-        }
-        final Object created = retryableFeedbackOperation(FEEDBACK_POT_NOT_CONNECTED_KEY, ChatFormatting.RED);
-        potNotConnectedOperation = created;
-        return created;
-    }
-
-    private static Object potInputBlockedOperation() {
-        final Object cached = potInputBlockedOperation;
-        if (cached != null) {
-            return cached;
-        }
-        final Object created = retryableFeedbackOperation(FEEDBACK_POT_INPUT_BLOCKED_KEY, ChatFormatting.RED);
-        potInputBlockedOperation = created;
-        return created;
-    }
-
-    private static Object potContainerBlockedOperation() {
-        final Object cached = potContainerBlockedOperation;
-        if (cached != null) {
-            return cached;
-        }
-        final Object created = retryableFeedbackOperation(FEEDBACK_POT_CONTAINER_BLOCKED_KEY, ChatFormatting.RED);
-        potContainerBlockedOperation = created;
-        return created;
-    }
-
-    private static Object potTransferFailedOperation() {
-        final Object cached = potTransferFailedOperation;
-        if (cached != null) {
-            return cached;
-        }
-        final Object created = retryableFeedbackOperation(FEEDBACK_POT_TRANSFER_FAILED_KEY, ChatFormatting.RED);
-        potTransferFailedOperation = created;
-        return created;
-    }
-
-    private static Object potStockpotMissingLidOperation() {
-        final Object cached = potStockpotMissingLidOperation;
-        if (cached != null) {
-            return cached;
-        }
-        final Object created = feedbackOperation(FEEDBACK_STOCKPOT_MISSING_LID_KEY, ChatFormatting.RED);
-        potStockpotMissingLidOperation = created;
-        return created;
-    }
-
-    private static Object potStockpotMissingSoupBaseOperation() {
-        final Object cached = potStockpotMissingSoupBaseOperation;
-        if (cached != null) {
-            return cached;
-        }
-        final Object created = retryableFeedbackOperation(FEEDBACK_STOCKPOT_MISSING_SOUP_BASE_KEY, ChatFormatting.RED);
-        potStockpotMissingSoupBaseOperation = created;
-        return created;
-    }
-
     private static Object missingSoupBaseOperation(final Recipe<?> recipe) {
         final ResourceLocation soupBaseId = StockpotSoupBridge.resolveRequiredSoupBaseId(recipe);
         final ItemStack soupBaseStack = StockpotSoupBridge.soupBaseBucketStack(soupBaseId);
@@ -517,56 +411,6 @@ public final class CookingPotProcessorCapability {
                 Component.translatable(FEEDBACK_STOCKPOT_MISSING_SOUP_BASE_KEY, soupBaseName)
                         .withStyle(ChatFormatting.RED)
         );
-    }
-
-    private static Object potStockpotCookingOperation() {
-        final Object cached = potStockpotCookingOperation;
-        if (cached != null) {
-            return cached;
-        }
-        final Object created = retryableFeedbackOperation(FEEDBACK_STOCKPOT_COOKING_KEY, ChatFormatting.YELLOW);
-        potStockpotCookingOperation = created;
-        return created;
-    }
-
-    private static Object potContentConflictOperation() {
-        final Object cached = potContentConflictOperation;
-        if (cached != null) {
-            return cached;
-        }
-        final Object created = retryableFeedbackOperation(FEEDBACK_POT_CONTENT_CONFLICT_KEY, ChatFormatting.RED);
-        potContentConflictOperation = created;
-        return created;
-    }
-
-    private static Object potFullMatchOperation() {
-        final Object cached = potFullMatchOperation;
-        if (cached != null) {
-            return cached;
-        }
-        final Object created = retryableFeedbackOperation(FEEDBACK_POT_FULL_MATCH_KEY, ChatFormatting.YELLOW);
-        potFullMatchOperation = created;
-        return created;
-    }
-
-    private static Object potMissingOilOperation() {
-        final Object cached = potMissingOilOperation;
-        if (cached != null) {
-            return cached;
-        }
-        final Object created = retryableFeedbackOperation(FEEDBACK_POT_MISSING_OIL_KEY, ChatFormatting.RED);
-        potMissingOilOperation = created;
-        return created;
-    }
-
-    private static Object potMissingHeatOperation() {
-        final Object cached = potMissingHeatOperation;
-        if (cached != null) {
-            return cached;
-        }
-        final Object created = retryableFeedbackOperation(FEEDBACK_POT_MISSING_HEAT_KEY, ChatFormatting.RED);
-        potMissingHeatOperation = created;
-        return created;
     }
 
     private static boolean isRecipeAcceptedForTarget(final Recipe<?> recipe, final String targetKey) {
@@ -1099,29 +943,33 @@ public final class CookingPotProcessorCapability {
     }
 
     private static Object feedbackOperation(final String translationKey, final ChatFormatting style) {
-        return CfbhRuntime.newKitchenOperationWithFeedback(
-                Component.translatable(translationKey).withStyle(style)
+        return FEEDBACK_OPERATIONS.computeIfAbsent(translationKey, key ->
+                CfbhRuntime.newKitchenOperationWithFeedback(Component.translatable(key).withStyle(style))
         );
     }
 
     private static Object retryableFeedbackOperation(final String translationKey, final ChatFormatting style) {
-        return CfbhRuntime.newRetryableKitchenOperationWithFeedback(
-                Component.translatable(translationKey).withStyle(style)
+        return FEEDBACK_OPERATIONS.computeIfAbsent(translationKey, key ->
+                CfbhRuntime.newRetryableKitchenOperationWithFeedback(Component.translatable(key).withStyle(style))
         );
     }
 
     private static Object transferFailureOperation(final TransferFailure failure) {
         return switch (failure) {
-            case INPUT_SLOT_BLOCKED -> potInputBlockedOperation();
-            case CONTAINER_SLOT_BLOCKED -> potContainerBlockedOperation();
-            case NO_INVENTORY, INPUT_TRANSFER_FAILED, CONTAINER_TRANSFER_FAILED -> potTransferFailedOperation();
-            case STOCKPOT_MISSING_LID -> potStockpotMissingLidOperation();
-            case STOCKPOT_MISSING_SOUP_BASE -> potStockpotMissingSoupBaseOperation();
-            case STOCKPOT_COOKING -> potStockpotCookingOperation();
-            case POT_CONTENT_CONFLICT -> potContentConflictOperation();
-            case POT_FULL_MATCH -> potFullMatchOperation();
-            case POT_MISSING_OIL -> potMissingOilOperation();
-            case POT_MISSING_HEAT -> potMissingHeatOperation();
+            case INPUT_SLOT_BLOCKED -> retryableFeedbackOperation(FEEDBACK_POT_INPUT_BLOCKED_KEY, ChatFormatting.RED);
+            case CONTAINER_SLOT_BLOCKED ->
+                    retryableFeedbackOperation(FEEDBACK_POT_CONTAINER_BLOCKED_KEY, ChatFormatting.RED);
+            case NO_INVENTORY, INPUT_TRANSFER_FAILED, CONTAINER_TRANSFER_FAILED ->
+                    retryableFeedbackOperation(FEEDBACK_POT_TRANSFER_FAILED_KEY, ChatFormatting.RED);
+            case STOCKPOT_MISSING_LID -> feedbackOperation(FEEDBACK_STOCKPOT_MISSING_LID_KEY, ChatFormatting.RED);
+            case STOCKPOT_MISSING_SOUP_BASE ->
+                    retryableFeedbackOperation(FEEDBACK_STOCKPOT_MISSING_SOUP_BASE_KEY, ChatFormatting.RED);
+            case STOCKPOT_COOKING -> retryableFeedbackOperation(FEEDBACK_STOCKPOT_COOKING_KEY, ChatFormatting.YELLOW);
+            case POT_CONTENT_CONFLICT ->
+                    retryableFeedbackOperation(FEEDBACK_POT_CONTENT_CONFLICT_KEY, ChatFormatting.RED);
+            case POT_FULL_MATCH -> retryableFeedbackOperation(FEEDBACK_POT_FULL_MATCH_KEY, ChatFormatting.YELLOW);
+            case POT_MISSING_OIL -> retryableFeedbackOperation(FEEDBACK_POT_MISSING_OIL_KEY, ChatFormatting.RED);
+            case POT_MISSING_HEAT -> retryableFeedbackOperation(FEEDBACK_POT_MISSING_HEAT_KEY, ChatFormatting.RED);
             case NONE -> CfbhRuntime.kitchenOperationEmpty();
         };
     }
@@ -1381,7 +1229,7 @@ public final class CookingPotProcessorCapability {
     }
 
     private static int readKaleidoscopePotStatus(final BlockEntity blockEntity) {
-        final Field statusField = findField(blockEntity.getClass(), KALEIDOSCOPE_POT_STATUS_FIELD);
+        final Field statusField = CfbhRuntime.findField(blockEntity.getClass(), KALEIDOSCOPE_POT_STATUS_FIELD);
         if (statusField == null) {
             return Integer.MIN_VALUE;
         }
@@ -1812,8 +1660,9 @@ public final class CookingPotProcessorCapability {
                 : requiredSoupBaseId;
 
         try {
-            final Field soupBaseIdField = findField(blockEntity.getClass(), KALEIDOSCOPE_STOCKPOT_SOUP_BASE_ID_FIELD);
-            final Field statusField = findField(blockEntity.getClass(), KALEIDOSCOPE_POT_STATUS_FIELD);
+            final Field soupBaseIdField = CfbhRuntime.findField(
+                    blockEntity.getClass(), KALEIDOSCOPE_STOCKPOT_SOUP_BASE_ID_FIELD);
+            final Field statusField = CfbhRuntime.findField(blockEntity.getClass(), KALEIDOSCOPE_POT_STATUS_FIELD);
             if (soupBaseIdField != null) {
                 soupBaseIdField.setAccessible(true);
                 soupBaseIdField.set(blockEntity, effectiveSoupBaseId);
@@ -1870,7 +1719,7 @@ public final class CookingPotProcessorCapability {
 
     @SuppressWarnings("unchecked")
     private static List<ItemStack> resolveKaleidoscopePotInputs(final BlockEntity blockEntity) {
-        final Field inputsField = findField(blockEntity.getClass(), KALEIDOSCOPE_POT_INPUTS_FIELD);
+        final Field inputsField = CfbhRuntime.findField(blockEntity.getClass(), KALEIDOSCOPE_POT_INPUTS_FIELD);
         if (inputsField == null) {
             return null;
         }
@@ -1952,7 +1801,7 @@ public final class CookingPotProcessorCapability {
     }
 
     private static Object readFieldValue(final Object target, final String fieldName) {
-        final Field field = findField(target.getClass(), fieldName);
+        final Field field = CfbhRuntime.findField(target.getClass(), fieldName);
         if (field == null) {
             return null;
         }
@@ -1965,7 +1814,7 @@ public final class CookingPotProcessorCapability {
     }
 
     private static void setFieldValue(final Object target, final String fieldName, final Object value) {
-        final Field field = findField(target.getClass(), fieldName);
+        final Field field = CfbhRuntime.findField(target.getClass(), fieldName);
         if (field == null) {
             return;
         }
@@ -1990,7 +1839,7 @@ public final class CookingPotProcessorCapability {
             return itemHandler;
         }
 
-        final Field inventoryField = findField(blockEntity.getClass(), POT_INVENTORY_FIELD);
+        final Field inventoryField = CfbhRuntime.findField(blockEntity.getClass(), POT_INVENTORY_FIELD);
         if (inventoryField == null) {
             return null;
         }
@@ -2011,7 +1860,7 @@ public final class CookingPotProcessorCapability {
     private static int resolveStaticIntField(final Class<?> ownerClass,
                                              final String fieldName,
                                              final int fallback) {
-        final Field field = findField(ownerClass, fieldName);
+        final Field field = CfbhRuntime.findField(ownerClass, fieldName);
         if (field == null) {
             return fallback;
         }
@@ -2025,7 +1874,7 @@ public final class CookingPotProcessorCapability {
     }
 
     private static void setIntField(final Object target, final String fieldName, final int value) {
-        final Field field = findField(target.getClass(), fieldName);
+        final Field field = CfbhRuntime.findField(target.getClass(), fieldName);
         if (field == null) {
             return;
         }
@@ -2038,22 +1887,10 @@ public final class CookingPotProcessorCapability {
         }
     }
 
-    private static Field findField(final Class<?> ownerClass, final String fieldName) {
-        Class<?> current = ownerClass;
-        while (current != null) {
-            try {
-                return current.getDeclaredField(fieldName);
-            } catch (NoSuchFieldException ignored) {
-                current = current.getSuperclass();
-            }
-        }
-        return null;
-    }
-
     private static boolean requiredMarkersSatisfied(final BlockEntity blockEntity, final List<String> requiredMarkerKeys) {
         for (final String requiredMarkerKey : requiredMarkerKeys) {
-            final Predicate<BlockEntity> requirementCheck = REQUIRED_MARKER_CHECKS.get(requiredMarkerKey);
-            if (requirementCheck != null && !requirementCheck.test(blockEntity)) {
+            if (BridgeKeys.MARKER_DUNGEON_OVEN.equals(requiredMarkerKey)
+                    && !hasConnectedDungeonOven(blockEntity)) {
                 return false;
             }
         }
@@ -2104,13 +1941,6 @@ public final class CookingPotProcessorCapability {
             return false;
         }
 
-        final Class<?> blockEntityClass = blockEntity.getClass();
-        final String className = blockEntityClass.getName();
-        for (final String candidateClassName : CFBH_COOKING_TABLE_BLOCK_ENTITY_CLASS_CANDIDATES) {
-            if (candidateClassName.equals(className)) {
-                return true;
-            }
-        }
-        return false;
+        return CFBH_COOKING_TABLE_BLOCK_ENTITY_CLASSES.contains(blockEntity.getClass().getName());
     }
 }

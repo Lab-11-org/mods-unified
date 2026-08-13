@@ -67,9 +67,7 @@ public final class ItemStackBridge {
 
     public static ItemStack getCraftingRemainingItem(final ItemStack fuelStack) {
         try {
-            final Class<?> balmClass = Class.forName(BALM_CLASS);
-            final Method getHooksMethod = balmClass.getMethod(BALM_GET_HOOKS_METHOD);
-            final Object balmHooks = getHooksMethod.invoke(null);
+            final Object balmHooks = balmHooks();
             if (balmHooks == null) {
                 return ItemStack.EMPTY;
             }
@@ -85,9 +83,7 @@ public final class ItemStackBridge {
 
     private static int readBurnTimeFromBalmHooks(final ItemStack fuelStack) {
         try {
-            final Class<?> balmClass = Class.forName(BALM_CLASS);
-            final Method getHooksMethod = balmClass.getMethod(BALM_GET_HOOKS_METHOD);
-            final Object balmHooks = getHooksMethod.invoke(null);
+            final Object balmHooks = balmHooks();
             if (balmHooks == null) {
                 return 0;
             }
@@ -98,5 +94,9 @@ public final class ItemStackBridge {
         } catch (ReflectiveOperationException ignored) {
             return 0;
         }
+    }
+
+    private static Object balmHooks() throws ReflectiveOperationException {
+        return Class.forName(BALM_CLASS).getMethod(BALM_GET_HOOKS_METHOD).invoke(null);
     }
 }

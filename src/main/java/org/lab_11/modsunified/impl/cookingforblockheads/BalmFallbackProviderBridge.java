@@ -5,6 +5,7 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import org.slf4j.Logger;
 
 import java.lang.reflect.Method;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.function.BiFunction;
@@ -63,12 +64,15 @@ public final class BalmFallbackProviderBridge {
                                 return new EnamelBasinOilProvider(blockEntity).asKitchenItemProvider();
                             }
 
-                            return resolveTargetForBlockEntity(blockEntity, targets)
-                                    .map(target -> new CookingPotActivationMarkerProvider(
+                            for (final CookingPotBridgeTarget target : targets) {
+                                if (target.matchesBlockEntity(blockEntity)) {
+                                    return new CookingPotActivationMarkerProvider(
                                             blockEntity,
                                             target.targetKey()
-                                    ).asKitchenItemProvider())
-                                    .orElse(null);
+                                    ).asKitchenItemProvider();
+                                }
+                            }
+                            return null;
                         } catch (RuntimeException e) {
                             LOGGER.warn("Failed to create runtime KitchenItemProvider marker proxy.", e);
                             return null;
@@ -83,41 +87,29 @@ public final class BalmFallbackProviderBridge {
 
     private static Object createProcessorForTarget(final BlockEntity blockEntity,
                                                    final List<CookingPotBridgeTarget> targets) {
+        CookingPotBridgeTarget selectedTarget = null;
+        final Set<net.minecraft.world.item.crafting.RecipeType<?>> recipeTypes = new LinkedHashSet<>();
         for (final CookingPotBridgeTarget target : targets) {
             if (!target.matchesBlockEntity(blockEntity)) {
                 continue;
             }
-
-            final var recipeTypeOptional = target.resolveRecipeType();
-            if (recipeTypeOptional.isEmpty()) {
-                continue;
-            }
-
-            final java.util.Set<net.minecraft.world.item.crafting.RecipeType<?>> recipeTypes = new java.util.LinkedHashSet<>();
-            for (final CookingPotBridgeTarget candidate : targets) {
-                if (candidate.matchesBlockEntity(blockEntity)) {
-                    candidate.resolveRecipeType().ifPresent(recipeTypes::add);
+            final var recipeType = target.resolveRecipeType();
+            if (recipeType.isPresent()) {
+                recipeTypes.add(recipeType.get());
+                if (selectedTarget == null) {
+                    selectedTarget = target;
                 }
             }
-            return CookingPotProcessorCapability.createProcessor(
-                    blockEntity,
-                    Set.copyOf(recipeTypes),
-                    target.requiredMarkerKeys(),
-                    target.targetKey()
-            );
         }
 
-        return null;
-    }
-
-    private static java.util.Optional<CookingPotBridgeTarget> resolveTargetForBlockEntity(final BlockEntity blockEntity,
-                                                                                           final List<CookingPotBridgeTarget> targets) {
-        for (final CookingPotBridgeTarget target : targets) {
-            if (target.matchesBlockEntity(blockEntity)) {
-                return java.util.Optional.of(target);
-            }
+        if (selectedTarget == null) {
+            return null;
         }
-
-        return java.util.Optional.empty();
+        return CookingPotProcessorCapability.createProcessor(
+                blockEntity,
+                Set.copyOf(recipeTypes),
+                selectedTarget.requiredMarkerKeys(),
+                selectedTarget.targetKey()
+        );
     }
 }

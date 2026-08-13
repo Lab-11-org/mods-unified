@@ -31,6 +31,7 @@ public final class OvenBridge {
             "net.blay09.mods.cookingforblockheads.block.entity.OvenBlockEntity",
             "net.blay09.mods.cookingforblockheads.tile.OvenBlockEntity"
     };
+    private static final String[] ENERGY_DRAIN_METHODS = {"drain", "extract", "extractEnergy"};
 
     private static final String OVEN_FIELD_FURNACE_BURN_TIME = "furnaceBurnTime";
     private static final String OVEN_FIELD_CURRENT_ITEM_BURN_TIME = "currentItemBurnTime";
@@ -39,9 +40,6 @@ public final class OvenBridge {
 
     private static final String OVEN_FIELD_ENERGY_STORAGE = "energyStorage";
     private static final int OVEN_ENERGY_BURN_TARGET = 200;
-
-    private static volatile Class<?> cachedCfbhOvenBlockEntityClass;
-    private static volatile boolean cfbhOvenBlockEntityLookupFailed;
 
     private OvenBridge() {
     }
@@ -111,33 +109,13 @@ public final class OvenBridge {
     // -- Package-private --
 
     static Class<?> resolveCfbhOvenBlockEntityClass() {
-        final Class<?> cached = cachedCfbhOvenBlockEntityClass;
-        if (cached != null) {
-            return cached;
-        }
-        if (cfbhOvenBlockEntityLookupFailed) {
-            return null;
-        }
-
-        synchronized (OvenBridge.class) {
-            if (cachedCfbhOvenBlockEntityClass != null) {
-                return cachedCfbhOvenBlockEntityClass;
+        for (final String candidateClassName : CFBH_OVEN_BLOCK_ENTITY_CLASS_CANDIDATES) {
+            final Class<?> candidateClass = CfbhRuntime.resolveClass(candidateClassName);
+            if (candidateClass != null) {
+                return candidateClass;
             }
-            if (cfbhOvenBlockEntityLookupFailed) {
-                return null;
-            }
-
-            for (final String candidateClassName : CFBH_OVEN_BLOCK_ENTITY_CLASS_CANDIDATES) {
-                try {
-                    cachedCfbhOvenBlockEntityClass = Class.forName(candidateClassName);
-                    return cachedCfbhOvenBlockEntityClass;
-                } catch (ClassNotFoundException ignored) {
-                    // Try next CFBH class layout.
-                }
-            }
-            cfbhOvenBlockEntityLookupFailed = true;
-            return null;
         }
+        return null;
     }
 
     // -- Private: Energy ignition --
@@ -200,27 +178,16 @@ public final class OvenBridge {
     }
 
     private static int invokeDrain(final Object energyStorage, final int amount) {
-        try {
-            final Method drainMethod = energyStorage.getClass().getMethod("drain", int.class, boolean.class);
-            final Object result = drainMethod.invoke(energyStorage, amount, false);
-            return result instanceof Number number ? number.intValue() : 0;
-        } catch (ReflectiveOperationException ignored) {
+        for (final String methodName : ENERGY_DRAIN_METHODS) {
+            try {
+                final Method method = energyStorage.getClass().getMethod(methodName, int.class, boolean.class);
+                final Object result = method.invoke(energyStorage, amount, false);
+                return result instanceof Number number ? number.intValue() : 0;
+            } catch (ReflectiveOperationException ignored) {
+                // Try the next supported energy API name.
+            }
         }
-
-        try {
-            final Method extractMethod = energyStorage.getClass().getMethod("extract", int.class, boolean.class);
-            final Object result = extractMethod.invoke(energyStorage, amount, false);
-            return result instanceof Number number ? number.intValue() : 0;
-        } catch (ReflectiveOperationException ignored) {
-        }
-
-        try {
-            final Method extractEnergyMethod = energyStorage.getClass().getMethod("extractEnergy", int.class, boolean.class);
-            final Object result = extractEnergyMethod.invoke(energyStorage, amount, false);
-            return result instanceof Number number ? number.intValue() : 0;
-        } catch (ReflectiveOperationException ignored) {
-            return 0;
-        }
+        return 0;
     }
 
     private static int forceConsumeEnergy(final Object energyStorage,
@@ -232,13 +199,8 @@ public final class OvenBridge {
         }
 
         final int updatedEnergy = Math.max(0, currentEnergy - drained);
-        if (invokeVoidInt(energyStorage, "setEnergy", updatedEnergy)) {
-            return drained;
-        }
-        if (invokeVoidInt(energyStorage, "setEnergyStored", updatedEnergy)) {
-            return drained;
-        }
-        return 0;
+        return invokeVoidInt(energyStorage, "setEnergy", updatedEnergy)
+                || invokeVoidInt(energyStorage, "setEnergyStored", updatedEnergy) ? drained : 0;
     }
 
     private static boolean invokeVoidInt(final Object target,
@@ -349,7 +311,7 @@ public final class OvenBridge {
     // -- Reflection helpers --
 
     private static int readIntField(final Object target, final String fieldName) {
-        final Field field = findField(target, fieldName);
+        final Field field = CfbhRuntime.findField(target, fieldName);
         if (field == null) {
             return 0;
         }
@@ -361,21 +323,8 @@ public final class OvenBridge {
         }
     }
 
-    private static boolean readBooleanField(final Object target, final String fieldName) {
-        final Field field = findField(target, fieldName);
-        if (field == null) {
-            return false;
-        }
-        try {
-            field.setAccessible(true);
-            return field.getBoolean(target);
-        } catch (ReflectiveOperationException ignored) {
-            return false;
-        }
-    }
-
     private static void setIntField(final Object target, final String fieldName, final int value) {
-        final Field field = findField(target, fieldName);
+        final Field field = CfbhRuntime.findField(target, fieldName);
         if (field == null) {
             return;
         }
@@ -387,7 +336,7 @@ public final class OvenBridge {
     }
 
     private static void setBooleanField(final Object target, final String fieldName, final boolean value) {
-        final Field field = findField(target, fieldName);
+        final Field field = CfbhRuntime.findField(target, fieldName);
         if (field == null) {
             return;
         }
@@ -399,7 +348,7 @@ public final class OvenBridge {
     }
 
     private static Object readFieldValue(final Object target, final String fieldName) {
-        final Field field = findField(target, fieldName);
+        final Field field = CfbhRuntime.findField(target, fieldName);
         if (field == null) {
             return null;
         }
@@ -412,30 +361,7 @@ public final class OvenBridge {
     }
 
     private static Object invokeNoArg(final Object target, final String methodName) {
-        if (target == null) {
-            return null;
-        }
-        try {
-            final Method method = target.getClass().getMethod(methodName);
-            return method.invoke(target);
-        } catch (ReflectiveOperationException ignored) {
-            return null;
-        }
-    }
-
-    private static Field findField(final Object target, final String fieldName) {
-        if (target == null) {
-            return null;
-        }
-        Class<?> currentClass = target.getClass();
-        while (currentClass != null) {
-            try {
-                return currentClass.getDeclaredField(fieldName);
-            } catch (NoSuchFieldException ignored) {
-                currentClass = currentClass.getSuperclass();
-            }
-        }
-        return null;
+        return CfbhRuntime.invokeNoArg(target, methodName);
     }
 
     public enum OvenPolicy {

@@ -17,11 +17,6 @@ final class MinersDelightCupConversion {
             "com.sammy.minersdelight.logic.CupConversionReloadListener";
     private static final String LEGACY_BOWL_TO_CUP_FIELD = "BOWL_TO_CUP";
 
-    private static volatile Method cachedCupVariantMethod;
-    private static volatile Field cachedLegacyCupVariantMapField;
-    private static volatile boolean cupVariantMethodLookupFailed;
-    private static volatile boolean legacyCupVariantLookupFailed;
-
     private MinersDelightCupConversion() {
     }
 
@@ -85,81 +80,34 @@ final class MinersDelightCupConversion {
         }
     }
 
-    static boolean isCopperPotActive(final Object context) {
-        for (final Object itemProvider : CfbhRuntime.contextItemProviders(context)) {
-            if (itemProvider instanceof MarkerProviderView markerProvider) {
-                if (markerProvider.isMarkerKey(COPPER_POT_TARGET_KEY) && markerProvider.isActiveForCurrentTableMarker()) {
-                    return true;
-                }
-                continue;
-            }
-
-            for (final Object nestedProvider : CfbhRuntime.tryGetCombinedProviders(itemProvider)) {
-                if (nestedProvider instanceof MarkerProviderView markerProvider
-                            && markerProvider.isMarkerKey(COPPER_POT_TARGET_KEY)
-                            && markerProvider.isActiveForCurrentTableMarker()) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
-
     private static Method resolveCupVariantMethod() {
-        final Method cached = cachedCupVariantMethod;
-        if (cached != null) {
-            return cached;
-        }
-        if (cupVariantMethodLookupFailed) {
-            return null;
-        }
-
-        synchronized (MinersDelightCupConversion.class) {
-            if (cachedCupVariantMethod != null) {
-                return cachedCupVariantMethod;
-            }
-            if (cupVariantMethodLookupFailed) {
-                return null;
-            }
-
-            try {
-                final Class<?> cupConversionClass = Class.forName(DATAMAP_CUP_CONVERSION_CLASS);
-                final Method cupVariantMethod = cupConversionClass.getMethod(DATAMAP_CUP_CONVERSION_METHOD, ItemStack.class);
-                cachedCupVariantMethod = cupVariantMethod;
-                return cupVariantMethod;
-            } catch (ReflectiveOperationException ignored) {
-                // This runtime might be on the legacy 1.20 conversion path.
-                cupVariantMethodLookupFailed = true;
-                return null;
-            }
-        }
+        return CupVariantMethodHolder.VALUE;
     }
 
     private static Field resolveLegacyCupVariantMapField() {
-        final Field cached = cachedLegacyCupVariantMapField;
-        if (cached != null) {
-            return cached;
-        }
-        if (legacyCupVariantLookupFailed) {
-            return null;
-        }
+        return LegacyCupVariantMapFieldHolder.VALUE;
+    }
 
-        synchronized (MinersDelightCupConversion.class) {
-            if (cachedLegacyCupVariantMapField != null) {
-                return cachedLegacyCupVariantMapField;
-            }
-            if (legacyCupVariantLookupFailed) {
+    private static final class CupVariantMethodHolder {
+        private static final Method VALUE = find();
+
+        private static Method find() {
+            try {
+                return Class.forName(DATAMAP_CUP_CONVERSION_CLASS)
+                        .getMethod(DATAMAP_CUP_CONVERSION_METHOD, ItemStack.class);
+            } catch (ReflectiveOperationException ignored) {
                 return null;
             }
+        }
+    }
 
+    private static final class LegacyCupVariantMapFieldHolder {
+        private static final Field VALUE = find();
+
+        private static Field find() {
             try {
-                final Class<?> legacyClass = Class.forName(LEGACY_CUP_CONVERSION_CLASS);
-                final Field bowlToCupField = legacyClass.getField(LEGACY_BOWL_TO_CUP_FIELD);
-                cachedLegacyCupVariantMapField = bowlToCupField;
-                return bowlToCupField;
+                return Class.forName(LEGACY_CUP_CONVERSION_CLASS).getField(LEGACY_BOWL_TO_CUP_FIELD);
             } catch (ReflectiveOperationException ignored) {
-                legacyCupVariantLookupFailed = true;
                 return null;
             }
         }

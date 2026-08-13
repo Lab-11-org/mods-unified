@@ -28,19 +28,9 @@ public abstract class KaleidoscopePotBlockEntityMixin {
         cir.setReturnValue(CookingPotHeatBridge.isAnyOvenHeatedBelow(level, pos, this));
     }
 
-    // PotBlockEntity only: ignite oven after oil is placed
-    @Inject(method = "onPlaceOil", at = @At("RETURN"), remap = false, require = 0)
-    private void lab11$tryIgniteAfterOilPlacement(Level level, LivingEntity user, ItemStack stack,
-                                                   CallbackInfoReturnable<Boolean> cir) {
-        if (!level.isClientSide && Boolean.TRUE.equals(cir.getReturnValue())) {
-            CookingPotHeatBridge.tryIgniteManagedOvenForPot((BlockEntity) (Object) this);
-        }
-    }
-
-    // StockpotBlockEntity only: ignite oven after soup base is added
-    @Inject(method = "addSoupBase", at = @At("RETURN"), remap = false, require = 0)
-    private void lab11$tryIgniteAfterSoupBase(Level level, LivingEntity user, ItemStack stack,
-                                              CallbackInfoReturnable<Boolean> cir) {
+    @Inject(method = {"onPlaceOil", "addSoupBase", "onLitClick"}, at = @At("RETURN"), remap = false, require = 0)
+    private void lab11$tryIgniteAfterOptionalPlacement(Level level, LivingEntity user, ItemStack stack,
+                                                       CallbackInfoReturnable<Boolean> cir) {
         if (!level.isClientSide && Boolean.TRUE.equals(cir.getReturnValue())) {
             CookingPotHeatBridge.tryIgniteManagedOvenForPot((BlockEntity) (Object) this);
         }
@@ -55,12 +45,4 @@ public abstract class KaleidoscopePotBlockEntityMixin {
         }
     }
 
-    // StockpotBlockEntity only: ignite oven after lid is placed
-    @Inject(method = "onLitClick", at = @At("RETURN"), remap = false, require = 0)
-    private void lab11$tryIgniteAfterLidPlacement(Level level, LivingEntity user, ItemStack stack,
-                                                   CallbackInfoReturnable<Boolean> cir) {
-        if (!level.isClientSide && Boolean.TRUE.equals(cir.getReturnValue())) {
-            CookingPotHeatBridge.tryIgniteManagedOvenForPot((BlockEntity) (Object) this);
-        }
-    }
 }

@@ -1,27 +1,23 @@
 package org.lab_11.modsunified.impl.platform;
 
-import org.lab_11.modsunified.impl.platform.neoforge.v1_21_1.NeoForge121BridgeTargetProvider;
-import org.lab_11.modsunified.impl.platform.v1_20_1.Minecraft1201BridgeTargetProvider;
-
 public final class RuntimeBindings {
-    private static final BridgeTargetProvider MINECRAFT_1201_TARGETS = new Minecraft1201BridgeTargetProvider();
     private static final ModRuntimeBindings FORGE_1201 = new ModRuntimeBindings(
             new MinecraftRuntimeProfile("forge-1.20.1", "forge", "1.20.1", "47.x"),
             "net.blay09.mods.cookingforblockheads.api.CookingForBlockheadsAPI",
-            "net.blay09.mods.cookingforblockheads.api.KitchenRecipeHandler",
             "org.lab_11.modsunified.impl.cookingforblockheads.BalmFallbackProviderBridge",
             "org.lab_11.modsunified.impl.cookingforblockheads.BalmRecipeSyncBridge",
             "org.lab_11.modsunified.impl.cookingforblockheads.DungeonOvenCompat",
-            MINECRAFT_1201_TARGETS
+            "net.yirmiri.dungeonsdelight.common.block.entity.container.MonsterPotRecipe",
+            "net.yirmiri.dungeonsdelight.common.block.entity.MonsterPotBlockEntity"
     );
     private static final ModRuntimeBindings NEOFORGE_1211 = new ModRuntimeBindings(
             new MinecraftRuntimeProfile("neoforge-1.21.1", "neoforge", "1.21.1", "21.1.219"),
             "net.blay09.mods.cookingforblockheads.api.CookingForBlockheadsAPI",
-            "net.blay09.mods.cookingforblockheads.api.KitchenRecipeHandler",
             "org.lab_11.modsunified.impl.cookingforblockheads.BalmFallbackProviderBridge",
             "org.lab_11.modsunified.impl.cookingforblockheads.BalmRecipeSyncBridge",
             "org.lab_11.modsunified.impl.cookingforblockheads.CustomizeBlocks",
-            new NeoForge121BridgeTargetProvider()
+            "net.yirmiri.dungeonsdelight.common.block.monster_pot.MonsterPotRecipe",
+            "net.yirmiri.dungeonsdelight.common.block.monster_pot.MonsterPotBlockEntity"
     );
     private static final ModRuntimeBindings ACTIVE = selectActiveProfile();
 

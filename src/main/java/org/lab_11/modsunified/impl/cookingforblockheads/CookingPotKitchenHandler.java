@@ -10,13 +10,6 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.Recipe;
-import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
-import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.world.level.block.state.BlockState;
-import net.neoforged.neoforge.capabilities.Capabilities;
-import net.neoforged.neoforge.items.IItemHandler;
 import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
 import org.slf4j.Logger;
 
@@ -85,13 +78,8 @@ public final class CookingPotKitchenHandler implements CfbhRuntime.KitchenRecipe
         final boolean convertForCopperTarget =
                 MinersDelightCupConversion.COPPER_POT_TARGET_KEY.equals(recipe.targetKey());
         final List<Object> processingTokens = new ArrayList<>(ingredientTokens);
-        final boolean skipOutputContainerTransferForStockpot =
-                BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_STOCKPOT.equals(recipe.targetKey());
-        if (!skipOutputContainerTransferForStockpot
+        if (!BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_STOCKPOT.equals(recipe.targetKey())
                 && !appendRequiredContainerTokens(context, recipe, processingTokens, registryAccess, convertForCopperTarget)) {
-            if (DEBUG_STOCKPOT_TRANSFER && BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_STOCKPOT.equals(recipe.targetKey())) {
-                LOGGER.info("Stockpot route aborted: missing required container tokens.");
-            }
             notifyFailure(context, FEEDBACK_POT_TRANSFER_FAILED_KEY);
             return ItemStack.EMPTY;
         }
@@ -302,10 +290,8 @@ public final class CookingPotKitchenHandler implements CfbhRuntime.KitchenRecipe
             return;
         }
 
-        for (final Object soupToken : soupTokens) {
-            processingTokens.add(soupToken);
-            allocated.add(soupToken);
-        }
+        processingTokens.addAll(soupTokens);
+        allocated.addAll(soupTokens);
     }
 
     private static List<Object> findStockpotSoupBaseTokens(final List<?> itemProviders,

@@ -1,13 +1,8 @@
 plugins {
     id 'java-library'
-    id 'maven-publish'
     id 'net.neoforged.moddev' version '2.0.91' apply false
     id 'net.neoforged.moddev.legacyforge' version '2.0.91' apply false
     id 'idea'
-}
-
-tasks.named('wrapper', Wrapper).configure {
-    distributionType = Wrapper.DistributionType.BIN
 }
 
 version = mod_version
@@ -157,18 +152,9 @@ if (isForgeTarget) {
 }
 
 sourceSets.main.resources { srcDir 'src/generated/resources' }
-def targetSpecificJavaDir = "src/impl/${targetId}/java"
-if (file(targetSpecificJavaDir).exists()) {
-    sourceSets.main.java.srcDir targetSpecificJavaDir
-}
-def targetSpecificResourcesDir = "src/impl/${targetId}/resources"
-if (file(targetSpecificResourcesDir).exists()) {
-    sourceSets.main.resources.srcDir targetSpecificResourcesDir
-}
-def targetSpecificTestJavaDir = "src/impl/${targetId}/test"
-if (file(targetSpecificTestJavaDir).exists()) {
-    sourceSets.test.java.srcDir targetSpecificTestJavaDir
-}
+sourceSets.main.java.srcDir "src/impl/${targetId}/java"
+sourceSets.main.resources.srcDir "src/impl/${targetId}/resources"
+sourceSets.test.java.srcDir "src/impl/${targetId}/test"
 
 if (isForgeTarget) {
     final List<String> mainOverridePaths = [
@@ -182,8 +168,7 @@ if (isForgeTarget) {
             '/src/main/java/org/lab_11/modsunified/impl/cookingforblockheads/client/LavaSinkRenderer.java',
             '/src/main/java/org/lab_11/modsunified/mixin/cookingforblockheads/EnamelBasinBlockMixin.java',
             '/src/main/java/org/lab_11/modsunified/mixin/cookingforblockheads/KaleidoscopePotBlockMixin.java',
-            '/src/main/java/org/lab_11/modsunified/mixin/cookingforblockheads/OvenRendererMixin.java',
-            '/src/main/java/org/lab_11/modsunified/impl/cookingforblockheads/CookingPotIndexedRecipe.java'
+            '/src/main/java/org/lab_11/modsunified/mixin/cookingforblockheads/OvenRendererMixin.java'
     ]
     sourceSets.main.java.exclude { details ->
         final String normalizedPath = details.file.absolutePath.replace('\\', '/')
@@ -283,51 +268,21 @@ if (isForgeTarget) {
     }
 }
 
-tasks.register('multiPotSelectionCheck', JavaExec) {
-    dependsOn tasks.named('testClasses')
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'org.lab_11.modsunified.impl.cookingforblockheads.MultiPotSelectionCheck'
-}
-tasks.register('optionalDependencyMixinCheck', JavaExec) {
-    dependsOn tasks.named('testClasses')
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'org.lab_11.modsunified.mixin.OptionalDependencyMixinPluginCheck'
-}
-if (targetId == 'neoforge-1.21.1') {
-    tasks.register('indexedRecipeLookupCheck', JavaExec) {
+def smokeChecks = [
+        multiPotSelectionCheck      : [null, 'org.lab_11.modsunified.impl.cookingforblockheads.MultiPotSelectionCheck'],
+        optionalDependencyMixinCheck: [null, 'org.lab_11.modsunified.mixin.OptionalDependencyMixinPluginCheck'],
+        indexedRecipeLookupCheck    : ['neoforge-1.21.1', 'org.lab_11.modsunified.impl.cookingforblockheads.IndexedRecipeLookupCheck'],
+        legacyKitchenProviderCheck  : ['forge-1.20.1', 'org.lab_11.modsunified.impl.cookingforblockheads.LegacyKitchenProviderCheck']
+].findAll { name, check -> check[0] == null || check[0] == targetId }
+smokeChecks.each { name, check ->
+    tasks.register(name, JavaExec) {
         dependsOn tasks.named('testClasses')
         classpath = sourceSets.test.runtimeClasspath
-        mainClass = 'org.lab_11.modsunified.impl.cookingforblockheads.IndexedRecipeLookupCheck'
-    }
-}
-if (targetId == 'forge-1.20.1') {
-    tasks.register('legacyKitchenProviderCheck', JavaExec) {
-        dependsOn tasks.named('testClasses')
-        classpath = sourceSets.test.runtimeClasspath
-        mainClass = 'org.lab_11.modsunified.impl.cookingforblockheads.LegacyKitchenProviderCheck'
+        mainClass = check[1]
     }
 }
 tasks.named('check') {
-    dependsOn tasks.named('multiPotSelectionCheck'), tasks.named('optionalDependencyMixinCheck')
-    if (targetId == 'neoforge-1.21.1') {
-        dependsOn tasks.named('indexedRecipeLookupCheck')
-    }
-    if (targetId == 'forge-1.20.1') {
-        dependsOn tasks.named('legacyKitchenProviderCheck')
-    }
-}
-
-publishing {
-    publications {
-        register('mavenJava', MavenPublication) {
-            from components.java
-        }
-    }
-    repositories {
-        maven {
-            url "file://${project.projectDir}/repo"
-        }
-    }
+    dependsOn smokeChecks.keySet()
 }
 
 tasks.withType(JavaCompile).configureEach {

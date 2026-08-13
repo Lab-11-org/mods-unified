@@ -33,20 +33,6 @@ abstract class MonsterPotBlock120Mixin {
             }
         }
 
-        return callNativeIsHeatedNoArg(potBlockEntity);
-    }
-
-    private static boolean callNativeIsHeatedNoArg(final Object self) {
-        if (self == null) {
-            return false;
-        }
-
-        try {
-            final var method = self.getClass().getMethod("isHeated");
-            final Object value = method.invoke(self);
-            return value instanceof Boolean result && result;
-        } catch (ReflectiveOperationException ignored) {
-            return false;
-        }
+        return CookingPotHeatBridge.callNativeIsHeated(potBlockEntity);
     }
 }

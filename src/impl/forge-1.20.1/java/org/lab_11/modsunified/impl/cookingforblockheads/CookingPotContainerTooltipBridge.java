@@ -17,19 +17,13 @@ import org.lab_11.modsunified.impl.platform.LoaderApiCompat;
 import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
 import org.lab_11.modsunified.impl.platform.RecipeRuntimeCompat;
 
-import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Consumer;
 
 public final class CookingPotContainerTooltipBridge {
-    private enum TargetConnectionState {
-        MISSING,
-        PRESENT_BUT_WRONG_SETUP,
-        CONNECTED
-    }
-
     private static final String COOKING_FOR_BLOCKHEADS_MOD_ID = BridgeKeys.MOD_COOKING_FOR_BLOCKHEADS;
     private static final String KITCHEN_SCREEN_CLASS = "net.blay09.mods.cookingforblockheads.client.gui.screen.KitchenScreen";
     private static final String RECIPE_BOOK_SCREEN_CLASS = "net.blay09.mods.cookingforblockheads.client.gui.screen.RecipeBookScreen";
@@ -38,8 +32,6 @@ public final class CookingPotContainerTooltipBridge {
             RECIPE_BOOK_SCREEN_CLASS
     );
     private static final String CRAFT_MATRIX_FAKE_SLOT_CLASS = "net.blay09.mods.cookingforblockheads.menu.slot.CraftMatrixFakeSlot";
-    private static final String CFBH_CACHE_HINT_CLASS = "net.blay09.mods.cookingforblockheads.api.CacheHint";
-    private static final String CFBH_INGREDIENT_TOKEN_CLASS = "net.blay09.mods.cookingforblockheads.api.IngredientToken";
     private static final String CFBH_TOOLTIP_CLICK_TO_UNLOCK_KEY = "tooltip.cookingforblockheads.click_to_unlock";
     private static final String CFBH_TOOLTIP_CLICK_TO_LOCK_KEY = "tooltip.cookingforblockheads.click_to_lock";
     private static final String CFBH_TOOLTIP_SCROLL_TO_SWITCH_KEY = "tooltip.cookingforblockheads.scroll_to_switch";
@@ -64,8 +56,8 @@ public final class CookingPotContainerTooltipBridge {
             return;
         }
 
-        final Object menu = invokeNoArg(screen, "getMenu");
-        final Object selectedRecipeWithStatus = invokeNoArg(menu, "getSelectedRecipe");
+        final Object menu = CfbhRuntime.invokeNoArg(screen, "getMenu");
+        final Object selectedRecipeWithStatus = CfbhRuntime.invokeNoArg(menu, "getSelectedRecipe");
         if (selectedRecipeWithStatus == null) {
             return;
         }
@@ -157,6 +149,20 @@ public final class CookingPotContainerTooltipBridge {
                                                             final Object menu,
                                                             final Recipe<?> recipe,
                                                             final Player player) {
+        return visitMissingRequirements(
+                menu,
+                recipe,
+                player,
+                tooltipKey -> appendRedTooltip(event, tooltipKey),
+                false
+        );
+    }
+
+    private static boolean visitMissingRequirements(final Object menu,
+                                                    final Recipe<?> recipe,
+                                                    final Player player,
+                                                    final Consumer<String> tooltipConsumer,
+                                                    final boolean stopAfterFirstMissingMarker) {
         if (!(recipe instanceof CookingPotIndexedRecipe indexedRecipe)) {
             return false;
         }
@@ -165,26 +171,25 @@ public final class CookingPotContainerTooltipBridge {
             return false;
         }
 
-        final Object kitchen = invokeNoArg(menu, "getKitchen");
+        final Object kitchen = CfbhRuntime.invokeNoArg(menu, "getKitchen");
         if (kitchen == null) {
             return false;
         }
 
-        final List<?> itemProviders = resolveItemProviders(kitchen, player);
+        final List<?> itemProviders = CfbhRuntime.itemProviders(kitchen, player);
         if (itemProviders == null || itemProviders.isEmpty()) {
-            appendRedTooltip(event, TOOLTIP_POT_NOT_CONNECTED_KEY);
+            tooltipConsumer.accept(TOOLTIP_POT_NOT_CONNECTED_KEY);
             return true;
         }
 
-        final Class<?> cacheHintClass = resolveCacheHintClass();
-        final Object cacheHintNone = resolveCacheHintNone(cacheHintClass);
-        if (cacheHintClass == null || cacheHintNone == null) {
+        if (!CfbhRuntime.ingredientLookupAvailable()) {
             return false;
         }
 
-        if (resolveTargetConnectionState(itemProviders, indexedRecipe.targetKey(), cacheHintClass, cacheHintNone)
-                != TargetConnectionState.CONNECTED) {
-            appendMissingTargetTooltip(event, indexedRecipe.targetKey());
+        if (!isTargetConnected(itemProviders, indexedRecipe.targetKey())) {
+            tooltipConsumer.accept(BridgeKeys.TARGET_DUNGEONS_DELIGHT_MONSTER_POT.equals(indexedRecipe.targetKey())
+                    ? BridgeKeys.TOOLTIP_MISSING_DUNGEON_OVEN
+                    : TOOLTIP_POT_NOT_CONNECTED_KEY);
             return true;
         }
 
@@ -193,18 +198,19 @@ public final class CookingPotContainerTooltipBridge {
             return false;
         }
 
-        boolean appended = false;
+        boolean missing = false;
         for (final String requiredMarkerKey : indexedRecipe.requiredMarkerKeys()) {
-            if (hasRequiredMarker(itemProviders, requiredMarkerKey, cacheHintClass, cacheHintNone)) {
+            if (hasRequiredMarker(itemProviders, requiredMarkerKey)) {
                 continue;
             }
 
-            BridgeMarkerRegistry.missingRequirementTooltipKey(requiredMarkerKey).ifPresent(tooltipKey ->
-                    appendRedTooltip(event, tooltipKey)
-            );
-            appended = true;
+            BridgeMarkerRegistry.missingRequirementTooltipKey(requiredMarkerKey).ifPresent(tooltipConsumer);
+            missing = true;
+            if (stopAfterFirstMissingMarker) {
+                return true;
+            }
         }
-        return appended;
+        return missing;
     }
 
     private static boolean isHoveredStackInRecipeIngredients(final ItemStack hoveredStack, final Recipe<?> recipe) {
@@ -239,7 +245,7 @@ public final class CookingPotContainerTooltipBridge {
             return;
         }
 
-        final Object hoveredSlot = invokeNoArg(screen, "getHoveredSlot");
+        final Object hoveredSlot = CfbhRuntime.invokeNoArg(screen, "getHoveredSlot");
         if (hoveredSlot == null || !CRAFT_MATRIX_FAKE_SLOT_CLASS.equals(hoveredSlot.getClass().getName())) {
             return;
         }
@@ -263,7 +269,7 @@ public final class CookingPotContainerTooltipBridge {
     }
 
     private static boolean isIndexedRecipeSelection(final Object selectedRecipeWithStatus) {
-        final Object recipeIdObject = invokeNoArg(selectedRecipeWithStatus, "recipeId");
+        final Object recipeIdObject = CfbhRuntime.invokeNoArg(selectedRecipeWithStatus, "recipeId");
         if (!(recipeIdObject instanceof ResourceLocation recipeId)) {
             return false;
         }
@@ -279,8 +285,8 @@ public final class CookingPotContainerTooltipBridge {
             return false;
         }
 
-        final Object menu = invokeNoArg(screen, "getMenu");
-        final Object selectedRecipeWithStatus = invokeNoArg(menu, "getSelectedRecipe");
+        final Object menu = CfbhRuntime.invokeNoArg(screen, "getMenu");
+        final Object selectedRecipeWithStatus = CfbhRuntime.invokeNoArg(menu, "getSelectedRecipe");
         if (selectedRecipeWithStatus == null) {
             return false;
         }
@@ -313,7 +319,7 @@ public final class CookingPotContainerTooltipBridge {
     private static Recipe<?> resolveSelectedRecipe(final Minecraft minecraft,
                                                    final Object menu,
                                                    final Object selectedRecipeWithStatus) {
-        final Object recipeIdObject = invokeNoArg(selectedRecipeWithStatus, "recipeId");
+        final Object recipeIdObject = CfbhRuntime.invokeNoArg(selectedRecipeWithStatus, "recipeId");
         if (recipeIdObject instanceof ResourceLocation recipeId) {
             return resolveRecipeById(minecraft, recipeId);
         }
@@ -339,12 +345,12 @@ public final class CookingPotContainerTooltipBridge {
             return null;
         }
 
-        final Object selection = invokeNoArg(menu, "getSelection");
+        final Object selection = CfbhRuntime.invokeNoArg(menu, "getSelection");
         if (selection == null) {
             return null;
         }
 
-        final Object recipeType = invokeNoArg(selection, "getRecipeType");
+        final Object recipeType = CfbhRuntime.invokeNoArg(selection, "getRecipeType");
         if (recipeType == null || !"CRAFTING".equals(recipeType.toString())) {
             return null;
         }
@@ -363,19 +369,19 @@ public final class CookingPotContainerTooltipBridge {
     }
 
     private static ItemStack readLegacySelectionOutput(final Object selection) {
-        final Object outputValue = invokeNoArg(selection, "getOutputItem");
+        final Object outputValue = CfbhRuntime.invokeNoArg(selection, "getOutputItem");
         return outputValue instanceof ItemStack outputItem ? outputItem : ItemStack.EMPTY;
     }
 
     private static List<ItemStack> readLegacyDisplayedMatrixStacks(final Object menu) {
-        final Object slotsValue = invokeNoArg(menu, "getCraftingMatrixSlots");
+        final Object slotsValue = CfbhRuntime.invokeNoArg(menu, "getCraftingMatrixSlots");
         if (!(slotsValue instanceof List<?> slots) || slots.isEmpty()) {
             return List.of();
         }
 
         final List<ItemStack> stacks = new ArrayList<>(slots.size());
         for (final Object slot : slots) {
-            final Object stackValue = invokeNoArg(slot, "getItem");
+            final Object stackValue = CfbhRuntime.invokeNoArg(slot, "getItem");
             if (stackValue instanceof ItemStack stack) {
                 stacks.add(stack.isEmpty() ? ItemStack.EMPTY : stack.copy());
             } else {
@@ -490,44 +496,7 @@ public final class CookingPotContainerTooltipBridge {
     private static boolean showsMissingRequirementsLine(final Object menu,
                                                         final Recipe<?> recipe,
                                                         final Player player) {
-        if (!(recipe instanceof CookingPotIndexedRecipe indexedRecipe)
-                || menu == null
-                || player == null) {
-            return false;
-        }
-
-        final Object kitchen = invokeNoArg(menu, "getKitchen");
-        if (kitchen == null) {
-            return false;
-        }
-
-        final List<?> itemProviders = resolveItemProviders(kitchen, player);
-        if (itemProviders == null || itemProviders.isEmpty()) {
-            return true;
-        }
-
-        final Class<?> cacheHintClass = resolveCacheHintClass();
-        final Object cacheHintNone = resolveCacheHintNone(cacheHintClass);
-        if (cacheHintClass == null || cacheHintNone == null) {
-            return false;
-        }
-
-        if (resolveTargetConnectionState(itemProviders, indexedRecipe.targetKey(), cacheHintClass, cacheHintNone)
-                != TargetConnectionState.CONNECTED) {
-            return true;
-        }
-
-        if (BridgeKeys.TARGET_DUNGEONS_DELIGHT_MONSTER_POT.equals(indexedRecipe.targetKey())
-                || indexedRecipe.requiredMarkerKeys().isEmpty()) {
-            return false;
-        }
-
-        for (final String requiredMarkerKey : indexedRecipe.requiredMarkerKeys()) {
-            if (!hasRequiredMarker(itemProviders, requiredMarkerKey, cacheHintClass, cacheHintNone)) {
-                return true;
-            }
-        }
-        return false;
+        return visitMissingRequirements(menu, recipe, player, tooltipKey -> {}, true);
     }
 
     private static Component resolvePotName(final String targetKey) {
@@ -568,12 +537,10 @@ public final class CookingPotContainerTooltipBridge {
     }
 
     private static boolean hasRequiredMarker(final List<?> itemProviders,
-                                             final String requiredMarkerKey,
-                                             final Class<?> cacheHintClass,
-                                             final Object cacheHintNone) {
+                                             final String requiredMarkerKey) {
         // Requirement markers are virtual tokens, so a successful find means the kitchen is fully connected.
         final Ingredient markerIngredient = CookingPotActivationMarkerProvider.markerIngredient(requiredMarkerKey);
-        final Object markerToken = findIngredientToken(itemProviders, markerIngredient, List.of(), cacheHintClass, cacheHintNone);
+        final Object markerToken = findIngredientToken(itemProviders, markerIngredient, List.of());
         return markerToken != null;
     }
 
@@ -584,19 +551,17 @@ public final class CookingPotContainerTooltipBridge {
             return false;
         }
 
-        final Object kitchen = invokeNoArg(menu, "getKitchen");
+        final Object kitchen = CfbhRuntime.invokeNoArg(menu, "getKitchen");
         if (kitchen == null) {
             return false;
         }
 
-        final List<?> itemProviders = resolveItemProviders(kitchen, player);
+        final List<?> itemProviders = CfbhRuntime.itemProviders(kitchen, player);
         if (itemProviders == null || itemProviders.isEmpty()) {
             return false;
         }
 
-        final Class<?> cacheHintClass = resolveCacheHintClass();
-        final Object cacheHintNone = resolveCacheHintNone(cacheHintClass);
-        if (cacheHintClass == null || cacheHintNone == null) {
+        if (!CfbhRuntime.ingredientLookupAvailable()) {
             return false;
         }
 
@@ -607,7 +572,7 @@ public final class CookingPotContainerTooltipBridge {
 
         int remaining = containerCost.getCount();
         while (remaining > 0) {
-            final Object token = findIngredientToken(itemProviders, expectedContainer, allocatedTokens, cacheHintClass, cacheHintNone);
+            final Object token = findIngredientToken(itemProviders, expectedContainer, allocatedTokens);
             if (token == null) {
                 return true;
             }
@@ -618,59 +583,16 @@ public final class CookingPotContainerTooltipBridge {
         return false;
     }
 
-    private static List<?> resolveItemProviders(final Object kitchen, final Player player) {
-        try {
-            final Method getItemProviders = kitchen.getClass().getMethod("getItemProviders", Player.class);
-            final Object result = getItemProviders.invoke(kitchen, player);
-            if (result instanceof List<?> providers) {
-                return providers;
-            }
-        } catch (ReflectiveOperationException ignored) {
-            // no-op
-        }
-        return null;
-    }
-
     private static Object findIngredientToken(final List<?> itemProviders,
                                               final Ingredient ingredient,
-                                              final Collection<Object> allocatedTokens,
-                                              final Class<?> cacheHintClass,
-                                              final Object cacheHintNone) {
+                                              final Collection<?> allocatedTokens) {
         for (final Object itemProvider : itemProviders) {
-            if (itemProvider == null) {
-                continue;
-            }
-
-            try {
-                final Method findIngredient = itemProvider.getClass().getMethod(
-                        "findIngredient",
-                        Ingredient.class,
-                        Collection.class,
-                        cacheHintClass
-                );
-                final Object token = findIngredient.invoke(itemProvider, ingredient, allocatedTokens, cacheHintNone);
-                if (token != null && !isEmptyIngredientToken(token)) {
-                    return token;
-                }
-            } catch (ReflectiveOperationException ignored) {
-                // no-op
+            final Object token = CfbhRuntime.findIngredientToken(itemProvider, ingredient, allocatedTokens);
+            if (token != null) {
+                return token;
             }
         }
         return null;
-    }
-
-    private static boolean isEmptyIngredientToken(final Object token) {
-        if (token == null) {
-            return true;
-        }
-
-        try {
-            final Class<?> ingredientTokenClass = Class.forName(CFBH_INGREDIENT_TOKEN_CLASS);
-            final Object emptyToken = ingredientTokenClass.getField("EMPTY").get(null);
-            return token == emptyToken;
-        } catch (ReflectiveOperationException ignored) {
-            return false;
-        }
     }
 
     private static int peekTokenStackCount(final Object token) {
@@ -678,50 +600,7 @@ public final class CookingPotContainerTooltipBridge {
             return 1;
         }
 
-        try {
-            final Method peek = token.getClass().getMethod("peek");
-            final Object value = peek.invoke(token);
-            if (value instanceof ItemStack stack) {
-                return Math.max(1, stack.getCount());
-            }
-        } catch (ReflectiveOperationException ignored) {
-            // no-op
-        }
-
-        return 1;
-    }
-
-    private static Class<?> resolveCacheHintClass() {
-        try {
-            return Class.forName(CFBH_CACHE_HINT_CLASS);
-        } catch (ClassNotFoundException ignored) {
-            return null;
-        }
-    }
-
-    private static Object resolveCacheHintNone(final Class<?> cacheHintClass) {
-        if (cacheHintClass == null) {
-            return null;
-        }
-
-        try {
-            return cacheHintClass.getField("NONE").get(null);
-        } catch (ReflectiveOperationException ignored) {
-            return null;
-        }
-    }
-
-    private static Object invokeNoArg(final Object target, final String methodName) {
-        if (target == null) {
-            return null;
-        }
-
-        try {
-            final Method method = target.getClass().getMethod(methodName);
-            return method.invoke(target);
-        } catch (ReflectiveOperationException ignored) {
-            return null;
-        }
+        return Math.max(1, CfbhRuntime.peekIngredientToken(token).getCount());
     }
 
     private static boolean isSupportedRecipeScreen(final Object screen) {
@@ -732,19 +611,7 @@ public final class CookingPotContainerTooltipBridge {
         event.getToolTip().add(Component.translatable(tooltipKey).withStyle(ChatFormatting.RED));
     }
 
-    private static void appendMissingTargetTooltip(final ItemTooltipEvent event, final String targetKey) {
-        if (BridgeKeys.TARGET_DUNGEONS_DELIGHT_MONSTER_POT.equals(targetKey)) {
-            appendRedTooltip(event, BridgeKeys.TOOLTIP_MISSING_DUNGEON_OVEN);
-            return;
-        }
-
-        appendRedTooltip(event, TOOLTIP_POT_NOT_CONNECTED_KEY);
-    }
-
-    private static TargetConnectionState resolveTargetConnectionState(final List<?> itemProviders,
-                                                                      final String targetKey,
-                                                                      final Class<?> cacheHintClass,
-                                                                      final Object cacheHintNone) {
+    private static boolean isTargetConnected(final List<?> itemProviders, final String targetKey) {
         boolean foundTargetProvider = false;
         for (final Object itemProvider : itemProviders) {
             if (!(itemProvider instanceof MarkerProviderView markerProvider)
@@ -754,17 +621,10 @@ public final class CookingPotContainerTooltipBridge {
 
             foundTargetProvider = true;
             if (markerProvider.isTargetPotConnectedForCurrentTableMarker()) {
-                return TargetConnectionState.CONNECTED;
+                return true;
             }
         }
 
-        return foundTargetProvider
-                ? TargetConnectionState.PRESENT_BUT_WRONG_SETUP
-                : (hasRequiredMarker(
-                itemProviders,
-                targetKey,
-                cacheHintClass,
-                cacheHintNone
-        ) ? TargetConnectionState.CONNECTED : TargetConnectionState.MISSING);
+        return !foundTargetProvider && hasRequiredMarker(itemProviders, targetKey);
     }
 }

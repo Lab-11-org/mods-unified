@@ -4,10 +4,8 @@ import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.item.crafting.RecipeManager;
 import net.minecraftforge.client.event.RecipesUpdatedEvent;
-import net.minecraftforge.client.event.RenderTooltipEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.common.capabilities.RegisterCapabilitiesEvent;
-import net.minecraftforge.event.entity.player.ItemTooltipEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
@@ -53,8 +51,8 @@ public final class Unifiled {
         modEventBus.addListener(this::onRegisterCapabilities);
         if (FMLEnvironment.dist.isClient()) {
             MinecraftForge.EVENT_BUS.addListener(this::onClientRecipesUpdated);
-            MinecraftForge.EVENT_BUS.addListener(this::onItemTooltip);
-            MinecraftForge.EVENT_BUS.addListener(this::onRenderTooltipPre);
+            MinecraftForge.EVENT_BUS.addListener(CookingPotContainerTooltipBridge::appendTooltip);
+            MinecraftForge.EVENT_BUS.addListener(CookingPotContainerTooltipBridge::adjustTooltipPosition);
         }
     }
 
@@ -86,7 +84,7 @@ public final class Unifiled {
             return;
         }
 
-        CookingPotProcessorCapability.register(event, activeCookingPotTargets);
+        CookingPotProcessorCapability.register(event);
         LOGGER.info("Registered LAB-11 mods-unified KitchenItemProcessor capability hook.");
     }
 
@@ -140,14 +138,6 @@ public final class Unifiled {
                 minecraft.getConnection().registryAccess(),
                 "forge_client_recipes_updated"
         );
-    }
-
-    private void onItemTooltip(final ItemTooltipEvent event) {
-        CookingPotContainerTooltipBridge.appendTooltip(event);
-    }
-
-    private void onRenderTooltipPre(final RenderTooltipEvent.Pre event) {
-        CookingPotContainerTooltipBridge.adjustTooltipPosition(event);
     }
 
     private void injectCookingPotRecipesIntoCookingForBlockheads(final RecipeManager recipeManager,

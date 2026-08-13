@@ -32,7 +32,7 @@ public final class CookingPotIndexedRecipe implements Recipe<RecipeInput> {
         this.indexedResult = resolveIndexedResult(delegate, registryAccess, markerKey);
         this.indexedContainerCost = CookingPotContainerCost.resolveForIndexedRecipe(delegate, registryAccess, markerKey);
         this.requiredMarkerKeys = List.copyOf(requiredMarkerKeys);
-        this.syntheticIngredientCount = resolveSyntheticIngredientCount(delegate);
+        this.syntheticIngredientCount = delegate.getIngredients().size() < 9 ? 1 : 0;
         this.indexedIngredients = buildIndexedIngredients(delegate, markerKey, syntheticIngredientCount);
     }
 
@@ -127,10 +127,6 @@ public final class CookingPotIndexedRecipe implements Recipe<RecipeInput> {
 
         indexedIngredients.addAll(recipe.getIngredients());
         return indexedIngredients;
-    }
-
-    private static int resolveSyntheticIngredientCount(final Recipe<?> recipe) {
-        return recipe.getIngredients().size() < 9 ? 1 : 0;
     }
 
     private static ItemStack resolveIndexedResult(final Recipe<?> recipe,

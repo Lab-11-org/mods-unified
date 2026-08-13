@@ -23,7 +23,6 @@ import net.minecraftforge.event.BuildCreativeModeTabContentsEvent;
 import net.minecraftforge.event.LootTableLoadEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
-import net.minecraftforge.fml.loading.FMLEnvironment;
 import net.minecraftforge.registries.DeferredRegister;
 import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraftforge.registries.RegistryObject;
@@ -41,10 +40,6 @@ import java.util.List;
 import java.util.Set;
 
 public final class DungeonOvenCompat {
-    public static final String DUNGEON_OVEN_MARKER_KEY = BridgeKeys.MARKER_DUNGEON_OVEN;
-    public static final ResourceLocation DUNGEON_OVEN_ID =
-            MinecraftApiCompat.resourceLocation(Unifiled.MOD_ID, "dungeon_oven");
-
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final String COOKING_FOR_BLOCKHEADS_MOD_ID = BridgeKeys.MOD_COOKING_FOR_BLOCKHEADS;
     private static final String[] CFBH_BLOCK_ENTITY_REGISTRY_CLASS_CANDIDATES = {
@@ -60,9 +55,6 @@ public final class DungeonOvenCompat {
     private static final String CFBH_DYED_OVEN_BLOCK_CLASS =
             "net.blay09.mods.cookingforblockheads.block.DyedOvenBlock";
     private static final String BALM_CLASS = "net.blay09.mods.balm.api.Balm";
-    private static final String LOCAL_CLIENT_HOOKS_CLASS =
-            "org.lab_11.modsunified.impl.cookingforblockheads.client.DungeonOvenClientHooks";
-
     private static final DeferredRegister<Block> BLOCKS = DeferredRegister.create(ForgeRegistries.BLOCKS, Unifiled.MOD_ID);
     private static final DeferredRegister<Item> ITEMS = DeferredRegister.create(ForgeRegistries.ITEMS, Unifiled.MOD_ID);
     private static final List<RegistryObject<Block>> DUNGEON_OVEN_BLOCKS = new ArrayList<>();
@@ -133,7 +125,6 @@ public final class DungeonOvenCompat {
         modEventBus.addListener(DungeonOvenCompat::onCommonSetup);
         modEventBus.addListener(DungeonOvenCompat::onBuildCreativeModeTabContents);
         MinecraftForge.EVENT_BUS.addListener(DungeonOvenCompat::onLootTableLoad);
-        registerClientHooks(modEventBus);
         registered = true;
         LOGGER.info("Registered {} dungeon oven blocks and items.", DUNGEON_OVEN_BLOCKS.size());
     }
@@ -232,29 +223,8 @@ public final class DungeonOvenCompat {
 
     private static void addDungeonOvenIfMissing(final BuildCreativeModeTabContentsEvent event) {
         for (final RegistryObject<Item> item : DUNGEON_OVEN_ITEMS) {
-            final ItemStack dungeonOvenStack = new ItemStack(item.get());
-            if (creativeTabContainsStack(event, "getParentEntries", dungeonOvenStack)
-                    || creativeTabContainsStack(event, "getSearchEntries", dungeonOvenStack)) {
-                continue;
-            }
-            event.accept(dungeonOvenStack, CreativeModeTab.TabVisibility.PARENT_AND_SEARCH_TABS);
+            event.accept(new ItemStack(item.get()), CreativeModeTab.TabVisibility.PARENT_AND_SEARCH_TABS);
         }
-    }
-
-    @SuppressWarnings("unchecked")
-    private static boolean creativeTabContainsStack(final BuildCreativeModeTabContentsEvent event,
-                                                    final String accessorMethod,
-                                                    final ItemStack stack) {
-        try {
-            final Method method = event.getClass().getMethod(accessorMethod);
-            final Object entries = method.invoke(event);
-            if (entries instanceof java.util.Collection<?> collection) {
-                return ((java.util.Collection<ItemStack>) collection).contains(stack);
-            }
-        } catch (ReflectiveOperationException ignored) {
-            // Legacy 1.20 tab event API does not expose parent/search entry collections.
-        }
-        return false;
     }
 
     private static void attachDungeonOvenToCfbhOvenCategory() {
@@ -302,9 +272,7 @@ public final class DungeonOvenCompat {
             }
 
             final Object updated = Array.newInstance(componentType, length + missingBlocks.size());
-            for (int i = 0; i < length; i++) {
-                Array.set(updated, i, Array.get(rawOvens, i));
-            }
+            System.arraycopy(rawOvens, 0, updated, 0, length);
             for (int i = 0; i < missingBlocks.size(); i++) {
                 Array.set(updated, length + i, missingBlocks.get(i));
             }
@@ -316,11 +284,7 @@ public final class DungeonOvenCompat {
     }
 
     private static List<Block> allDungeonOvenBlocks() {
-        final List<Block> blocks = new ArrayList<>(DUNGEON_OVEN_BLOCKS.size());
-        for (final RegistryObject<Block> block : DUNGEON_OVEN_BLOCKS) {
-            blocks.add(block.get());
-        }
-        return blocks;
+        return DUNGEON_OVEN_BLOCKS.stream().map(RegistryObject::get).toList();
     }
 
     private static void onLootTableLoad(final LootTableLoadEvent event) {
@@ -337,20 +301,6 @@ public final class DungeonOvenCompat {
                             .add(LootItem.lootTableItem(item.get())))
                     .build());
             return;
-        }
-    }
-
-    private static void registerClientHooks(final IEventBus modEventBus) {
-        if (!FMLEnvironment.dist.isClient()) {
-            return;
-        }
-
-        try {
-            final Class<?> hooksClass = Class.forName(LOCAL_CLIENT_HOOKS_CLASS);
-            hooksClass.getMethod("register", IEventBus.class).invoke(null, modEventBus);
-            LOGGER.info("Registered dungeon oven client hooks.");
-        } catch (ReflectiveOperationException e) {
-            LOGGER.error("Failed to register dungeon oven client hooks.", e);
         }
     }
 
