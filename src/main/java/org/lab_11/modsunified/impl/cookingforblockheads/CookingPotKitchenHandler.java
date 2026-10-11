@@ -15,8 +15,9 @@ import org.slf4j.Logger;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
-import java.util.Collection;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 
 public final class CookingPotKitchenHandler implements CfbhRuntime.KitchenRecipeHandlerView {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -78,12 +79,12 @@ public final class CookingPotKitchenHandler implements CfbhRuntime.KitchenRecipe
         final boolean convertForCopperTarget =
                 MinersDelightCupConversion.COPPER_POT_TARGET_KEY.equals(recipe.targetKey());
         final List<Object> processingTokens = new ArrayList<>(ingredientTokens);
-        if (!BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_STOCKPOT.equals(recipe.targetKey())
-                && !appendRequiredContainerTokens(context, recipe, processingTokens, registryAccess, convertForCopperTarget)) {
-            notifyFailure(context, FEEDBACK_POT_TRANSFER_FAILED_KEY);
-            return ItemStack.EMPTY;
+        final Map<Object, List<Object>> allocatedByProvider = new IdentityHashMap<>();
+        if (!BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_STOCKPOT.equals(recipe.targetKey())) {
+            appendRequiredContainerTokens(
+                    context, recipe, processingTokens, registryAccess, convertForCopperTarget, allocatedByProvider);
         }
-        appendTargetStartupRequirementTokens(context, recipe, processingTokens);
+        appendTargetStartupRequirementTokens(context, recipe, processingTokens, allocatedByProvider);
 
         Object deferredFailureOperation = null;
         for (final Object itemProcessor : CfbhRuntime.contextItemProcessors(context)) {
@@ -149,42 +150,41 @@ public final class CookingPotKitchenHandler implements CfbhRuntime.KitchenRecipe
         return output;
     }
 
-    private static boolean appendRequiredContainerTokens(final Object context,
-                                                         final Recipe<?> recipe,
-                                                         final List<Object> processingTokens,
-                                                         final RegistryAccess registryAccess,
-                                                         final boolean copperPotActive) {
+    private static void appendRequiredContainerTokens(final Object context,
+                                                      final Recipe<?> recipe,
+                                                      final List<Object> processingTokens,
+                                                      final RegistryAccess registryAccess,
+                                                      final boolean copperPotActive,
+                                                      final Map<Object, List<Object>> allocatedByProvider) {
         final ItemStack containerCost = CookingPotContainerCost.resolveForCraft(recipe, registryAccess, copperPotActive);
         if (containerCost.isEmpty()) {
-            return true;
+            return;
         }
 
         final ItemStack containerUnit = containerCost.copy();
         containerUnit.setCount(1);
-        final Ingredient containerIngredient = Ingredient.of(containerUnit);
 
-        final List<Object> allocated = new ArrayList<>(processingTokens);
         final List<?> itemProviders = CfbhRuntime.contextItemProviders(context);
         int remaining = containerCost.getCount();
         while (remaining > 0) {
-            final Object token = findIngredientToken(itemProviders, containerIngredient, allocated);
+            final Object token = CfbhRuntime.findAndReserveItemToken(
+                    itemProviders, containerUnit, allocatedByProvider);
             if (token == null) {
-                return false;
+                break;
             }
 
-            allocated.add(token);
             processingTokens.add(token);
             remaining--;
         }
 
-        return true;
     }
 
     private static void appendTargetStartupRequirementTokens(final Object context,
                                                              final CookingPotIndexedRecipe recipe,
-                                                             final List<Object> processingTokens) {
+                                                             final List<Object> processingTokens,
+                                                             final Map<Object, List<Object>> allocatedByProvider) {
         if (BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_POT.equals(recipe.targetKey())) {
-            appendKaleidoscopePotOilToken(context, processingTokens);
+            appendKaleidoscopePotOilToken(context, processingTokens, allocatedByProvider);
             return;
         }
 
@@ -203,28 +203,27 @@ public final class CookingPotKitchenHandler implements CfbhRuntime.KitchenRecipe
         }
 
         final Ingredient lidRequirement = Ingredient.of(lidItem);
-        final List<Object> allocated = new ArrayList<>(processingTokens);
+        final List<?> itemProviders = CfbhRuntime.contextItemProviders(context);
         final ResourceLocation requiredSoupBaseId = StockpotSoupBridge.resolveRequiredSoupBaseId(recipe);
-        appendStockpotSoupBaseTokens(context, processingTokens, allocated, requiredSoupBaseId);
-        final Object lidToken = findIngredientToken(CfbhRuntime.contextItemProviders(context), lidRequirement, allocated);
+        appendStockpotSoupBaseTokens(processingTokens, itemProviders, allocatedByProvider, requiredSoupBaseId);
+        final Object lidToken = CfbhRuntime.findAndReserveIngredientToken(
+                itemProviders, lidRequirement, allocatedByProvider);
         if (lidToken != null) {
             processingTokens.add(lidToken);
             return;
         }
 
-        final Object lidItemToken = findItemToken(
-                CfbhRuntime.contextItemProviders(context),
-                new ItemStack(lidItem),
-                allocated
-        );
+        final Object lidItemToken = CfbhRuntime.findAndReserveItemToken(
+                itemProviders, new ItemStack(lidItem), allocatedByProvider);
         if (lidItemToken != null) {
             processingTokens.add(lidItemToken);
         }
     }
 
-    private static void appendKaleidoscopePotOilToken(final Object context, final List<Object> processingTokens) {
+    private static void appendKaleidoscopePotOilToken(final Object context,
+                                                      final List<Object> processingTokens,
+                                                      final Map<Object, List<Object>> allocatedByProvider) {
         final List<?> itemProviders = CfbhRuntime.contextItemProviders(context);
-        final List<Object> allocated = new ArrayList<>(processingTokens);
 
         final var oilItem = BuiltInRegistries.ITEM.getOptional(
                 MinecraftApiCompat.resourceLocation(
@@ -236,7 +235,7 @@ public final class CookingPotKitchenHandler implements CfbhRuntime.KitchenRecipe
             final Object oilToken = findTokenForAnyCandidate(
                     itemProviders,
                     List.of(new ItemStack(oilItem)),
-                    allocated
+                    allocatedByProvider
             );
             if (oilToken != null) {
                 processingTokens.add(oilToken);
@@ -254,15 +253,11 @@ public final class CookingPotKitchenHandler implements CfbhRuntime.KitchenRecipe
             return;
         }
 
-        final List<Object> rejectedOilPotTokens = new ArrayList<>();
         while (true) {
-            final List<Object> allocatedWithRejected = new ArrayList<>(allocated.size() + rejectedOilPotTokens.size());
-            allocatedWithRejected.addAll(allocated);
-            allocatedWithRejected.addAll(rejectedOilPotTokens);
             final Object oilPotToken = findTokenForAnyCandidate(
                     itemProviders,
                     List.of(new ItemStack(oilPotItem)),
-                    allocatedWithRejected
+                    allocatedByProvider
             );
             if (oilPotToken == null) {
                 return;
@@ -273,17 +268,16 @@ public final class CookingPotKitchenHandler implements CfbhRuntime.KitchenRecipe
                 processingTokens.add(oilPotToken);
                 return;
             }
-            rejectedOilPotTokens.add(oilPotToken);
         }
     }
 
-    private static void appendStockpotSoupBaseTokens(final Object context,
-                                                     final List<Object> processingTokens,
-                                                     final List<Object> allocated,
+    private static void appendStockpotSoupBaseTokens(final List<Object> processingTokens,
+                                                     final List<?> itemProviders,
+                                                     final Map<Object, List<Object>> allocatedByProvider,
                                                      final ResourceLocation requiredSoupBaseId) {
         final List<Object> soupTokens = findStockpotSoupBaseTokens(
-                CfbhRuntime.contextItemProviders(context),
-                allocated,
+                itemProviders,
+                allocatedByProvider,
                 requiredSoupBaseId
         );
         if (soupTokens.isEmpty()) {
@@ -291,11 +285,10 @@ public final class CookingPotKitchenHandler implements CfbhRuntime.KitchenRecipe
         }
 
         processingTokens.addAll(soupTokens);
-        allocated.addAll(soupTokens);
     }
 
     private static List<Object> findStockpotSoupBaseTokens(final List<?> itemProviders,
-                                                           final Collection<?> allocatedTokens,
+                                                           final Map<Object, List<Object>> allocatedByProvider,
                                                            final ResourceLocation requiredSoupBaseId) {
         final List<Object> providersWithoutMarkers = new ArrayList<>();
         boolean waterSinkProviderDetected = false;
@@ -322,7 +315,7 @@ public final class CookingPotKitchenHandler implements CfbhRuntime.KitchenRecipe
             final Object token = findTokenForAnyCandidate(
                     providersWithoutMarkers,
                     stockpotWaterSoupBaseCandidates(),
-                    allocatedTokens
+                    allocatedByProvider
             );
             if (token != null) {
                 return List.of(token);
@@ -338,7 +331,7 @@ public final class CookingPotKitchenHandler implements CfbhRuntime.KitchenRecipe
             final Object bucketToken = findTokenForAnyCandidate(
                     providersWithoutMarkers,
                     List.of(lavaBucket),
-                    allocatedTokens
+                    allocatedByProvider
             );
             if (bucketToken != null) {
                 return List.of(bucketToken);
@@ -352,7 +345,7 @@ public final class CookingPotKitchenHandler implements CfbhRuntime.KitchenRecipe
                 final Object bucketToken = findTokenForAnyCandidate(
                         providersWithoutMarkers,
                         List.of(fishBucket),
-                        allocatedTokens
+                        allocatedByProvider
                 );
                 if (bucketToken != null) {
                     return List.of(bucketToken);
@@ -364,17 +357,14 @@ public final class CookingPotKitchenHandler implements CfbhRuntime.KitchenRecipe
                 return List.of();
             }
 
-            final List<Object> allocated = new ArrayList<>(allocatedTokens);
             final Object fishToken = findTokenForAnyCandidate(
                     providersWithoutMarkers,
                     List.of(fishIngredient),
-                    allocated
+                    allocatedByProvider
             );
             if (fishToken == null) {
                 return List.of();
             }
-            allocated.add(fishToken);
-
             if (waterSinkProviderDetected) {
                 return List.of(fishToken, StockpotSoupBridge.syntheticWaterSinkSoupToken());
             }
@@ -382,7 +372,7 @@ public final class CookingPotKitchenHandler implements CfbhRuntime.KitchenRecipe
             final Object waterToken = findTokenForAnyCandidate(
                     providersWithoutMarkers,
                     stockpotWaterSoupBaseCandidates(),
-                    allocated
+                    allocatedByProvider
             );
             if (waterToken != null) {
                 return List.of(fishToken, waterToken);
@@ -395,7 +385,7 @@ public final class CookingPotKitchenHandler implements CfbhRuntime.KitchenRecipe
             final Object soupToken = findTokenForAnyCandidate(
                     providersWithoutMarkers,
                     List.of(exactSoupBaseItem),
-                    allocatedTokens
+                    allocatedByProvider
             );
             if (soupToken != null) {
                 return List.of(soupToken);
@@ -417,16 +407,12 @@ public final class CookingPotKitchenHandler implements CfbhRuntime.KitchenRecipe
 
         final ItemStack containerUnit = containerCost.copy();
         containerUnit.setCount(1);
-        final Ingredient containerIngredient = Ingredient.of(containerUnit);
 
+        final List<?> itemProviders = CfbhRuntime.contextItemProviders(context);
         int remaining = containerCost.getCount();
         while (remaining > 0) {
-            final List<Object> allocated = new ArrayList<>(consumed.size());
-            for (final TokenConsumption tokenConsumption : consumed) {
-                allocated.add(tokenConsumption.token());
-            }
-
-            final Object token = findIngredientToken(CfbhRuntime.contextItemProviders(context), containerIngredient, allocated);
+            final Object token = CfbhRuntime.findAndReserveItemToken(
+                    itemProviders, containerUnit, new IdentityHashMap<>());
             if (token == null) {
                 return false;
             }
@@ -443,31 +429,20 @@ public final class CookingPotKitchenHandler implements CfbhRuntime.KitchenRecipe
         return true;
     }
 
-    private static Object findIngredientToken(final List<?> itemProviders,
-                                              final Ingredient ingredient,
-                                              final Collection<?> allocatedTokens) {
-        for (final Object itemProvider : itemProviders) {
-            final Object token = CfbhRuntime.findIngredientToken(itemProvider, ingredient, allocatedTokens);
-            if (token != null) {
-                return token;
-            }
-        }
-        return null;
-    }
-
     private static Object findTokenForAnyCandidate(final List<?> itemProviders,
                                                    final List<ItemStack> candidates,
-                                                   final Collection<?> allocatedTokens) {
+                                                   final Map<Object, List<Object>> allocatedByProvider) {
         for (final ItemStack candidate : candidates) {
-            final Object exactItemToken = findItemToken(itemProviders, candidate, allocatedTokens);
+            final Object exactItemToken = CfbhRuntime.findAndReserveItemToken(
+                    itemProviders, candidate, allocatedByProvider);
             if (exactItemToken != null) {
                 return exactItemToken;
             }
 
-            final Object ingredientToken = findIngredientToken(
+            final Object ingredientToken = CfbhRuntime.findAndReserveIngredientToken(
                     itemProviders,
                     Ingredient.of(candidate),
-                    allocatedTokens
+                    allocatedByProvider
             );
             if (ingredientToken != null) {
                 return ingredientToken;
@@ -510,18 +485,6 @@ public final class CookingPotKitchenHandler implements CfbhRuntime.KitchenRecipe
             }
         }
         candidates.add(candidate);
-    }
-
-    private static Object findItemToken(final List<?> itemProviders,
-                                        final ItemStack itemStack,
-                                        final Collection<?> allocatedTokens) {
-        for (final Object itemProvider : itemProviders) {
-            final Object token = CfbhRuntime.findItemToken(itemProvider, itemStack, allocatedTokens);
-            if (token != null) {
-                return token;
-            }
-        }
-        return null;
     }
 
     private static void notifyFailure(final Object context, final String translationKey) {

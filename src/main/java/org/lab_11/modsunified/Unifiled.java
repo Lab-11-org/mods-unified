@@ -128,11 +128,11 @@ public final class Unifiled {
             registerKitchenRecipeHandler.invoke(null, CookingPotIndexedRecipe.class, handler);
 
             for (final CookingPotBridgeTarget target : activeCookingPotTargets) {
-                final Class<?> recipeClass = target.resolveRecipeClass().orElse(null);
-                if (recipeClass == null || !registeredRecipeClasses.add(recipeClass)) {
-                    continue;
+                for (final Class<?> recipeClass : target.resolveRecipeClasses()) {
+                    if (registeredRecipeClasses.add(recipeClass)) {
+                        registerKitchenRecipeHandler.invoke(null, recipeClass, handler);
+                    }
                 }
-                registerKitchenRecipeHandler.invoke(null, recipeClass, handler);
             }
 
             LOGGER.info("Registered LAB-11 mods-unified Cooking for Blockheads bridge for {}.",

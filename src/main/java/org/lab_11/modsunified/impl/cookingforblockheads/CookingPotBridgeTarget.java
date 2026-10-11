@@ -10,74 +10,41 @@ import org.lab_11.modsunified.impl.platform.RecipeRuntimeCompat;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Supplier;
 
 public final class CookingPotBridgeTarget {
     private final String targetKey;
     private final String displayName;
     private final List<String> requiredModIds;
-    private final String recipeClassName;
-    private final String recipeTypeOwnerClassName;
-    private final String recipeTypeFieldName;
     private final String blockEntityClassName;
     private final String blockEntityTypeOwnerClassName;
     private final String blockEntityTypeFieldName;
-    private final List<String> deniedRecipeIdPrefixes;
     private final List<String> requiredMarkerKeys;
+    private final List<RecipeBinding> recipeBindings;
 
-    private volatile Optional<Class<?>> cachedRecipeClass;
-    private volatile Optional<RecipeType<?>> cachedRecipeType;
     private volatile Optional<Class<? extends BlockEntity>> cachedBlockEntityClass;
     private volatile Optional<BlockEntityType<?>> cachedBlockEntityType;
 
-    public CookingPotBridgeTarget(final String targetKey,
-                                  final String displayName,
-                                  final List<String> requiredModIds,
-                                  final String recipeClassName,
-                                  final String recipeTypeOwnerClassName,
-                                  final String recipeTypeFieldName,
-                                  final String blockEntityClassName,
-                                  final String blockEntityTypeOwnerClassName,
-                                  final String blockEntityTypeFieldName,
-                                  final List<String> deniedRecipeIdPrefixes,
-                                  final List<String> requiredMarkerKeys) {
+    CookingPotBridgeTarget(final String targetKey,
+                           final String displayName,
+                           final List<String> requiredModIds,
+                           final String blockEntityClassName,
+                           final String blockEntityTypeOwnerClassName,
+                           final String blockEntityTypeFieldName,
+                           final List<String> requiredMarkerKeys,
+                           final List<RecipeBinding> recipeBindings) {
         this.targetKey = targetKey;
         this.displayName = displayName;
         this.requiredModIds = List.copyOf(requiredModIds);
-        this.recipeClassName = recipeClassName;
-        this.recipeTypeOwnerClassName = recipeTypeOwnerClassName;
-        this.recipeTypeFieldName = recipeTypeFieldName;
         this.blockEntityClassName = blockEntityClassName;
         this.blockEntityTypeOwnerClassName = blockEntityTypeOwnerClassName;
         this.blockEntityTypeFieldName = blockEntityTypeFieldName;
-        this.deniedRecipeIdPrefixes = List.copyOf(deniedRecipeIdPrefixes);
         this.requiredMarkerKeys = List.copyOf(requiredMarkerKeys);
-    }
-
-    public CookingPotBridgeTarget(final String targetKey,
-                                  final String displayName,
-                                  final List<String> requiredModIds,
-                                  final String recipeClassName,
-                                  final String recipeTypeOwnerClassName,
-                                  final String recipeTypeFieldName,
-                                  final String blockEntityClassName,
-                                  final String blockEntityTypeOwnerClassName,
-                                  final String blockEntityTypeFieldName) {
-        this(
-                targetKey,
-                displayName,
-                requiredModIds,
-                recipeClassName,
-                recipeTypeOwnerClassName,
-                recipeTypeFieldName,
-                blockEntityClassName,
-                blockEntityTypeOwnerClassName,
-                blockEntityTypeFieldName,
-                List.of(),
-                List.of()
-        );
+        this.recipeBindings = List.copyOf(recipeBindings);
     }
 
     public String targetKey() {
@@ -96,38 +63,41 @@ public final class CookingPotBridgeTarget {
         return requiredMarkerKeys;
     }
 
-    public Optional<Class<?>> resolveRecipeClass() {
-        final Optional<Class<?>> cached = cachedRecipeClass;
-        if (cached != null) {
-            return cached;
-        }
-
-        Optional<Class<?>> resolved;
-        try {
-            resolved = Optional.of(Class.forName(recipeClassName));
-        } catch (ClassNotFoundException ignored) {
-            resolved = Optional.empty();
-        }
-        if (resolved.isPresent()) {
-            cachedRecipeClass = resolved;
-        }
-        return resolved;
+    List<RecipeBinding> recipeBindings() {
+        return recipeBindings;
     }
 
-    public Optional<RecipeType<?>> resolveRecipeType() {
-        final Optional<RecipeType<?>> cached = cachedRecipeType;
-        if (cached != null) {
-            return cached;
+    public List<Class<?>> resolveRecipeClasses() {
+        final Set<Class<?>> classes = new LinkedHashSet<>();
+        for (final RecipeBinding binding : recipeBindings) {
+            if (binding.isAvailable()) {
+                binding.resolveRecipeClass().ifPresent(classes::add);
+            }
         }
+        return List.copyOf(classes);
+    }
 
-        final Object value = resolveHolderValue(recipeTypeOwnerClassName, recipeTypeFieldName);
-        if (value instanceof RecipeType<?> recipeType) {
-            final Optional<RecipeType<?>> resolved = Optional.of(recipeType);
-            cachedRecipeType = resolved;
-            return resolved;
+    public Set<RecipeType<?>> resolveRecipeTypes() {
+        final Set<RecipeType<?>> recipeTypes = new LinkedHashSet<>();
+        for (final RecipeBinding binding : recipeBindings) {
+            if (binding.isAvailable()) {
+                binding.resolveRecipeType().ifPresent(recipeTypes::add);
+            }
         }
+        return Set.copyOf(recipeTypes);
+    }
 
-        return Optional.empty();
+    List<String> unavailableContainerBindings() {
+        final List<String> missing = new ArrayList<>();
+        if (resolveBlockEntityClass().isEmpty()) missing.add(blockEntityClassName);
+        if (resolveBlockEntityType().isEmpty()) {
+            missing.add(blockEntityTypeOwnerClassName + "#" + blockEntityTypeFieldName);
+        }
+        return List.copyOf(missing);
+    }
+
+    String blockEntityClassName() {
+        return blockEntityClassName;
     }
 
     public Optional<Class<? extends BlockEntity>> resolveBlockEntityClass() {
@@ -168,15 +138,6 @@ public final class CookingPotBridgeTarget {
         return Optional.empty();
     }
 
-    public List<String> unavailableBindings() {
-        final List<String> missing = new ArrayList<>();
-        if (resolveRecipeClass().isEmpty()) missing.add(recipeClassName);
-        if (resolveRecipeType().isEmpty()) missing.add(recipeTypeOwnerClassName + "#" + recipeTypeFieldName);
-        if (resolveBlockEntityClass().isEmpty()) missing.add(blockEntityClassName);
-        if (resolveBlockEntityType().isEmpty()) missing.add(blockEntityTypeOwnerClassName + "#" + blockEntityTypeFieldName);
-        return List.copyOf(missing);
-    }
-
     public boolean matchesBlockEntity(final BlockEntity blockEntity) {
         if (blockEntity == null) {
             return false;
@@ -184,29 +145,6 @@ public final class CookingPotBridgeTarget {
 
         final Optional<Class<? extends BlockEntity>> blockEntityClass = resolveBlockEntityClass();
         return blockEntityClass.filter(aClass -> aClass.isInstance(blockEntity)).isPresent();
-    }
-
-    public boolean acceptsRecipe(final Object recipeEntry) {
-        final var recipe = RecipeRuntimeCompat.recipeValue(recipeEntry);
-        if (recipe == null) {
-            return false;
-        }
-
-        final Class<?> recipeClass = resolveRecipeClass().orElse(null);
-        if (recipeClass == null || !recipeClass.isInstance(recipe)) {
-            return false;
-        }
-
-        final ResourceLocation recipeId = RecipeRuntimeCompat.recipeId(recipeEntry);
-        if (recipeId == null) {
-            return false;
-        }
-        final String fullRecipeId = recipeId.toString();
-        return !startsWithAny(fullRecipeId, deniedRecipeIdPrefixes);
-    }
-
-    private static boolean startsWithAny(final String value, final List<String> prefixes) {
-        return prefixes.stream().anyMatch(value::startsWith);
     }
 
     private static Object resolveHolderValue(final String ownerClassName, final String fieldName) {
@@ -242,7 +180,6 @@ public final class CookingPotBridgeTarget {
             final Method getMethod = holder.getClass().getMethod("get");
             return getMethod.invoke(holder);
         } catch (ReflectiveOperationException ignored) {
-            // Some holders are direct values and do not expose a get() API.
             return holder;
         } catch (RuntimeException ignored) {
             return null;
@@ -265,5 +202,96 @@ public final class CookingPotBridgeTarget {
             return null;
         }
         return null;
+    }
+
+    static final class RecipeBinding {
+        private final String recipeClassName;
+        private final String recipeTypeOwnerClassName;
+        private final String recipeTypeFieldName;
+        private final List<String> deniedRecipeIdPrefixes;
+
+        private volatile Optional<Class<?>> cachedRecipeClass;
+        private volatile Optional<RecipeType<?>> cachedRecipeType;
+
+        RecipeBinding(final String recipeClassName,
+                      final String recipeTypeOwnerClassName,
+                      final String recipeTypeFieldName) {
+            this(recipeClassName, recipeTypeOwnerClassName, recipeTypeFieldName, List.of());
+        }
+
+        RecipeBinding(final String recipeClassName,
+                      final String recipeTypeOwnerClassName,
+                      final String recipeTypeFieldName,
+                      final List<String> deniedRecipeIdPrefixes) {
+            this.recipeClassName = recipeClassName;
+            this.recipeTypeOwnerClassName = recipeTypeOwnerClassName;
+            this.recipeTypeFieldName = recipeTypeFieldName;
+            this.deniedRecipeIdPrefixes = List.copyOf(deniedRecipeIdPrefixes);
+        }
+
+        String recipeClassName() {
+            return recipeClassName;
+        }
+
+        Optional<Class<?>> resolveRecipeClass() {
+            final Optional<Class<?>> cached = cachedRecipeClass;
+            if (cached != null) {
+                return cached;
+            }
+
+            try {
+                final Optional<Class<?>> resolved = Optional.of(Class.forName(recipeClassName));
+                cachedRecipeClass = resolved;
+                return resolved;
+            } catch (ClassNotFoundException ignored) {
+                return Optional.empty();
+            }
+        }
+
+        Optional<RecipeType<?>> resolveRecipeType() {
+            final Optional<RecipeType<?>> cached = cachedRecipeType;
+            if (cached != null) {
+                return cached;
+            }
+
+            final Object value = resolveHolderValue(recipeTypeOwnerClassName, recipeTypeFieldName);
+            if (value instanceof RecipeType<?> recipeType) {
+                final Optional<RecipeType<?>> resolved = Optional.of(recipeType);
+                cachedRecipeType = resolved;
+                return resolved;
+            }
+
+            return Optional.empty();
+        }
+
+        List<String> unavailableBindings() {
+            final List<String> missing = new ArrayList<>();
+            if (resolveRecipeClass().isEmpty()) missing.add(recipeClassName);
+            if (resolveRecipeType().isEmpty()) missing.add(recipeTypeOwnerClassName + "#" + recipeTypeFieldName);
+            return List.copyOf(missing);
+        }
+
+        boolean isAvailable() {
+            return resolveRecipeClass().isPresent() && resolveRecipeType().isPresent();
+        }
+
+        boolean acceptsRecipe(final Object recipeEntry) {
+            final var recipe = RecipeRuntimeCompat.recipeValue(recipeEntry);
+            if (recipe == null) {
+                return false;
+            }
+
+            final Class<?> recipeClass = resolveRecipeClass().orElse(null);
+            if (recipeClass == null || !recipeClass.isInstance(recipe)) {
+                return false;
+            }
+
+            final ResourceLocation recipeId = RecipeRuntimeCompat.recipeId(recipeEntry);
+            if (recipeId == null) {
+                return false;
+            }
+            final String fullRecipeId = recipeId.toString();
+            return deniedRecipeIdPrefixes.stream().noneMatch(fullRecipeId::startsWith);
+        }
     }
 }

@@ -2,6 +2,8 @@ package org.lab_11.modsunified.mixin.cookingforblockheads;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
@@ -12,6 +14,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Pseudo
@@ -25,6 +28,19 @@ abstract class KaleidoscopePotBlockMixin {
                                                   final CallbackInfoReturnable<BlockState> cir) {
         if (CookingPotHeatBridge.isAnyManagedOvenBelow(context.getLevel(), context.getClickedPos())) {
             cir.setReturnValue(withoutStand(cir.getReturnValue()));
+        }
+    }
+
+    // Placement can apply its final neighbour update after getStateForPlacement.
+    @Inject(method = {"setPlacedBy", "m_6402_"}, at = @At("TAIL"), require = 0, remap = false)
+    private void lab11$hideStandAfterPlacement(final Level level,
+                                                final BlockPos pos,
+                                                final BlockState state,
+                                                final LivingEntity placer,
+                                                final ItemStack stack,
+                                                final CallbackInfo ci) {
+        if (CookingPotHeatBridge.isAnyManagedOvenBelow(level, pos)) {
+            level.setBlockAndUpdate(pos, withoutStand(level.getBlockState(pos)));
         }
     }
 

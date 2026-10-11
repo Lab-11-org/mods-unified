@@ -9,6 +9,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.BooleanProperty;
 import net.minecraft.world.level.block.state.properties.Property;
 import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
@@ -21,9 +22,11 @@ import java.util.Optional;
 public final class CookingPotHeatBridge {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final String FARMERS_DELIGHT_COOKING_POT_ID = "farmersdelight:cooking_pot";
+    private static final String FARMERS_DELIGHT_STOVE_ID = "farmersdelight:stove";
     private static final String MINERS_DELIGHT_COPPER_POT_ID = "minersdelight:copper_pot";
     private static final String MINERS_DELIGHT_COPPER_POT_ID_ALT = "miners_delight:copper_pot";
     private static final String DUNGEONS_DELIGHT_MONSTER_POT_ID = "dungeonsdelight:monster_pot";
+    private static final String KALEIDOSCOPE_COOKERY_STOVE_ID = "kaleidoscope_cookery:stove";
     private static final String KALEIDOSCOPE_COOKERY_POT_ID = "kaleidoscope_cookery:pot";
     private static final String KALEIDOSCOPE_COOKERY_STOCKPOT_ID = "kaleidoscope_cookery:stockpot";
     private static final String KALEIDOSCOPE_PROPERTY_HAS_BASE = "has_base";
@@ -93,17 +96,19 @@ public final class CookingPotHeatBridge {
         }
 
         final BlockPos potPos = potBlockEntity.getBlockPos();
+        final boolean supportedBaseBelow =
+                isAnyManagedOvenBelow(level, potPos) || isSupportedStoveBelow(level, potPos);
         return switch (targetKey) {
             case BridgeKeys.TARGET_FARMERS_DELIGHT_COOKING_POT ->
-                    isFarmersDelightCookingPot(level, potPos) && isAnyManagedOvenBelow(level, potPos);
+                    isFarmersDelightCookingPot(level, potPos) && supportedBaseBelow;
             case BridgeKeys.TARGET_MINERS_DELIGHT_COPPER_POT ->
-                    isMinersDelightCopperPot(level, potPos) && isAnyManagedOvenBelow(level, potPos);
+                    isMinersDelightCopperPot(level, potPos) && supportedBaseBelow;
             case BridgeKeys.TARGET_DUNGEONS_DELIGHT_MONSTER_POT ->
                     isDungeonsDelightMonsterPot(level, potPos) && isDungeonOvenBelow(level, potPos);
             case BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_POT ->
-                    isKaleidoscopeCookeryPot(level, potPos) && isAnyManagedOvenBelow(level, potPos);
+                    isKaleidoscopeCookeryPot(level, potPos) && supportedBaseBelow;
             case BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_STOCKPOT ->
-                    isKaleidoscopeCookeryStockpot(level, potPos) && isAnyManagedOvenBelow(level, potPos);
+                    isKaleidoscopeCookeryStockpot(level, potPos) && supportedBaseBelow;
             default -> false;
         };
     }
@@ -174,7 +179,16 @@ public final class CookingPotHeatBridge {
         }
 
         final BlockPos potPos = potBlockEntity.getBlockPos();
-        if (!shouldUseOvenHeatForPot(level, potPos) || !isAnyManagedOvenBelow(level, potPos)) {
+        if (!shouldUseOvenHeatForPot(level, potPos)) {
+            LOGGER.info("Skipping managed-oven ignition for pot at {} because no managed oven is detected below.", potPos);
+            return false;
+        }
+        final BlockState heatSourceState = level.getBlockState(potPos.below());
+        if (isSupportedStove(heatSourceState)) {
+            return heatSourceState.hasProperty(BlockStateProperties.LIT)
+                    && heatSourceState.getValue(BlockStateProperties.LIT);
+        }
+        if (!isAnyManagedOvenBelow(level, potPos)) {
             LOGGER.info("Skipping managed-oven ignition for pot at {} because no managed oven is detected below.", potPos);
             return false;
         }
@@ -483,6 +497,20 @@ public final class CookingPotHeatBridge {
 
     private static boolean isFarmersDelightCookingPot(final Level level, final BlockPos potPos) {
         return isPotBlockId(level, potPos, FARMERS_DELIGHT_COOKING_POT_ID);
+    }
+
+    private static boolean isSupportedStoveBelow(final Level level, final BlockPos potPos) {
+        return level != null && potPos != null && isSupportedStove(level.getBlockState(potPos.below()));
+    }
+
+    static boolean isSupportedStove(final BlockState state) {
+        final ResourceLocation blockId = BuiltInRegistries.BLOCK.getKey(state.getBlock());
+        return blockId != null && isSupportedStoveId(blockId.toString());
+    }
+
+    static boolean isSupportedStoveId(final String blockId) {
+        return FARMERS_DELIGHT_STOVE_ID.equals(blockId)
+                || KALEIDOSCOPE_COOKERY_STOVE_ID.equals(blockId);
     }
 
     private static boolean isMinersDelightCopperPot(final Level level, final BlockPos potPos) {

@@ -109,7 +109,8 @@ final class CfbhRuntime {
     }
 
     static ItemStack restoreIngredientToken(final Object token, final ItemStack stack) {
-        final Object value = invoke(token, "restore", new Class<?>[]{ItemStack.class}, stack);
+        final Object value = invokeApi(resolveIngredientTokenClass(), token,
+                "restore", new Class<?>[]{ItemStack.class}, stack);
         return value instanceof ItemStack result ? result : stack;
     }
 
@@ -324,7 +325,7 @@ final class CfbhRuntime {
             return null;
         }
 
-        final Object result = invoke(itemProvider, "findIngredient",
+        final Object result = invokeApi(kitchenItemProviderClass(), itemProvider, "findIngredient",
                 new Class<?>[]{Ingredient.class, Collection.class, hintClass},
                 ingredient, allocatedTokens, hintNone);
         if (isEmptyIngredientToken(result)) {
@@ -342,13 +343,43 @@ final class CfbhRuntime {
             return null;
         }
 
-        final Object result = invoke(itemProvider, "findIngredient",
+        final Object result = invokeApi(kitchenItemProviderClass(), itemProvider, "findIngredient",
                 new Class<?>[]{ItemStack.class, Collection.class, hintClass},
                 itemStack, allocatedTokens, hintNone);
         if (isEmptyIngredientToken(result)) {
             return null;
         }
         return result;
+    }
+
+    static Object findAndReserveIngredientToken(final List<?> itemProviders,
+                                                final Ingredient ingredient,
+                                                final Map<Object, List<Object>> allocatedByProvider) {
+        for (final Object itemProvider : itemProviders) {
+            final List<Object> allocated = allocatedByProvider.computeIfAbsent(
+                    itemProvider, ignored -> new ArrayList<>());
+            final Object token = findIngredientToken(itemProvider, ingredient, allocated);
+            if (token != null) {
+                allocated.add(token);
+                return token;
+            }
+        }
+        return null;
+    }
+
+    static Object findAndReserveItemToken(final List<?> itemProviders,
+                                          final ItemStack itemStack,
+                                          final Map<Object, List<Object>> allocatedByProvider) {
+        for (final Object itemProvider : itemProviders) {
+            final List<Object> allocated = allocatedByProvider.computeIfAbsent(
+                    itemProvider, ignored -> new ArrayList<>());
+            final Object token = findItemToken(itemProvider, itemStack, allocated);
+            if (token != null) {
+                allocated.add(token);
+                return token;
+            }
+        }
+        return null;
     }
 
     static List<?> tryGetCombinedProviders(final Object itemProvider) {
@@ -439,8 +470,24 @@ final class CfbhRuntime {
     }
 
     private static ItemStack invokeTokenMethod(final Object token, final String methodName) {
-        final Object value = invokeNoArg(token, methodName);
+        final Object value = invokeApi(
+                resolveIngredientTokenClass(), token, methodName, new Class<?>[0]);
         return value instanceof ItemStack stack ? stack : ItemStack.EMPTY;
+    }
+
+    private static Object invokeApi(final Class<?> apiClass,
+                                    final Object target,
+                                    final String methodName,
+                                    final Class<?>[] parameterTypes,
+                                    final Object... args) {
+        if (apiClass == null || target == null || !apiClass.isInstance(target)) {
+            return null;
+        }
+        try {
+            return apiClass.getMethod(methodName, parameterTypes).invoke(target, args);
+        } catch (ReflectiveOperationException ignored) {
+            return null;
+        }
     }
 
     private static Object staticFieldValue(final Class<?> ownerClass, final String fieldName) {

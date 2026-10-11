@@ -29,28 +29,11 @@ public final class RuntimeBindings {
     }
 
     private static ModRuntimeBindings selectActiveProfile() {
-        final String minecraftVersion = detectMinecraftVersion();
         if (isClassPresent("net.minecraftforge.fml.ModList")
-                && !isClassPresent("net.neoforged.fml.ModList")
-                && minecraftVersion.startsWith("1.20.1")) {
+                && !isClassPresent("net.neoforged.fml.ModList")) {
             return FORGE_1201;
         }
         return NEOFORGE_1211;
-    }
-
-    private static String detectMinecraftVersion() {
-        try {
-            final var currentVersion = net.minecraft.SharedConstants.getCurrentVersion();
-            if (currentVersion != null) {
-                final String name = currentVersion.getName();
-                if (name != null && !name.isBlank()) {
-                    return name;
-                }
-            }
-        } catch (Throwable ignored) {
-            // Fall back to the default profile when runtime version lookup is unavailable.
-        }
-        return NEOFORGE_1211.profile().minecraftVersion();
     }
 
     private static boolean isClassPresent(final String className) {

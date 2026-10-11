@@ -6,6 +6,7 @@ import java.util.Optional;
 
 public final class LoaderApiCompat {
     private static final String NEOFORGE_LOADING_MOD_LIST_CLASS = "net.neoforged.fml.loading.LoadingModList";
+    private static final String FORGE_LOADING_MOD_LIST_CLASS = "net.minecraftforge.fml.loading.LoadingModList";
     private static final String NEOFORGE_MOD_LIST_CLASS = "net.neoforged.fml.ModList";
     private static final String FORGE_MOD_LIST_CLASS = "net.minecraftforge.fml.ModList";
 
@@ -17,7 +18,7 @@ public final class LoaderApiCompat {
             return false;
         }
 
-        final Object loadingModList = resolveSingleton(NEOFORGE_LOADING_MOD_LIST_CLASS);
+        final Object loadingModList = resolveSingleton(NEOFORGE_LOADING_MOD_LIST_CLASS, FORGE_LOADING_MOD_LIST_CLASS);
         final Object modList = resolveModList();
         for (final String candidate : modIdCandidates(modId)) {
             if (hasModFile(loadingModList, candidate)

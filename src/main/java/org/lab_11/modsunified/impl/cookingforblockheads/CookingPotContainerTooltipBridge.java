@@ -15,9 +15,9 @@ import net.neoforged.neoforge.event.entity.player.ItemTooltipEvent;
 import org.lab_11.modsunified.impl.platform.LoaderApiCompat;
 import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
 
-import java.util.ArrayList;
-import java.util.Collection;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 
@@ -431,7 +431,8 @@ public final class CookingPotContainerTooltipBridge {
                                              final String requiredMarkerKey) {
         // Requirement markers are virtual tokens, so a successful find means the kitchen is fully connected.
         final Ingredient markerIngredient = CookingPotActivationMarkerProvider.markerIngredient(requiredMarkerKey);
-        final Object markerToken = findIngredientToken(itemProviders, markerIngredient, List.of());
+        final Object markerToken = CfbhRuntime.findAndReserveIngredientToken(
+                itemProviders, markerIngredient, new IdentityHashMap<>());
         return markerToken != null;
     }
 
@@ -456,41 +457,20 @@ public final class CookingPotContainerTooltipBridge {
             return false;
         }
 
-        // Use item-only matching to avoid strict component comparison issues
-        final Ingredient expectedContainer = Ingredient.of(containerCost.getItem());
-        final Collection<Object> allocatedTokens = new ArrayList<>();
+        final ItemStack expectedContainer = containerCost.copyWithCount(1);
+        final Map<Object, List<Object>> allocatedByProvider = new IdentityHashMap<>();
 
         int remaining = containerCost.getCount();
         while (remaining > 0) {
-            final Object token = findIngredientToken(itemProviders, expectedContainer, allocatedTokens);
+            final Object token = CfbhRuntime.findAndReserveItemToken(
+                    itemProviders, expectedContainer, allocatedByProvider);
             if (token == null) {
                 break;
             }
-            allocatedTokens.add(token);
-            remaining -= peekTokenStackCount(token);
+            remaining--;
         }
 
         return remaining > 0;
-    }
-
-    private static Object findIngredientToken(final List<?> itemProviders,
-                                              final Ingredient ingredient,
-                                              final Collection<?> allocatedTokens) {
-        for (final Object itemProvider : itemProviders) {
-            final Object token = CfbhRuntime.findIngredientToken(itemProvider, ingredient, allocatedTokens);
-            if (token != null) {
-                return token;
-            }
-        }
-        return null;
-    }
-
-    private static int peekTokenStackCount(final Object token) {
-        if (token == null) {
-            return 1;
-        }
-
-        return Math.max(1, CfbhRuntime.peekIngredientToken(token).getCount());
     }
 
     private static boolean isSupportedRecipeScreen(final Object screen) {

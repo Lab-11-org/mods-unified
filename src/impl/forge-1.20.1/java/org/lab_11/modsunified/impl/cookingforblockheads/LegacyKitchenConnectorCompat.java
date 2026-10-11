@@ -43,6 +43,12 @@ public final class LegacyKitchenConnectorCompat {
             if (!(value instanceof Capability<?> capability)) {
                 return false;
             }
+            final Object itemCapabilityValue = providers.getClass().getMethod("getCapability", Class.class)
+                    .invoke(providers, Class.forName(
+                            "net.blay09.mods.cookingforblockheads.api.capability.IKitchenItemProvider"));
+            if (!(itemCapabilityValue instanceof Capability<?> itemCapability)) {
+                return false;
+            }
             final Constructor<?> itemProviderConstructor = Class.forName(
                     "net.blay09.mods.cookingforblockheads.compat.CompatCapabilityLoader$KitchenItemCapabilityProvider"
             ).getDeclaredConstructor(BlockEntity.class);
@@ -54,6 +60,7 @@ public final class LegacyKitchenConnectorCompat {
                             event,
                             targets,
                             capability,
+                            itemCapability,
                             connector,
                             itemProviderConstructor
                     ));
@@ -66,35 +73,74 @@ public final class LegacyKitchenConnectorCompat {
     private static void attach(final AttachCapabilitiesEvent<? extends BlockEntity> event,
                                final List<CookingPotBridgeTarget> targets,
                                final Capability<?> capability,
+                               final Capability<?> itemCapability,
                                final Object connectorInstance,
                                final Constructor<?> itemProviderConstructor) {
         final BlockEntity blockEntity = event.getObject();
-        if (blockEntity.getBlockState().is(KITCHEN_ITEM_PROVIDERS)) {
-            try {
-                event.addCapability(
-                        ITEM_PROVIDER_CAPABILITY_ID,
-                        (ICapabilityProvider) itemProviderConstructor.newInstance(blockEntity)
-                );
-            } catch (ReflectiveOperationException ignored) {
-            }
-        }
-
-        final boolean isCookware = targets.stream().anyMatch(target ->
-                (BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_POT.equals(target.targetKey())
-                        || BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_STOCKPOT.equals(target.targetKey()))
-                        && target.matchesBlockEntity(blockEntity));
-        if (!isCookware && !isLavaSink(blockEntity)) {
-            return;
-        }
+        // Forge gathers capabilities from BlockEntity's constructor. In particular,
+        // Central Kitchen's delegating entities have not assigned their delegate yet.
+        // Only inspect state when the kitchen asks for a capability after construction.
+        final DeferredTaggedItemProvider itemProvider = new DeferredTaggedItemProvider(
+                blockEntity, itemCapability, itemProviderConstructor);
+        event.addCapability(ITEM_PROVIDER_CAPABILITY_ID, itemProvider);
+        event.addListener(itemProvider::invalidate);
 
         final LazyOptional<Object> connector = LazyOptional.of(() -> connectorInstance);
         event.addCapability(CAPABILITY_ID, new ICapabilityProvider() {
             @Override
             public <T> LazyOptional<T> getCapability(final Capability<T> requested, final Direction side) {
-                return requested == capability ? connector.cast() : LazyOptional.empty();
+                if (requested != capability) {
+                    return LazyOptional.empty();
+                }
+                final boolean isCookware = targets.stream().anyMatch(target ->
+                        (BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_POT.equals(target.targetKey())
+                                || BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_STOCKPOT.equals(target.targetKey()))
+                                && target.matchesBlockEntity(blockEntity));
+                return isCookware || isLavaSink(blockEntity)
+                        || CookingPotHeatBridge.isSupportedStove(blockEntity.getBlockState())
+                        ? connector.cast() : LazyOptional.empty();
             }
         });
         event.addListener(connector::invalidate);
+    }
+
+    private static final class DeferredTaggedItemProvider implements ICapabilityProvider {
+        private final BlockEntity blockEntity;
+        private final Capability<?> capability;
+        private final Constructor<?> constructor;
+        private LazyOptional<?> resolved;
+        private boolean invalidated;
+
+        private DeferredTaggedItemProvider(final BlockEntity blockEntity,
+                                           final Capability<?> capability,
+                                           final Constructor<?> constructor) {
+            this.blockEntity = blockEntity;
+            this.capability = capability;
+            this.constructor = constructor;
+        }
+
+        @Override
+        public <T> LazyOptional<T> getCapability(final Capability<T> requested, final Direction side) {
+            if (invalidated || requested != capability || !blockEntity.getBlockState().is(KITCHEN_ITEM_PROVIDERS)) {
+                return LazyOptional.empty();
+            }
+            if (resolved == null) {
+                try {
+                    final ICapabilityProvider delegate = (ICapabilityProvider) constructor.newInstance(blockEntity);
+                    resolved = delegate.getCapability(capability, null);
+                } catch (ReflectiveOperationException ignored) {
+                    return LazyOptional.empty();
+                }
+            }
+            return resolved.cast();
+        }
+
+        private void invalidate() {
+            invalidated = true;
+            if (resolved != null) {
+                resolved.invalidate();
+            }
+        }
     }
 
     private static boolean isLavaSink(final BlockEntity blockEntity) {

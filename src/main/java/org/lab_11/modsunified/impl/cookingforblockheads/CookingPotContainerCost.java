@@ -9,8 +9,9 @@ import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
-import java.util.Collection;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 
 public final class CookingPotContainerCost {
     private CookingPotContainerCost() {
@@ -47,11 +48,17 @@ public final class CookingPotContainerCost {
     static ItemStack resolveForCraft(final Recipe<?> recipe,
                                      final RegistryAccess registryAccess,
                                      final boolean copperPotActive) {
+        if (recipe instanceof CookingPotIndexedRecipe indexedRecipe) {
+            return indexedRecipe.indexedContainerCost();
+        }
         return resolveInternal(recipe, registryAccess, copperPotActive);
     }
 
     static ItemStack resolveForTooltip(final Recipe<?> recipe,
                                        final RegistryAccess registryAccess) {
+        if (recipe instanceof CookingPotIndexedRecipe indexedRecipe) {
+            return indexedRecipe.indexedContainerCost();
+        }
         return resolveInternal(recipe, registryAccess, false);
     }
 
@@ -62,8 +69,8 @@ public final class CookingPotContainerCost {
             return null;
         }
 
-        if (recipe instanceof CookingPotIndexedRecipe indexedRecipe
-                && BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_STOCKPOT.equals(indexedRecipe.targetKey())) {
+        if (!(recipe instanceof CookingPotIndexedRecipe indexedRecipe)
+                || BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_STOCKPOT.equals(indexedRecipe.targetKey())) {
             return null;
         }
 
@@ -72,53 +79,61 @@ public final class CookingPotContainerCost {
             return null;
         }
 
-        final ItemStack containerUnit = containerCost.copyWithCount(1);
-        final Ingredient containerIngredient = Ingredient.of(containerUnit);
         final List<?> itemProviders = CfbhRuntime.contextItemProviders(craftingContext);
-        final List<Object> allocated = new ArrayList<>();
-        int remaining = containerCost.getCount();
+        final ItemStack netContainerCost = netContainerCostForStatus(
+                itemProviders,
+                indexedRecipe.targetKey(),
+                recipe,
+                containerCost
+        );
+        if (netContainerCost.isEmpty()) {
+            return null;
+        }
+
+        final ItemStack containerUnit = netContainerCost.copyWithCount(1);
+        final Map<Object, List<Object>> allocatedByProvider = new IdentityHashMap<>();
+        int remaining = netContainerCost.getCount();
         while (remaining > 0) {
-            final Object token = findContainerToken(itemProviders, containerIngredient, containerUnit, allocated);
+            final Object token = CfbhRuntime.findAndReserveItemToken(
+                    itemProviders, containerUnit, allocatedByProvider);
             if (token == null) {
-                return containerIngredient;
+                return Ingredient.of(containerUnit);
             }
-            allocated.add(token);
             remaining--;
         }
 
         return null;
     }
 
-    private static Object findContainerToken(final List<?> itemProviders,
-                                             final Ingredient containerIngredient,
-                                             final ItemStack containerUnit,
-                                             final Collection<?> allocatedTokens) {
+    static ItemStack netContainerCostForStatus(final List<?> itemProviders,
+                                               final String targetKey,
+                                               final Recipe<?> recipe,
+                                               final ItemStack fullContainerCost) {
+        ItemStack best = fullContainerCost;
         for (final Object itemProvider : itemProviders) {
-            Object token = CfbhRuntime.findItemToken(itemProvider, containerUnit, allocatedTokens);
-            if (token != null) {
-                return token;
+            if (!(itemProvider instanceof MarkerProviderView markerProvider)
+                    || !markerProvider.isMarkerKey(targetKey)
+                    || !markerProvider.isActiveForCurrentTableMarker()) {
+                continue;
             }
-            token = CfbhRuntime.findIngredientToken(itemProvider, containerIngredient, allocatedTokens);
-            if (token != null) {
-                return token;
+
+            final ItemStack candidate = markerProvider.netContainerRequired(recipe, fullContainerCost);
+            if (candidate == null) {
+                continue;
+            }
+            if (candidate.isEmpty()) {
+                return ItemStack.EMPTY;
+            }
+            if (candidate.getCount() < best.getCount()) {
+                best = candidate;
             }
         }
-        return null;
+        return best;
     }
 
     private static ItemStack resolveInternal(final Recipe<?> recipe,
                                              final RegistryAccess registryAccess,
                                              final boolean copperPotOutputConversion) {
-        if (recipe instanceof CookingPotIndexedRecipe indexedRecipe) {
-            final boolean indexedCopperPotTarget =
-                    MinersDelightCupConversion.COPPER_POT_TARGET_KEY.equals(indexedRecipe.targetKey());
-            return resolveInternal(
-                    indexedRecipe.delegateRecipe(),
-                    registryAccess,
-                    copperPotOutputConversion || indexedCopperPotTarget
-            );
-        }
-
         final ItemStack rawResult = recipe.getResultItem(registryAccess);
         if (rawResult.isEmpty()) {
             return ItemStack.EMPTY;

@@ -6,6 +6,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.Containers;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.level.Level;
@@ -140,6 +141,100 @@ public final class CookingPotProcessorCapability {
         return transferResolvedStacksToPotInternal(blockEntity, recipe, ingredientStacks, containerCost, false);
     }
 
+    public static boolean containerSlotConflicts(final BlockEntity blockEntity,
+                                                 final Recipe<?> recipe,
+                                                 final ItemStack fullContainerCost) {
+        if (fullContainerCost.isEmpty() || willFlushPendingPotInputs(blockEntity, recipe)) {
+            return false;
+        }
+
+        final IItemHandler potInventory = resolvePotInventory(blockEntity);
+        if (potInventory == null) {
+            return false;
+        }
+
+        final int containerSlot = resolveStaticIntField(blockEntity.getClass(), POT_CONTAINER_SLOT_FIELD, 7);
+        final ItemStack existing = potInventory.getStackInSlot(containerSlot);
+        return !existing.isEmpty() && !MinecraftApiCompat.isSameItemSameData(existing, fullContainerCost);
+    }
+
+    public static ItemStack netContainerRequired(final BlockEntity blockEntity,
+                                                 final Recipe<?> recipe,
+                                                 final ItemStack fullContainerCost) {
+        if (fullContainerCost.isEmpty()) {
+            return ItemStack.EMPTY;
+        }
+        if (willFlushPendingPotInputs(blockEntity, recipe)) {
+            return fullContainerCost.copy();
+        }
+
+        final IItemHandler potInventory = resolvePotInventory(blockEntity);
+        if (potInventory == null) {
+            return fullContainerCost.copy();
+        }
+
+        final Class<?> blockEntityClass = blockEntity.getClass();
+        final int mealDisplaySlot = resolveStaticIntField(blockEntityClass, POT_MEAL_DISPLAY_SLOT_FIELD, 6);
+        final int containerSlot = resolveStaticIntField(blockEntityClass, POT_CONTAINER_SLOT_FIELD, 7);
+        final int outputSlot = resolveStaticIntField(blockEntityClass, POT_OUTPUT_SLOT_FIELD, 8);
+        final int inputSlotCount = Math.max(1, Math.min(mealDisplaySlot, Math.min(containerSlot, outputSlot)));
+        final ItemStack existing = potInventory.getStackInSlot(containerSlot);
+        if (existing.isEmpty() || !MinecraftApiCompat.isSameItemSameData(existing, fullContainerCost)) {
+            return fullContainerCost.copy();
+        }
+
+        final ItemStack net = fullContainerCost.copy();
+        final int reserved = reservedContainerCount(
+                potInventory, recipe, inputSlotCount, fullContainerCost.getCount());
+        net.setCount(missingContainerCount(fullContainerCost.getCount(), existing.getCount(), reserved));
+        return net;
+    }
+
+    static int missingContainerCount(final int required, final int existing, final int reserved) {
+        return Math.max(0, required - Math.max(0, existing - reserved));
+    }
+
+    private static int reservedContainerCount(final IItemHandler inventory,
+                                              final Recipe<?> recipe,
+                                              final int inputSlotCount,
+                                              final int containerCost) {
+        final Recipe<?> delegate = recipe instanceof CookingPotIndexedRecipe indexedRecipe
+                ? indexedRecipe.delegateRecipe()
+                : recipe;
+        if (delegate == null || containerCost <= 0) {
+            return 0;
+        }
+
+        int batches = Integer.MAX_VALUE;
+        int slot = 0;
+        for (final Ingredient ingredient : delegate.getIngredients()) {
+            if (ingredient == null || ingredient.isEmpty()) {
+                continue;
+            }
+            if (slot >= inputSlotCount) {
+                return 0;
+            }
+
+            final ItemStack stack = inventory.getStackInSlot(slot++);
+            if (stack.isEmpty() || !ingredient.test(stack)) {
+                return 0;
+            }
+            batches = Math.min(batches, stack.getCount());
+        }
+
+        if (slot == 0) {
+            return 0;
+        }
+        return (int) Math.min(Integer.MAX_VALUE, (long) batches * containerCost);
+    }
+
+    private static boolean willFlushPendingPotInputs(final BlockEntity blockEntity, final Recipe<?> recipe) {
+        synchronized (LAST_RECIPE_BY_POT) {
+            final Recipe<?> previousRecipe = LAST_RECIPE_BY_POT.get(blockEntity);
+            return previousRecipe != null && previousRecipe != recipe;
+        }
+    }
+
     private static boolean transferResolvedStacksToPotInternal(final BlockEntity blockEntity,
                                                                final Recipe<?> recipe,
                                                                final List<ItemStack> ingredientStacks,
@@ -162,11 +257,7 @@ public final class CookingPotProcessorCapability {
         final int inputSlotCount = Math.max(1, Math.min(mealDisplaySlot, Math.min(containerSlot, outputSlot)));
         final int safeContainerSlot = Math.max(inputSlotCount, containerSlot);
 
-        final Recipe<?> previousRecipe;
-        synchronized (LAST_RECIPE_BY_POT) {
-            previousRecipe = LAST_RECIPE_BY_POT.get(blockEntity);
-        }
-        final boolean willFlush = previousRecipe != null && previousRecipe != recipe;
+        final boolean willFlush = willFlushPendingPotInputs(blockEntity, recipe);
 
         if (simulate && willFlush) {
             if (!canFitAfterFlush(potInventory, ingredientStacks, containerCost, inputSlotCount, safeContainerSlot)) {
@@ -239,6 +330,7 @@ public final class CookingPotProcessorCapability {
                 inputs.set(i, ingredients.get(i).copyWithCount(1));
             }
             blockEntity.setChanged();
+            CfbhRuntime.invokeNoArg(blockEntity, "refresh");
             CookingPotHeatBridge.tryIgniteManagedOvenForPot(blockEntity);
             return true;
         } catch (ReflectiveOperationException ignored) {

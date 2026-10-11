@@ -96,9 +96,10 @@ public final class MinecraftApiCompat {
 
         try {
             final Class<?> dataComponentsClass = Class.forName("net.minecraft.core.component.DataComponents");
+            final Class<?> dataComponentTypeClass = Class.forName("net.minecraft.core.component.DataComponentType");
             final Field customNameField = dataComponentsClass.getField("CUSTOM_NAME");
             final Object customNameComponentType = customNameField.get(null);
-            final Method setMethod = ItemStack.class.getMethod("set", customNameComponentType.getClass(), Object.class);
+            final Method setMethod = ItemStack.class.getMethod("set", dataComponentTypeClass, Object.class);
             setMethod.invoke(stack, customNameComponentType, customName);
             return;
         } catch (ReflectiveOperationException ignored) {

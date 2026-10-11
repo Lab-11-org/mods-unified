@@ -9,19 +9,14 @@
     "CookingPotBlockEntityMixin",
     "CopperPotBlockMixin",
     "CopperPotBlockEntityMixin",
-    "KitchenMenuMixin",
-    "KitchenMenuRecipeStatusMixin",
     "RecipeBookMenuLegacyMixin",
     "MonsterPotBlock120Mixin",
     "MonsterPotBlockEntity120Mixin",
-    "MonsterPotBlockMixin",
-    "MonsterPotBlockEntityMixin",
     "OvenBlockEntityMixin",
     "KaleidoscopePotBlockMixin",
     "KaleidoscopePotBlockEntityMixin"
   ],
   "client": [
-    "KitchenScreenMixin",
     "StockpotBlockEntityRenderMixin"
   ],
   "injectors": {

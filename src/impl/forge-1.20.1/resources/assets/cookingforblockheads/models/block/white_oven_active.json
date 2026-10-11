@@ -1,0 +1,7 @@
+{
+  "parent": "cookingforblockheads:block/oven",
+  "textures": {
+    "ovenfront": "cookingforblockheads:block/oven_front_active",
+    "ovenfront_active": "cookingforblockheads:block/oven_front_active"
+  }
+}

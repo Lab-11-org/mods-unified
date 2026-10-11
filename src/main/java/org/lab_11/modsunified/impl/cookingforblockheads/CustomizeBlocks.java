@@ -304,7 +304,7 @@ public final class CustomizeBlocks {
     }
 
     private static void onBuildCreativeModeTabContents(final BuildCreativeModeTabContentsEvent event) {
-        if (event.getTabKey() == CreativeModeTabs.FUNCTIONAL_BLOCKS || isCfbhCreativeTab(event.getTabKey())) {
+        if (CreativeModeTabs.FUNCTIONAL_BLOCKS.equals(event.getTabKey()) || isCfbhCreativeTab(event.getTabKey())) {
             if (DUNGEON_OVENS_ENABLED) {
                 addDungeonOvenIfMissing(event);
             }

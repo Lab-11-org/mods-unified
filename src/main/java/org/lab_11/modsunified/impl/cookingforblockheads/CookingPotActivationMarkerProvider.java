@@ -3,6 +3,7 @@ package org.lab_11.modsunified.impl.cookingforblockheads;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Ingredient;
+import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import org.lab_11.modsunified.impl.platform.MinecraftApiCompat;
 
@@ -58,6 +59,12 @@ public final class CookingPotActivationMarkerProvider implements CfbhRuntime.Kit
     }
 
     @Override
+    public ItemStack netContainerRequired(final Recipe<?> recipe,
+                                          final ItemStack fullContainerCost) {
+        return CookingPotProcessorCapability.netContainerRequired(blockEntity, recipe, fullContainerCost);
+    }
+
+    @Override
     public Object findByIngredient(final Ingredient ingredient, final Collection<?> allocatedTokens) {
         final MarkerEntry marker = markerForKey(markerKey);
         if (!isActiveForCurrentTable() || !ingredient.test(marker.stack)) {
@@ -92,11 +99,7 @@ public final class CookingPotActivationMarkerProvider implements CfbhRuntime.Kit
     }
 
     private static boolean isPotTargetMarker(final String markerKey) {
-        return BridgeKeys.TARGET_FARMERS_DELIGHT_COOKING_POT.equals(markerKey)
-                || BridgeKeys.TARGET_DUNGEONS_DELIGHT_MONSTER_POT.equals(markerKey)
-                || BridgeKeys.TARGET_MINERS_DELIGHT_COPPER_POT.equals(markerKey)
-                || BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_POT.equals(markerKey)
-                || BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_STOCKPOT.equals(markerKey);
+        return CookingPotBridgeCatalog.isTargetKey(markerKey);
     }
 
     private static MarkerEntry markerForKey(final String markerKey) {

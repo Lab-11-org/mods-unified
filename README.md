@@ -34,22 +34,35 @@ and pot-based cooking mods.
 
 ## Build
 ```bash
-./gradlew build -x test
+./gradlew clean build
 ```
 
 Other targets use the same task with the target properties from
 `gradle.properties`, for example:
 
 ```bash
-./gradlew build -x test -Ptarget_id=forge-1.20.1
+./gradlew clean build -Ptarget_id=forge-1.20.1
 ```
+
+Validate against the full published runtime set for each target with:
+
+```bash
+./gradlew clean build -Pfull_runtime=true
+./gradlew clean build -Ptarget_id=forge-1.20.1 -Pfull_runtime=true
+```
+
+These two full-runtime profiles also run as live loader GameTests in CI.
+
+The NeoForge full-runtime profile excludes Miner's Delight and its Lodestone
+dependency because their published 1.21.1 jars declare the incompatible
+Minecraft range `[1.21,1.21.1)`. The Forge profile includes Miner's Delight.
 
 Dependency versions live in `gradle.properties`; Gradle downloads them from
 Modrinth. Override them without editing files when checking another supported
 combination:
 
 ```bash
-./gradlew compileJava \
+./gradlew clean build \
   -Pcfbh_compile_version=21.1.24 \
   -Pbalm_compile_version=21.0.64 \
   -Pfarmers_delight_compile_version=1.3.2

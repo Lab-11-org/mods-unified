@@ -29,9 +29,8 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.List;
 import java.util.IdentityHashMap;
-import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
@@ -184,9 +183,9 @@ public final class CookingPotProcessorCapability {
 
         final Set<BlockEntityType<?>> registeredTypes = Collections.newSetFromMap(new IdentityHashMap<>());
         for (final CookingPotBridgeTarget target : targets) {
-            final var recipeTypeOptional = target.resolveRecipeType();
             final var blockEntityTypeOptional = target.resolveBlockEntityType();
-            if (recipeTypeOptional.isEmpty() || blockEntityTypeOptional.isEmpty()) {
+            final Set<RecipeType<?>> recipeTypes = target.resolveRecipeTypes();
+            if (recipeTypes.isEmpty() || blockEntityTypeOptional.isEmpty()) {
                 continue;
             }
 
@@ -194,13 +193,6 @@ public final class CookingPotProcessorCapability {
             if (!registeredTypes.add(blockEntityType)) {
                 continue;
             }
-            final Set<RecipeType<?>> recipeTypes = new LinkedHashSet<>();
-            for (final CookingPotBridgeTarget candidate : targets) {
-                if (candidate.resolveBlockEntityType().orElse(null) == blockEntityType) {
-                    candidate.resolveRecipeType().ifPresent(recipeTypes::add);
-                }
-            }
-
             event.registerBlockEntity(
                     (BlockCapability) capability,
                     (BlockEntityType) blockEntityType,
@@ -226,6 +218,100 @@ public final class CookingPotProcessorCapability {
                                                       final List<ItemStack> ingredientStacks,
                                                       final ItemStack containerCost) {
         return transferResolvedStacksToPotInternal(blockEntity, recipe, ingredientStacks, containerCost, false);
+    }
+
+    public static boolean containerSlotConflicts(final BlockEntity blockEntity,
+                                                 final Recipe<?> recipe,
+                                                 final ItemStack fullContainerCost) {
+        if (fullContainerCost.isEmpty() || willFlushPendingPotInputs(blockEntity, recipe)) {
+            return false;
+        }
+
+        final IItemHandler potInventory = resolvePotInventory(blockEntity);
+        if (potInventory == null) {
+            return false;
+        }
+
+        final int containerSlot = resolveStaticIntField(blockEntity.getClass(), POT_CONTAINER_SLOT_FIELD, 7);
+        final ItemStack existing = potInventory.getStackInSlot(containerSlot);
+        return !existing.isEmpty() && !MinecraftApiCompat.isSameItemSameData(existing, fullContainerCost);
+    }
+
+    public static ItemStack netContainerRequired(final BlockEntity blockEntity,
+                                                 final Recipe<?> recipe,
+                                                 final ItemStack fullContainerCost) {
+        if (fullContainerCost.isEmpty()) {
+            return ItemStack.EMPTY;
+        }
+        if (willFlushPendingPotInputs(blockEntity, recipe)) {
+            return fullContainerCost.copy();
+        }
+
+        final IItemHandler potInventory = resolvePotInventory(blockEntity);
+        if (potInventory == null) {
+            return fullContainerCost.copy();
+        }
+
+        final Class<?> blockEntityClass = blockEntity.getClass();
+        final int mealDisplaySlot = resolveStaticIntField(blockEntityClass, POT_MEAL_DISPLAY_SLOT_FIELD, 6);
+        final int containerSlot = resolveStaticIntField(blockEntityClass, POT_CONTAINER_SLOT_FIELD, 7);
+        final int outputSlot = resolveStaticIntField(blockEntityClass, POT_OUTPUT_SLOT_FIELD, 8);
+        final int inputSlotCount = Math.max(1, Math.min(mealDisplaySlot, Math.min(containerSlot, outputSlot)));
+        final ItemStack existing = potInventory.getStackInSlot(containerSlot);
+        if (existing.isEmpty() || !MinecraftApiCompat.isSameItemSameData(existing, fullContainerCost)) {
+            return fullContainerCost.copy();
+        }
+
+        final ItemStack net = fullContainerCost.copy();
+        final int reserved = reservedContainerCount(
+                potInventory, recipe, inputSlotCount, fullContainerCost.getCount());
+        net.setCount(missingContainerCount(fullContainerCost.getCount(), existing.getCount(), reserved));
+        return net;
+    }
+
+    static int missingContainerCount(final int required, final int existing, final int reserved) {
+        return Math.max(0, required - Math.max(0, existing - reserved));
+    }
+
+    private static int reservedContainerCount(final IItemHandler inventory,
+                                              final Recipe<?> recipe,
+                                              final int inputSlotCount,
+                                              final int containerCost) {
+        final Recipe<?> delegate = recipe instanceof CookingPotIndexedRecipe indexedRecipe
+                ? indexedRecipe.delegateRecipe()
+                : recipe;
+        if (delegate == null || containerCost <= 0) {
+            return 0;
+        }
+
+        int batches = Integer.MAX_VALUE;
+        int slot = 0;
+        for (final Ingredient ingredient : delegate.getIngredients()) {
+            if (ingredient == null || ingredient.isEmpty()) {
+                continue;
+            }
+            if (slot >= inputSlotCount) {
+                return 0;
+            }
+
+            final ItemStack stack = inventory.getStackInSlot(slot++);
+            if (stack.isEmpty() || !ingredient.test(stack)) {
+                return 0;
+            }
+            batches = Math.min(batches, stack.getCount());
+        }
+
+        if (slot == 0) {
+            return 0;
+        }
+        return (int) Math.min(Integer.MAX_VALUE, (long) batches * containerCost);
+    }
+
+    private static boolean willFlushPendingPotInputs(final BlockEntity blockEntity, final Recipe<?> recipe) {
+        synchronized (LAST_RECIPE_BY_POT) {
+            final Recipe<?> previousRecipe = LAST_RECIPE_BY_POT.get(blockEntity);
+            return previousRecipe != null && previousRecipe != recipe;
+        }
     }
 
     private static BlockCapability<Object, Void> resolveKitchenItemProcessorCapability() {
@@ -268,11 +354,7 @@ public final class CookingPotProcessorCapability {
         final int inputSlotCount = Math.max(1, Math.min(mealDisplaySlot, Math.min(containerSlot, outputSlot)));
         final int safeContainerSlot = Math.max(inputSlotCount, containerSlot);
 
-        final Recipe<?> previousRecipe;
-        synchronized (LAST_RECIPE_BY_POT) {
-            previousRecipe = LAST_RECIPE_BY_POT.get(blockEntity);
-        }
-        final boolean willFlush = previousRecipe != null && previousRecipe != recipe;
+        final boolean willFlush = willFlushPendingPotInputs(blockEntity, recipe);
 
         if (simulate && willFlush) {
             if (!canFitAfterFlush(potInventory, ingredientStacks, containerCost, inputSlotCount, safeContainerSlot)) {
@@ -459,6 +541,11 @@ public final class CookingPotProcessorCapability {
                 ? indexedRecipe.syntheticIngredientCount()
                 : 0;
         final int ingredientEnd = Math.min(ingredientTokens.size(), recipe.getIngredients().size());
+        final ItemStack containerCost = recipe instanceof CookingPotIndexedRecipe indexedRecipe
+                ? indexedRecipe.indexedContainerCost()
+                : ItemStack.EMPTY;
+        final int reservedContainers = reservedContainerCount(
+                potInventory, recipe, inputSlotCount, containerCost.getCount());
 
         if (!canInsertIntoInputSlots(potInventory, ingredientTokens, syntheticTokenCount, ingredientEnd, inputSlotCount)) {
             return TransferFailure.INPUT_SLOT_BLOCKED;
@@ -468,7 +555,9 @@ public final class CookingPotProcessorCapability {
                 ingredientTokens,
                 ingredientEnd,
                 ingredientTokens.size(),
-                safeContainerSlot
+                safeContainerSlot,
+                containerCost,
+                reservedContainers
         )) {
             return TransferFailure.CONTAINER_SLOT_BLOCKED;
         }
@@ -479,7 +568,9 @@ public final class CookingPotProcessorCapability {
             rollbackPotTransfer(potInventory, inputSlotCount, safeContainerSlot, inventorySnapshot, consumed);
             return TransferFailure.INPUT_TRANSFER_FAILED;
         }
-        if (!consumeIntoContainerSlot(potInventory, ingredientTokens, ingredientEnd, ingredientTokens.size(), safeContainerSlot, consumed)) {
+        if (!consumeIntoContainerSlot(
+                potInventory, ingredientTokens, ingredientEnd, ingredientTokens.size(), safeContainerSlot,
+                containerCost, reservedContainers, consumed)) {
             rollbackPotTransfer(potInventory, inputSlotCount, safeContainerSlot, inventorySnapshot, consumed);
             return TransferFailure.CONTAINER_TRANSFER_FAILED;
         }
@@ -1046,22 +1137,49 @@ public final class CookingPotProcessorCapability {
                                                       final List<?> ingredientTokens,
                                                       final int startInclusive,
                                                       final int endExclusive,
-                                                      final int containerSlot) {
+                                                      final int containerSlot,
+                                                      final ItemStack containerCost,
+                                                      final int reservedContainers) {
+        final ItemStack existing = potInventory.getStackInSlot(containerSlot);
+        if (!existing.isEmpty() && !containerCost.isEmpty()
+                && !MinecraftApiCompat.isSameItemSameData(existing, containerCost)) {
+            return false;
+        }
+
+        int supplied = 0;
         for (int index = startInclusive; index < endExclusive; index++) {
             final Object token = ingredientTokens.get(index);
             if (CfbhRuntime.isEmptyIngredientToken(token)) {
                 continue;
             }
-
             final ItemStack container = CfbhRuntime.peekIngredientToken(token).copyWithCount(1);
-            if (container.isEmpty()) {
+            if (container.isEmpty() || !MinecraftApiCompat.isSameItemSameData(container, containerCost)) {
                 return false;
             }
+            supplied++;
+        }
 
-            final ItemStack remaining = potInventory.insertItem(containerSlot, container, true);
+        final int toInsert = requiredContainerTokenCount(
+                containerCost.getCount(), existing.isEmpty() ? 0 : existing.getCount(), reservedContainers, supplied);
+        if (toInsert < 0) {
+            return false;
+        }
+
+        int inserted = 0;
+        for (int index = startInclusive; index < endExclusive; index++) {
+            final Object token = ingredientTokens.get(index);
+            if (CfbhRuntime.isEmptyIngredientToken(token)) {
+                continue;
+            }
+            if (inserted == toInsert) {
+                break;
+            }
+            final ItemStack remaining = potInventory.insertItem(
+                    containerSlot, CfbhRuntime.peekIngredientToken(token).copyWithCount(1), true);
             if (!remaining.isEmpty()) {
                 return false;
             }
+            inserted++;
         }
 
         return true;
@@ -1101,11 +1219,42 @@ public final class CookingPotProcessorCapability {
                                                     final int startInclusive,
                                                     final int endExclusive,
                                                     final int containerSlot,
+                                                    final ItemStack containerCost,
+                                                    final int reservedContainers,
                                                     final List<TokenConsumption> consumedTokens) {
+        final ItemStack existing = potInventory.getStackInSlot(containerSlot);
+        if (!existing.isEmpty() && !containerCost.isEmpty()
+                && !MinecraftApiCompat.isSameItemSameData(existing, containerCost)) {
+            return false;
+        }
+
+        int supplied = 0;
         for (int index = startInclusive; index < endExclusive; index++) {
             final Object token = ingredientTokens.get(index);
             if (CfbhRuntime.isEmptyIngredientToken(token)) {
                 continue;
+            }
+            final ItemStack container = CfbhRuntime.peekIngredientToken(token).copyWithCount(1);
+            if (container.isEmpty() || !MinecraftApiCompat.isSameItemSameData(container, containerCost)) {
+                return false;
+            }
+            supplied++;
+        }
+
+        final int toConsume = requiredContainerTokenCount(
+                containerCost.getCount(), existing.isEmpty() ? 0 : existing.getCount(), reservedContainers, supplied);
+        if (toConsume < 0) {
+            return false;
+        }
+
+        int consumedCount = 0;
+        for (int index = startInclusive; index < endExclusive; index++) {
+            final Object token = ingredientTokens.get(index);
+            if (CfbhRuntime.isEmptyIngredientToken(token)) {
+                continue;
+            }
+            if (consumedCount == toConsume) {
+                break;
             }
 
             final ItemStack consumed = CfbhRuntime.consumeIngredientToken(token);
@@ -1118,9 +1267,18 @@ public final class CookingPotProcessorCapability {
             if (!remaining.isEmpty()) {
                 return false;
             }
+            consumedCount++;
         }
 
         return true;
+    }
+
+    static int requiredContainerTokenCount(final int required,
+                                           final int existing,
+                                           final int reserved,
+                                           final int supplied) {
+        final int missing = missingContainerCount(required, existing, reserved);
+        return supplied < missing ? -1 : missing;
     }
 
     private static List<ItemStack> snapshotPotSlots(final IItemHandler inventory,

@@ -1,0 +1,6 @@
+{
+  "modid": "kaleidoscope_cookery",
+  "kitchenConnectors": [
+    "kaleidoscope_cookery:stove"
+  ]
+}

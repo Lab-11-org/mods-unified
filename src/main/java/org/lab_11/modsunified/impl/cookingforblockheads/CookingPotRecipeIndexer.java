@@ -20,15 +20,24 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.WeakHashMap;
 
 public final class CookingPotRecipeIndexer {
     private static final Logger LOGGER = LogUtils.getLogger();
-    private static final String RECIPE_MANAGER_BY_NAME_FIELD = "byName";
     private static final String CFBH_REGISTRY_CLASS = "net.blay09.mods.cookingforblockheads.registry.CookingForBlockheadsRegistry";
-    private static final Map<ResourceLocation, Recipe<?>> INDEXED_RECIPES_BY_ID = new ConcurrentHashMap<>();
+    private static final IndexedRecipeSnapshot EMPTY_SNAPSHOT = new IndexedRecipeSnapshot(Map.of(), Map.of());
+    private static final Map<RecipeManager, IndexedRecipeSnapshot> INDEXED_SNAPSHOTS_BY_MANAGER =
+            Collections.synchronizedMap(new WeakHashMap<>());
+    private static volatile IndexedRecipeSnapshot latestSnapshot = EMPTY_SNAPSHOT;
+
+    private record IndexedRecipeSnapshot(Map<ResourceLocation, Recipe<?>> recipesById,
+                                         Map<ResourceLocation, Object> holdersById) {
+        private IndexedRecipeSnapshot {
+            recipesById = Map.copyOf(recipesById);
+            holdersById = Map.copyOf(holdersById);
+        }
+    }
 
     private CookingPotRecipeIndexer() {
     }
@@ -40,11 +49,11 @@ public final class CookingPotRecipeIndexer {
                                      final List<CookingPotBridgeTarget> targets) {
         final Set<RecipeType<?>> indexedRecipeTypes = Collections.newSetFromMap(new IdentityHashMap<>());
         for (final CookingPotBridgeTarget target : targets) {
-            target.resolveRecipeType().ifPresent(indexedRecipeTypes::add);
+            indexedRecipeTypes.addAll(target.resolveRecipeTypes());
         }
 
         if (indexedRecipeTypes.isEmpty()) {
-            INDEXED_RECIPES_BY_ID.clear();
+            cacheIndexedRecipes(recipeManager, Map.of());
             return;
         }
 
@@ -52,60 +61,65 @@ public final class CookingPotRecipeIndexer {
         int added = 0;
         final Set<String> addedRecipeKeys = new HashSet<>();
         for (final CookingPotBridgeTarget target : targets) {
-            final RecipeType<?> recipeType = target.resolveRecipeType().orElse(null);
-            if (recipeType == null) {
-                continue;
-            }
-
-            final List<Object> recipesForType = RecipeRuntimeCompat.getAllRecipesFor(recipeManager, recipeType);
-
-            for (final Object rawRecipeEntry : recipesForType) {
-                final ResourceLocation rawRecipeId = RecipeRuntimeCompat.recipeId(rawRecipeEntry);
-                final Recipe<?> rawRecipeValue = RecipeRuntimeCompat.recipeValue(rawRecipeEntry);
-                if (rawRecipeId == null || rawRecipeValue == null) {
+            for (final CookingPotBridgeTarget.RecipeBinding binding : target.recipeBindings()) {
+                if (!binding.isAvailable()) {
                     continue;
                 }
-                if (!target.acceptsRecipe(rawRecipeEntry)) {
-                    continue;
-                }
-                if (BridgeKeys.TARGET_DUNGEONS_DELIGHT_MONSTER_POT.equals(target.targetKey())
-                        && DungeonsDelightCupRecipeMirror.shouldRouteToCopperPotOnly(rawRecipeEntry)) {
+                final RecipeType<?> recipeType = binding.resolveRecipeType().orElse(null);
+                if (recipeType == null) {
                     continue;
                 }
 
-                final String recipeKey = target.targetKey() + "|" + rawRecipeId;
-                if (!addedRecipeKeys.add(recipeKey)) {
-                    continue;
-                }
+                final List<Object> recipesForType = RecipeRuntimeCompat.getAllRecipesFor(recipeManager, recipeType);
 
-                final ItemStack rawResult = rawRecipeValue.getResultItem(registryAccess);
-                if (rawResult.isEmpty()) {
-                    continue;
-                }
+                for (final Object rawRecipeEntry : recipesForType) {
+                    final ResourceLocation rawRecipeId = RecipeRuntimeCompat.recipeId(rawRecipeEntry);
+                    final Recipe<?> rawRecipeValue = RecipeRuntimeCompat.recipeValue(rawRecipeEntry);
+                    if (rawRecipeId == null || rawRecipeValue == null) {
+                        continue;
+                    }
+                    if (!binding.acceptsRecipe(rawRecipeEntry)) {
+                        continue;
+                    }
+                    if (BridgeKeys.TARGET_DUNGEONS_DELIGHT_MONSTER_POT.equals(target.targetKey())
+                            && DungeonsDelightCupRecipeMirror.shouldRouteToCopperPotOnly(rawRecipeEntry)) {
+                        continue;
+                    }
 
-                final ResourceLocation indexedRecipeId = indexedRecipeId(rawRecipeId, target.targetKey());
-                final Object indexedRecipeEntry =
-                        CookingPotIndexedRecipe.toIndexedRecipeHolder(
-                                rawRecipeEntry,
-                                indexedRecipeId,
-                                registryAccess,
-                                target.targetKey(),
-                                target.requiredMarkerKeys()
-                        );
-                final Recipe<?> indexedRecipe = RecipeRuntimeCompat.recipeValue(indexedRecipeEntry);
-                if (indexedRecipe == null) {
-                    continue;
+                    final String recipeKey = target.targetKey() + "|" + rawRecipeId;
+                    if (!addedRecipeKeys.add(recipeKey)) {
+                        continue;
+                    }
+
+                    final ItemStack rawResult = rawRecipeValue.getResultItem(registryAccess);
+                    if (rawResult.isEmpty()) {
+                        continue;
+                    }
+
+                    final ResourceLocation indexedRecipeId = indexedRecipeId(rawRecipeId, target.targetKey());
+                    final Object indexedRecipeEntry =
+                            CookingPotIndexedRecipe.toIndexedRecipeHolder(
+                                    rawRecipeEntry,
+                                    indexedRecipeId,
+                                    registryAccess,
+                                    target.targetKey(),
+                                    target.requiredMarkerKeys()
+                            );
+                    final Recipe<?> indexedRecipe = RecipeRuntimeCompat.recipeValue(indexedRecipeEntry);
+                    if (indexedRecipe == null) {
+                        continue;
+                    }
+                    final ItemStack indexedResult = indexedRecipe.getResultItem(registryAccess);
+                    if (indexedResult.isEmpty()) {
+                        continue;
+                    }
+                    indexedRecipesById.put(indexedRecipeId, indexedRecipeEntry);
+                    added++;
                 }
-                final ItemStack indexedResult = indexedRecipe.getResultItem(registryAccess);
-                if (indexedResult.isEmpty()) {
-                    continue;
-                }
-                indexedRecipesById.put(indexedRecipeId, indexedRecipeEntry);
-                added++;
             }
         }
 
-        cacheIndexedRecipes(indexedRecipesById);
+        cacheIndexedRecipes(recipeManager, indexedRecipesById);
 
         final Multimap<ResourceLocation, Object> recipesByItemId = resolveRecipesByItemId();
         int removed = 0;
@@ -133,13 +147,8 @@ public final class CookingPotRecipeIndexer {
                 recipesByItemId.put(itemId, indexedRecipeEntry);
             }
 
-            if (!installIndexedRecipesByName(recipeManager, indexedRecipesById)) {
-                LOGGER.warn("Injected {} indexed recipes into Cooking for Blockheads index via {}, but failed to expose IDs in RecipeManager byName lookup.",
-                        added, source);
-            } else {
-                LOGGER.info("Injected {} cooking-pot recipes into Cooking for Blockheads recipe index (removed {}) and updated RecipeManager byName lookup via {}.",
-                        added, removed, source);
-            }
+            LOGGER.info("Injected {} cooking-pot recipes into Cooking for Blockheads recipe index (removed {}) via {}.",
+                    added, removed, source);
             return;
         }
 
@@ -170,42 +179,6 @@ public final class CookingPotRecipeIndexer {
     }
 
     @SuppressWarnings("unchecked")
-    private static boolean installIndexedRecipesByName(final RecipeManager recipeManager,
-                                                        final Map<ResourceLocation, Object> indexedRecipesById) {
-        try {
-            final Field byNameField = resolveRecipeByIdMapField(recipeManager);
-            if (byNameField == null) {
-                return false;
-            }
-
-            byNameField.setAccessible(true);
-            final Object fieldValue = byNameField.get(recipeManager);
-            if (!(fieldValue instanceof Map<?, ?> rawMap)) {
-                return false;
-            }
-
-            final Map<ResourceLocation, Object> byIdMap = mergeIndexedRecipesByName(
-                    (Map<ResourceLocation, Object>) rawMap,
-                    indexedRecipesById
-            );
-            byNameField.set(recipeManager, byIdMap);
-            return true;
-        } catch (ReflectiveOperationException e) {
-            LOGGER.warn("Failed to install indexed cooking-pot recipes into RecipeManager byName map.", e);
-            return false;
-        }
-    }
-
-    static Map<ResourceLocation, Object> mergeIndexedRecipesByName(
-            final Map<ResourceLocation, Object> currentRecipes,
-            final Map<ResourceLocation, Object> indexedRecipes) {
-        final Map<ResourceLocation, Object> merged = new HashMap<>(currentRecipes);
-        merged.entrySet().removeIf(entry -> isIndexedRecipeId(entry.getKey()));
-        merged.putAll(indexedRecipes);
-        return merged;
-    }
-
-    @SuppressWarnings("unchecked")
     private static Multimap<ResourceLocation, Object> resolveRecipesByItemId() {
         try {
             final Class<?> registryClass = Class.forName(CFBH_REGISTRY_CLASS);
@@ -224,20 +197,64 @@ public final class CookingPotRecipeIndexer {
         if (recipeId == null) {
             return null;
         }
-        return INDEXED_RECIPES_BY_ID.get(recipeId);
+        return latestSnapshot.recipesById().get(recipeId);
+    }
+
+    public static Object findIndexedRecipeHolder(final ResourceLocation recipeId) {
+        if (recipeId == null) {
+            return null;
+        }
+        return latestSnapshot.holdersById().get(recipeId);
+    }
+
+    public static Object findIndexedRecipeHolder(final RecipeManager recipeManager,
+                                                 final ResourceLocation recipeId) {
+        if (recipeManager == null || recipeId == null) {
+            return null;
+        }
+
+        final IndexedRecipeSnapshot snapshot = INDEXED_SNAPSHOTS_BY_MANAGER.get(recipeManager);
+        return snapshot == null ? null : snapshot.holdersById().get(recipeId);
+    }
+
+    static Set<ResourceLocation> indexedRecipeIds(final RecipeManager recipeManager) {
+        if (recipeManager == null) {
+            return Set.of();
+        }
+
+        final IndexedRecipeSnapshot snapshot = INDEXED_SNAPSHOTS_BY_MANAGER.get(recipeManager);
+        return snapshot == null ? Set.of() : snapshot.holdersById().keySet();
     }
 
     public static List<Recipe<?>> indexedRecipes() {
-        return List.copyOf(INDEXED_RECIPES_BY_ID.values());
+        return List.copyOf(latestSnapshot.recipesById().values());
     }
 
-    private static void cacheIndexedRecipes(final Map<ResourceLocation, Object> indexedRecipesById) {
-        INDEXED_RECIPES_BY_ID.clear();
+    static List<Recipe<?>> indexedRecipes(final RecipeManager recipeManager) {
+        if (recipeManager == null) {
+            return List.of();
+        }
+
+        final IndexedRecipeSnapshot snapshot = INDEXED_SNAPSHOTS_BY_MANAGER.get(recipeManager);
+        return snapshot == null ? List.of() : List.copyOf(snapshot.recipesById().values());
+    }
+
+    private static void cacheIndexedRecipes(final RecipeManager recipeManager,
+                                            final Map<ResourceLocation, Object> indexedRecipesById) {
+        final Map<ResourceLocation, Recipe<?>> recipesById = new HashMap<>();
         for (final Map.Entry<ResourceLocation, Object> entry : indexedRecipesById.entrySet()) {
             final Recipe<?> recipe = RecipeRuntimeCompat.recipeValue(entry.getValue());
             if (recipe != null) {
-                INDEXED_RECIPES_BY_ID.put(entry.getKey(), recipe);
+                recipesById.put(entry.getKey(), recipe);
             }
+        }
+
+        final IndexedRecipeSnapshot snapshot = new IndexedRecipeSnapshot(recipesById, indexedRecipesById);
+        synchronized (INDEXED_SNAPSHOTS_BY_MANAGER) {
+            if (recipeManager != null) {
+                INDEXED_SNAPSHOTS_BY_MANAGER.put(recipeManager, snapshot);
+            }
+            latestSnapshot = snapshot;
         }
     }
 
@@ -251,44 +268,6 @@ public final class CookingPotRecipeIndexer {
         } catch (ReflectiveOperationException ignored) {
             return false;
         }
-    }
-
-    private static Field resolveRecipeByIdMapField(final RecipeManager recipeManager) {
-        try {
-            return RecipeManager.class.getDeclaredField(RECIPE_MANAGER_BY_NAME_FIELD);
-        } catch (NoSuchFieldException ignored) {
-            // Fall back to structural discovery for production-obfuscated runtimes.
-        }
-
-        for (final Field field : RecipeManager.class.getDeclaredFields()) {
-            if (!Map.class.isAssignableFrom(field.getType())) {
-                continue;
-            }
-
-            try {
-                field.setAccessible(true);
-                final Object value = field.get(recipeManager);
-                if (!(value instanceof Map<?, ?> map)) {
-                    continue;
-                }
-                if (isRecipeByIdMap(map)) {
-                    return field;
-                }
-            } catch (ReflectiveOperationException ignored) {
-                // Try the next field.
-            }
-        }
-
-        return null;
-    }
-
-    private static boolean isRecipeByIdMap(final Map<?, ?> map) {
-        if (map.isEmpty()) {
-            return false;
-        }
-
-        final Map.Entry<?, ?> sample = map.entrySet().iterator().next();
-        return sample.getKey() instanceof ResourceLocation;
     }
 
     private static int countIndexedRecipesInLegacyRegistry() {

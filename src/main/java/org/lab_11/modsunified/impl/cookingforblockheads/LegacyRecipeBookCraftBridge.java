@@ -33,6 +33,7 @@ public final class LegacyRecipeBookCraftBridge {
     private static final String FEEDBACK_MOVED_TO_POT_KEY = "lab_11_mods_unified.feedback.cooking_table.moved_to_pot";
     private static final String FEEDBACK_POT_NOT_CONNECTED_KEY = "lab_11_mods_unified.feedback.cooking_table.pot_not_connected";
     private static final String FEEDBACK_POT_TRANSFER_FAILED_KEY = "lab_11_mods_unified.feedback.cooking_table.pot_transfer_failed";
+    private static final String FEEDBACK_POT_CONTAINER_BLOCKED_KEY = "lab_11_mods_unified.feedback.cooking_table.pot_container_blocked";
     private static volatile boolean hookObserved;
     private static volatile boolean diagnosticsLogged;
 
@@ -67,7 +68,7 @@ public final class LegacyRecipeBookCraftBridge {
         }
 
         int kaleidoscopeRecipes = 0;
-        for (final Recipe<?> recipe : CookingPotRecipeIndexer.indexedRecipes()) {
+        for (final Recipe<?> recipe : CookingPotRecipeIndexer.indexedRecipes(player.level().getRecipeManager())) {
             if (recipe instanceof CookingPotIndexedRecipe indexed
                     && (BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_POT.equals(indexed.targetKey())
                     || BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_STOCKPOT.equals(indexed.targetKey()))) {
@@ -147,9 +148,9 @@ public final class LegacyRecipeBookCraftBridge {
             return false;
         }
 
-        final List<CookingPotBridgeTarget> allTargets = CookingPotBridgeCatalog.allTargets();
         for (final CookingPotIndexedRecipe indexedRecipe : indexedCandidates) {
-            final CookingPotBridgeTarget target = findTargetByKey(allTargets, indexedRecipe.targetKey());
+            final CookingPotBridgeTarget target = CookingPotBridgeCatalog.findByKey(indexedRecipe.targetKey())
+                    .orElse(null);
             if (target == null || !target.missingRequiredModIds().isEmpty()) {
                 continue;
             }
@@ -160,8 +161,12 @@ public final class LegacyRecipeBookCraftBridge {
                 continue;
             }
 
-            if (!routeIngredientsToPot(recipeBookMenu, player, multiBlock, targetPots, indexedRecipe, matrixStacks, outputItem)) {
-                sendFeedback(player, FEEDBACK_POT_TRANSFER_FAILED_KEY, ChatFormatting.RED);
+            final boolean[] specificFailureReported = {false};
+            if (!routeIngredientsToPot(recipeBookMenu, player, multiBlock, targetPots, indexedRecipe,
+                    matrixStacks, outputItem, specificFailureReported)) {
+                if (!specificFailureReported[0]) {
+                    sendFeedback(player, FEEDBACK_POT_TRANSFER_FAILED_KEY, ChatFormatting.RED);
+                }
                 return true;
             }
 
@@ -180,14 +185,14 @@ public final class LegacyRecipeBookCraftBridge {
                                                  final List<BlockEntity> targetPots,
                                                  final CookingPotIndexedRecipe indexedRecipe,
                                                  final List<ItemStack> matrixStacks,
-                                                 final ItemStack outputItem) {
+                                                 final ItemStack outputItem,
+                                                 final boolean[] specificFailureReported) {
         final List<?> providers = resolveItemProviders(multiBlock, player);
         if (providers.isEmpty()) {
             logTransferFailure(indexedRecipe, "providers", "no item providers");
             return false;
         }
 
-        resetSimulation(providers);
         final boolean requireBucket = doesItemRequireBucketForCrafting(outputItem);
         final List<ItemStack> requestedIngredientStacks = resolveIngredientStacksForLegacyTransfer(indexedRecipe, matrixStacks);
         if (requestedIngredientStacks == null || requestedIngredientStacks.isEmpty()) {
@@ -195,50 +200,71 @@ public final class LegacyRecipeBookCraftBridge {
             return false;
         }
 
-        final List<SourceConsumption> ingredientSources = new ArrayList<>();
-        for (final ItemStack requestedIngredient : requestedIngredientStacks) {
-            final SourceConsumption source = findSourceForStack(requestedIngredient, providers, requireBucket, true);
-            if (source == null) {
-                logTransferFailure(indexedRecipe, "ingredients", "missing " + requestedIngredient.getItem());
-                return false;
-            }
-            ingredientSources.add(source);
-        }
-
         final ItemStack containerCost = BridgeKeys.TARGET_KALEIDOSCOPE_COOKERY_STOCKPOT.equals(indexedRecipe.targetKey())
                 ? ItemStack.EMPTY
                 : resolveContainerCostForLegacyCraft(indexedRecipe, player, outputItem);
-        final List<SourceConsumption> containerSources = new ArrayList<>();
-        if (!containerCost.isEmpty()) {
-            final ItemStack unit = containerCost.copy();
-            unit.setCount(1);
-            for (int i = 0; i < containerCost.getCount(); i++) {
-                final SourceConsumption source = findSourceForStack(unit, providers, false, true);
+
+        final List<SourceConsumption>[] selectedIngredientSources = new List[]{List.of()};
+        final List<ItemStack>[] selectedIngredientUnits = new List[]{List.of()};
+        final List<SourceConsumption>[] selectedContainerSources = new List[]{List.of()};
+        final ItemStack[] selectedContainerInsert = new ItemStack[]{ItemStack.EMPTY};
+        final StartupPlan[] selectedStartupPlan = {null};
+        final boolean[] containerConflict = {false};
+
+        final BlockEntity targetPot = FirstReady.find(targetPots, candidate -> {
+            resetSimulation(providers);
+            final List<SourceConsumption> ingredientSources = new ArrayList<>();
+            final List<ItemStack> ingredientUnits = new ArrayList<>(requestedIngredientStacks.size());
+            for (final ItemStack requestedIngredient : requestedIngredientStacks) {
+                final SourceConsumption source = findSourceForStack(requestedIngredient, providers, requireBucket, true);
                 if (source == null) {
-                    logTransferFailure(indexedRecipe, "container", "missing " + unit.getItem());
                     return false;
                 }
-                containerSources.add(source);
+                ingredientSources.add(source);
+                ingredientUnits.add(source.sourceStack().copyWithCount(1));
             }
-        }
 
-        final List<ItemStack> ingredientUnits = new ArrayList<>(ingredientSources.size());
-        for (final SourceConsumption source : ingredientSources) {
-            ingredientUnits.add(source.sourceStack().copyWithCount(1));
-        }
-
-        final StartupPlan[] selectedStartupPlan = {null};
-        final BlockEntity targetPot = FirstReady.find(targetPots, candidate -> {
-            if (!CookingPotProcessorCapability.canTransferResolvedStacksToPot(
-                    candidate, indexedRecipe, ingredientUnits, containerCost)) {
+            if (CookingPotProcessorCapability.containerSlotConflicts(candidate, indexedRecipe, containerCost)) {
+                containerConflict[0] = true;
                 return false;
             }
+
+            final ItemStack netContainer = CookingPotProcessorCapability.netContainerRequired(
+                    candidate, indexedRecipe, containerCost);
+            if (!CookingPotProcessorCapability.canTransferResolvedStacksToPot(
+                    candidate, indexedRecipe, ingredientUnits, netContainer)) {
+                return false;
+            }
+
             selectedStartupPlan[0] = resolveStartupPlan(
                     player.level(), multiBlock, candidate, indexedRecipe, providers);
-            return selectedStartupPlan[0] != null;
+            if (selectedStartupPlan[0] == null) {
+                return false;
+            }
+
+            final List<SourceConsumption> sources = sourceContainerUnits(netContainer, providers);
+            if (sources.size() != netContainer.getCount()) {
+                return false;
+            }
+            final ItemStack insert = containerCost.copy();
+            insert.setCount(sources.size());
+            selectedIngredientSources[0] = ingredientSources;
+            selectedIngredientUnits[0] = ingredientUnits;
+            selectedContainerSources[0] = sources;
+            selectedContainerInsert[0] = insert;
+            return true;
         });
+
         final StartupPlan startupPlan = selectedStartupPlan[0];
+        final List<SourceConsumption> ingredientSources = selectedIngredientSources[0];
+        final List<ItemStack> ingredientUnits = selectedIngredientUnits[0];
+        final List<SourceConsumption> containerSources = selectedContainerSources[0];
+        final ItemStack containerInsert = selectedContainerInsert[0];
         if (targetPot == null) {
+            if (containerConflict[0]) {
+                specificFailureReported[0] = true;
+                sendFeedback(player, FEEDBACK_POT_CONTAINER_BLOCKED_KEY, ChatFormatting.RED);
+            }
             logTransferFailure(indexedRecipe, "target", "no connected cookware is ready for this recipe");
             return false;
         }
@@ -278,7 +304,7 @@ public final class LegacyRecipeBookCraftBridge {
         }
 
         if (!CookingPotProcessorCapability.transferResolvedStacksToPot(
-                targetPot, indexedRecipe, ingredientUnits, containerCost)) {
+                targetPot, indexedRecipe, ingredientUnits, containerInsert)) {
             if (startupPlan.connectedOilSource() != null) {
                 changeConnectedOil(startupPlan.connectedOilSource(), 1);
             }
@@ -429,7 +455,7 @@ public final class LegacyRecipeBookCraftBridge {
         final List<CookingPotIndexedRecipe> strictMatches = new ArrayList<>();
         final List<CookingPotIndexedRecipe> outputMatches = new ArrayList<>();
         final var registryAccess = player.level().registryAccess();
-        for (final Recipe<?> recipe : CookingPotRecipeIndexer.indexedRecipes()) {
+        for (final Recipe<?> recipe : CookingPotRecipeIndexer.indexedRecipes(player.level().getRecipeManager())) {
             if (!(recipe instanceof CookingPotIndexedRecipe indexedRecipe)) {
                 continue;
             }
@@ -554,6 +580,25 @@ public final class LegacyRecipeBookCraftBridge {
                 fallback.getCount()
         );
         return fallback;
+    }
+
+    private static List<SourceConsumption> sourceContainerUnits(final ItemStack netContainer,
+                                                                final List<?> providers) {
+        final List<SourceConsumption> sources = new ArrayList<>();
+        if (netContainer.isEmpty()) {
+            return sources;
+        }
+
+        final ItemStack unit = netContainer.copyWithCount(1);
+        final int needed = netContainer.getCount();
+        for (int i = 0; i < needed; i++) {
+            final SourceConsumption source = findSourceForStack(unit, providers, false, true);
+            if (source == null) {
+                return sources;
+            }
+            sources.add(source);
+        }
+        return sources;
     }
 
     private static boolean matchesDisplayedMatrix(final CookingPotIndexedRecipe indexedRecipe,
@@ -853,6 +898,9 @@ public final class LegacyRecipeBookCraftBridge {
         if (!(slotValue instanceof Number slot)) {
             return null;
         }
+        if (isVirtualSourceSlot(slot.intValue())) {
+            return new ConsumedSource(source, source.sourceStack().copyWithCount(1));
+        }
         final Object value = invokeByName(
                 source.provider(),
                 "useItemStack",
@@ -881,10 +929,18 @@ public final class LegacyRecipeBookCraftBridge {
         if (stack == null || stack.isEmpty()) {
             return;
         }
+        final Object slotValue = invokeNoArg(source.sourceItem(), "getSourceSlot");
+        if (slotValue instanceof Number slot && isVirtualSourceSlot(slot.intValue())) {
+            return;
+        }
         final Object value = invokeByName(
                 source.provider(), "returnItemStack", stack.copy(), source.sourceItem());
         final ItemStack remainder = value instanceof ItemStack returned ? returned : stack.copy();
         giveToPlayer(player, remainder);
+    }
+
+    static boolean isVirtualSourceSlot(final int sourceSlot) {
+        return sourceSlot < 0;
     }
 
     private static void giveToPlayer(final Player player, final ItemStack stack) {
@@ -1093,15 +1149,6 @@ public final class LegacyRecipeBookCraftBridge {
 
     private static Level level(final Player player) {
         return player.level();
-    }
-
-    private static CookingPotBridgeTarget findTargetByKey(final List<CookingPotBridgeTarget> targets, final String targetKey) {
-        for (final CookingPotBridgeTarget target : targets) {
-            if (target.targetKey().equals(targetKey)) {
-                return target;
-            }
-        }
-        return null;
     }
 
     private static void sendFeedback(final Player player, final String key, final ChatFormatting style) {
