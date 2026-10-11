@@ -77,6 +77,9 @@ full-runtime GameTests, the exact Forge/Central Kitchen regression profile, and 
 newer NeoForge dependency check, then records the
 commit, JAR SHA-512 hashes and changelog hash in `manifest.json`.
 
+`prepare` also restores both loader JARs to `build/libs/` in this workdir after its gradle `clean` steps, so the built artifacts remain locally after release work.
+
+
 ## Required packaged-JAR E2E
 
 Existing Java checks and `runGameTestServer` use development classes and do not

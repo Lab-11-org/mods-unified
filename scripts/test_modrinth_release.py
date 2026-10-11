@@ -71,10 +71,13 @@ class ReleaseGateTest(unittest.TestCase):
             m.validate_e2e({'commit': 'commit', 'artifacts': [entry]}, self.manifest, Path('/tmp'))
 
     def test_preflight_never_reads_token_or_posts(self):
-        with patch.object(m, 'load_bundle', return_value=self.manifest), \
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(m, 'load_bundle', return_value=self.manifest), \
              patch.object(m, 'remote_versions', return_value=[]), \
              patch.object(m, 'token_value') as token, patch.object(m, 'api') as api:
-            m.release(Path('/tmp'), False)
+            directory = Path(tmp)
+            (directory / 'changelog.md').write_text('Fixed oven cookware placement.')
+            m.release(directory, False)
             token.assert_not_called()
             api.assert_not_called()
 
@@ -93,6 +96,24 @@ class ReleaseGateTest(unittest.TestCase):
         self.assertIn(b'jar bytes', body)
         self.assertTrue(body.endswith(('--' + kind.split('boundary=')[1] + '--\r\n').encode()))
 
+
+
+    def test_restore_workdir_jars_copies_into_build_libs(self):
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle = Path(tmp) / 'bundle'
+            bundle.mkdir()
+            jar = bundle / 'lab_11_mods_unified-forge-1.20.1-9.9.9.jar'
+            jar.write_bytes(b'jar-bytes')
+            artifacts = [{'filename': jar.name}]
+            # Point ROOT temporarily by patching
+            with patch.object(m, 'ROOT', Path(tmp) / 'repo'):
+                (Path(tmp) / 'repo').mkdir()
+                m.restore_workdir_jars(bundle, artifacts)
+                kept = Path(tmp) / 'repo' / 'build' / 'libs' / jar.name
+                self.assertTrue(kept.is_file())
+                self.assertEqual(kept.read_bytes(), b'jar-bytes')
 
 if __name__ == '__main__':
     unittest.main()

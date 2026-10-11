@@ -13,6 +13,7 @@
     "MonsterPotBlock120Mixin",
     "MonsterPotBlockEntity120Mixin",
     "OvenBlockEntityMixin",
+    "CfbhKitchenBlockShapeMixin",
     "KaleidoscopePotBlockMixin",
     "KaleidoscopePotBlockEntityMixin"
   ],

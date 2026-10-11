@@ -125,12 +125,9 @@ final class VersionContractCheck {
         final String ovens = readResource("data/lab_11_mods_unified/tags/blocks/cfbh_ovens.json");
         requireContains(ovens, "\"cookingforblockheads:oven\"");
         requireAbsent(ovens, "\"cookingforblockheads:white_oven\"");
-        requireContains(readResource("assets/cookingforblockheads/models/block/white_oven.json"),
-                "cookingforblockheads:block/oven");
-        requireContains(readResource("assets/cookingforblockheads/models/block/white_oven_active.json"),
-                "cookingforblockheads:block/oven_front_active");
-        requireContains(readResource("assets/cookingforblockheads/models/item/white_oven.json"),
-                "cookingforblockheads:item/oven");
+        requireMixinTarget("CfbhKitchenBlockShapeMixin",
+                "net.blay09.mods.cookingforblockheads.block.BlockKitchen");
+        requireContains(readResource("lab_11_mods_unified.mixins.json"), "CfbhKitchenBlockShapeMixin");
     }
 
     private static void checkRepeatedCraftContainerReservation() {

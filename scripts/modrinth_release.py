@@ -170,6 +170,13 @@ def load_bundle(directory):
     return manifest
 
 
+def restore_workdir_jars(directory, artifacts):
+    """Keep prepared JARs under build/libs even after gradle clean steps wipe that folder."""
+    libs = ROOT / 'build' / 'libs'
+    libs.mkdir(parents=True, exist_ok=True)
+    for artifact in artifacts:
+        shutil.copy2(directory / artifact['filename'], libs / artifact['filename'])
+
 def prepare(directory, changelog):
     commit = clean_commit()
     version = re.search(r'^mod_version=(.+)$', (ROOT / 'gradle.properties').read_text(), re.M)[1].strip()
@@ -212,7 +219,8 @@ def prepare(directory, changelog):
                                      'runtime_versions': {}, 'cases': {c: {'status': 'not_run',
                                      'observations': '', 'evidence': []} for c in cases}})
     write_json(directory / 'e2e.json', template)
-    print(f'Prepared {directory}; run packaged-JAR E2E and complete e2e.json before preflight.')
+    restore_workdir_jars(directory, artifacts)
+    print(f'Prepared {directory}; JARs also kept under build/libs. Run packaged-JAR E2E and complete e2e.json before preflight.')
 
 
 def token_value():

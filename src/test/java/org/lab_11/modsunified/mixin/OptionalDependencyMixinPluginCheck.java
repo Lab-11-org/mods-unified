@@ -16,6 +16,7 @@ final class OptionalDependencyMixinPluginCheck {
         check("KaleidoscopePotBlockMixin", BridgeKeys.MOD_KALEIDOSCOPE_COOKERY);
         check("StockpotBlockEntityRenderMixin", BridgeKeys.MOD_KALEIDOSCOPE_COOKERY);
         check("EnamelBasinBlockMixin", BridgeKeys.MOD_KALEIDOSCOPE_COOKERY);
+        check("CfbhKitchenBlockShapeMixin", null);
         check("KitchenMenuMixin", null);
         checkEarlyModDiscovery();
     }
