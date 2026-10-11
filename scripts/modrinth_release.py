@@ -30,6 +30,28 @@ def require(condition, message):
         raise ValueError(message)
 
 
+INTERNAL_CHANGELOG_PATTERNS = (
+    re.compile(r'pending\s+packaged[- ]?jar', re.I),
+    re.compile(r'restart\s+verification', re.I),
+    re.compile(r'must\s+not\s+be\s+overwritten', re.I),
+    re.compile(r'do\s+not\s+overwrite', re.I),
+    re.compile(r'release\s+is\s+pending', re.I),
+    re.compile(r'e2e\s+json', re.I),
+    re.compile(r'preflight', re.I),
+    re.compile(r'manual[_ ]acceptance', re.I),
+    re.compile(r'unpublished[_ ]candidate', re.I),
+    re.compile(r'working\s+tree', re.I),
+)
+
+
+def assert_player_facing_changelog(notes):
+    """Public release notes must only describe player-visible changes."""
+    require(notes.strip(), 'Changelog is empty.')
+    hits = [pat.pattern for pat in INTERNAL_CHANGELOG_PATTERNS if pat.search(notes)]
+    require(not hits, 'Changelog looks internal/process-oriented; keep only player-facing changes. Matched: ' + ', '.join(hits))
+
+
+
 def digest(path):
     return hashlib.sha512(Path(path).read_bytes()).hexdigest()
 
@@ -156,7 +178,7 @@ def prepare(directory, changelog):
     require(not any(v['version_number'] == version for v in versions), 'Version already published; choose a new version first.')
     require(not directory.exists(), 'Output directory already exists; choose a fresh bundle directory.')
     notes = changelog.read_text()
-    require(notes.strip(), 'Changelog is empty.')
+    assert_player_facing_changelog(notes)
     directory.mkdir(parents=True)
     (directory / 'changelog.md').write_text(notes)
     artifacts = []
@@ -217,6 +239,7 @@ def multipart(metadata, filename, data):
 
 def release(directory, publish):
     manifest = load_bundle(directory)
+    assert_player_facing_changelog((directory / 'changelog.md').read_text())
     versions = remote_versions()
     pending = []
     for artifact in manifest['artifacts']:
